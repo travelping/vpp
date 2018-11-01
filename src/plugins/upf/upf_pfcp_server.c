@@ -258,7 +258,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
       return 0;
     }
 
-  if (len != (clib_net_to_host_u16 (msg->hdr->length) + 4) ||
+  if (len < (clib_net_to_host_u16 (msg->hdr->length) + 4) ||
       (!msg->hdr->s_flag && len < offsetof (pfcp_header_t, msg_hdr.ies)) ||
       (msg->hdr->s_flag && len < offsetof (pfcp_header_t, session_hdr.ies)))
     {
