@@ -1,0 +1,38 @@
+#
+# THIS DOES NOT BUILD
+#
+# vpp does not build with MUSL on Alpine !!
+#
+
+
+# numactl needs edge and testing.
+#
+FROM alpine:edge AS build-env
+
+RUN mkdir /src && \
+    echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
+    cat /etc/apk/repositories && \
+    apk update && \
+    apk upgrade --no-cache  && \
+    apk add --no-cache gcc build-base automake autoconf ccache \
+		       libtool pkgconf make linux-headers \
+		       git pkgconfig openssl-dev numactl-dev \
+		       boost-dev libffi-dev \
+		       userspace-rcu-dev
+ADD . /src/vpp
+RUN apk add --no-cache bison
+RUN apk add --no-cache file
+RUN cd /src/vpp && \
+    make bootstrap V=1 && \
+    make build-release V=1 && \
+    make install DESTDIR=/src/vpp/build && \
+    ls -lR build && \
+    ldd /src/vpp/build/usr/bin/vpp
+
+FROM alpine:edge
+WORKDIR /
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache userspace-rcu
+COPY --from=build-env /src/vpp/build /
+ENTRYPOINT /usr/bin/vpp
