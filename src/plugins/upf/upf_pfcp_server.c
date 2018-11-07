@@ -38,6 +38,8 @@
 
 #define RESPONSE_TIMEOUT 30
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 0
 #if CLIB_DEBUG > 0
 #define gtp_debug clib_warning
 #else
@@ -492,6 +494,8 @@ response_expired (u32 id)
   sx_server_main_t *sxsm = &sx_server_main;
   sx_msg_t *msg = pool_elt_at_index (sxsm->msg_pool, id);
 
+  clib_warning ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
+  clib_warning ("release...\n");
 
   hash_unset_mem (sxsm->request_q, msg->request_key);
   sx_msg_free (sxsm, msg);
@@ -502,6 +506,8 @@ restart_response_timer (sx_msg_t * msg)
 {
   sx_server_main_t *sxsm = &sx_server_main;
   u32 id = msg - sxsm->msg_pool;
+
+  clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   if (msg->timer != ~0)
     upf_pfcp_server_stop_timer (msg->timer);
@@ -514,6 +520,8 @@ enqueue_response (sx_msg_t * msg)
 {
   sx_server_main_t *sxsm = &sx_server_main;
   u32 id = msg - sxsm->msg_pool;
+
+  clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   hash_set_mem (sxsm->response_q, msg->request_key, id);
   msg->timer =
@@ -1001,6 +1009,8 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	      break;
 
 	    case 0x80 | PFCP_SERVER_RESPONSE:
+	      clib_warning ("PFCP Server Response Timeout: %u",
+			    expired[i] & 0x00FFFFFF);
 	      response_expired (expired[i] & 0x00FFFFFF);
 	      break;
 
