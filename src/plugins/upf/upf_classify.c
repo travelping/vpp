@@ -32,6 +32,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_http_redirect_server.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 1
 #if (CLIB_DEBUG > 0)
 #define gtp_debug clib_warning
 #else
@@ -204,7 +206,7 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
     if (pdr->precedence >= adr->precedence)
       continue;
 
-    clib_warning ("Scanning %p, db_id %u\n", pdr, pdr->pdi.adr.db_id);
+    gtp_debug ("Scanning %p, db_id %u\n", pdr, pdr->pdi.adr.db_id);
     if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url)) == 0)
       adr = pdr;
   }
@@ -231,8 +233,8 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
   upf_pdr_t *pdr;
 
   adr = vec_elt_at_index (active->pdr, vnet_buffer (b)->gtpu.pdr_idx);
-  clib_warning ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
-		vnet_buffer (b)->gtpu.pdr_idx);
+  gtp_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
+	     vnet_buffer (b)->gtpu.pdr_idx);
   vec_foreach (pdr, active->pdr)
   {
     if ((pdr->pdi.fields & F_PDI_APPLICATION_ID)
@@ -244,8 +246,8 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
-  clib_warning ("New PDR: %p %u (idx %u)\n", adr, adr->id,
-		vnet_buffer (b)->gtpu.pdr_idx);
+  gtp_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
+	     vnet_buffer (b)->gtpu.pdr_idx);
 
   /* switch return traffic to processing node */
   flow->next[flow->is_reverse ^ FT_REVERSE] = FT_NEXT_PROCESS;
@@ -262,6 +264,10 @@ ip4_address_is_equal_masked (const ip4_address_t * a,
 			     const ip4_address_t * b,
 			     const ip4_address_t * mask)
 {
+  gtp_debug ("IP: %U/%U, %U\n",
+	     format_ip4_address, a,
+	     format_ip4_address, b, format_ip4_address, mask);
+
   return (a->as_u32 & mask->as_u32) == (b->as_u32 & mask->as_u32);
 }
 
@@ -274,6 +280,8 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
   if (! !is_ip4 != ! !acl->is_ip4)
     return 0;
 
+  gtp_debug ("TEID %08x, Match %08x, ACL %08x\n",
+	     teid, acl->match_teid, acl->teid);
   if (acl->match_teid && teid != acl->teid)
     return 0;
 
@@ -284,16 +292,25 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
       switch (acl->match_ue_ip)
 	{
 	case UPF_ACL_UL:
+	  gtp_debug ("UL: UE %U, Src: %U\n",
+		     format_ip4_address, &acl->ue_ip.ip4,
+		     format_ip4_address, &ip4h->src_address);
 	  if (!ip4_address_is_equal (&acl->ue_ip.ip4, &ip4h->src_address))
 	    return 0;
 	  break;
 	case UPF_ACL_DL:
+	  gtp_debug ("DL: UE %U, Dst: %U\n",
+		     format_ip4_address, &acl->ue_ip.ip4,
+		     format_ip4_address, &ip4h->dst_address);
 	  if (!ip4_address_is_equal (&acl->ue_ip.ip4, &ip4h->dst_address))
 	    return 0;
 	  break;
 	default:
 	  break;
 	}
+
+      gtp_debug ("Protocol: 0x%04x/0x%04x, 0x%04x\n",
+		 acl->match.protocol, acl->mask.protocol, ip4h->protocol);
 
       if ((ip4h->protocol & acl->mask.protocol) !=
 	  (acl->match.protocol & acl->mask.protocol))
@@ -364,6 +381,8 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
   vnet_buffer (b)->gtpu.pdr_idx = ~0;
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
+  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+
   vec_foreach (acl, acl_vec)
   {
     if (acl->precedence < precedence &&
@@ -441,20 +460,22 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  is_forward = (is_reverse == flow->is_reverse) ? 1 : 0;
 	  vnet_buffer (b)->gtpu.pdr_idx = flow->pdr_id[is_reverse];
 
+	  gtp_debug ("is_rev %u, is_fwd %d, pdr_idx %x\n",
+		     is_reverse, is_forward, flow->pdr_id[is_reverse]);
+
 	  if (vnet_buffer (b)->gtpu.pdr_idx == ~0)
 	    next = upf_acl_classify (vm, b, flow, active, is_ip4);
 	  else if (is_forward)
 	    upf_application_detection (vm, b, flow, active, is_ip4);
 	  else if (!is_forward && flow->application_id != ~0)
 	    {
-	      clib_warning ("Reverse Flow and AppId %u\n",
-			    flow->application_id);
+	      gtp_debug ("Reverse Flow and AppId %u\n", flow->application_id);
 	      upf_get_application_rule (vm, b, flow, active, is_ip4);
 	    }
 	  else if (flow->stats[0].bytes > 4096 && flow->stats[1].bytes > 4096)
 	    {
 	      /* stop flow classification after 4k in each direction */
-	      clib_warning ("Stopping Flow Classify after 4k");
+	      gtp_debug ("Stopping Flow Classify after 4k");
 	      flow->next[0] = flow->next[1] = FT_NEXT_PROCESS;
 	    }
 

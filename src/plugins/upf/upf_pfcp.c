@@ -39,6 +39,8 @@
 #include "upf_pfcp.h"
 #include "upf_pfcp_api.h"
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 0
 #if CLIB_DEBUG > 0
 #define gtp_debug clib_warning
 #else
@@ -1264,6 +1266,7 @@ compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
   compile_sdf (is_ip4, pdr, acl);
   compile_ue_ip (is_ip4, pdr, acl);
 
+  gtp_debug("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
   return 0;
 }
 
