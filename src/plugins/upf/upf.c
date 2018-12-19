@@ -1042,6 +1042,10 @@ upf_init (vlib_main_t * vm)
   sm->vnet_main = vnet_get_main ();
   sm->vlib_main = vm;
 
+  if ((error =
+       vlib_call_init_function (vm, upf_http_redirect_server_main_init)))
+    return error;
+
   sm->pfcp_endpoint_index =
     hash_create_mem (0, sizeof (ip46_address_t), sizeof (uword));
 

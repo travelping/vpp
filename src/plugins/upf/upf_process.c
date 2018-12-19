@@ -29,6 +29,7 @@
 
 #include <upf/upf.h>
 #include <upf/upf_pfcp.h>
+#include <upf/upf_http_redirect_server.h>
 
 #if CLIB_DEBUG > 0
 #define gtp_debug clib_warning
@@ -38,7 +39,8 @@
 #endif
 
 /* Statistics (not all errors) */
-#define foreach_upf_process_error		\
+#define foreach_upf_process_error			\
+  _(NO_LISTENER, "no redirect server available")	\
   _(PROCESS, "good packets process")
 
 static char *upf_process_error_strings[] = {
@@ -111,6 +113,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
       upf_far_t *far = NULL;
       u32 n_left_to_next;
       vlib_buffer_t *b;
+      u32 error;
       u32 bi;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
@@ -130,6 +133,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  sidx = vnet_buffer (b)->gtpu.session_index;
 	  sess = pool_elt_at_index (gtm->sessions, sidx);
 
+	  error = 0;
 	  next = UPF_PROCESS_NEXT_DROP;
 	  active = sx_get_rules (sess, SX_ACTIVE);
 
@@ -226,6 +230,31 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 			  goto trace;
 			}
 		    }
+		  else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
+		    {
+		      u32 fib_index = is_ip4 ?
+			ip4_fib_table_get_index_for_sw_if_index (far->forward.
+								 dst_sw_if_index)
+			: ip6_fib_table_get_index_for_sw_if_index (far->
+								   forward.
+								   dst_sw_if_index);
+
+		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
+			far->forward.dst_sw_if_index;
+		      vnet_buffer2 (b)->gtpu.session_index = sidx;
+		      vnet_buffer2 (b)->gtpu.far_index =
+			(far - active->far) | 0x80000000;
+		      vnet_buffer2 (b)->connection_index =
+			upf_http_redirect_session (fib_index, is_ip4);
+		      next = UPF_PROCESS_NEXT_IP_LOCAL;
+
+		      if (PREDICT_FALSE
+			  (vnet_buffer2 (b)->connection_index == ~0))
+			{
+			  error = UPF_PROCESS_ERROR_NO_LISTENER;
+			  next = UPF_PROCESS_NEXT_DROP;
+			}
+		    }
 		  else
 		    {
 		      if (is_ip4)
@@ -292,6 +321,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    }
 
 	trace:
+	  b->error = error ? node->errors[error] : 0;
+
 	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	    {
 	      upf_process_trace_t *tr =
@@ -343,6 +374,7 @@ VLIB_REGISTER_NODE (upf_ip4_process_node) = {
     [UPF_PROCESS_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
     [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_PROCESS_NEXT_IP_INPUT]      = "ip4-input",
+    [UPF_PROCESS_NEXT_IP_LOCAL]      = "ip4-local",
   },
 };
 /* *INDENT-ON* */
@@ -364,6 +396,7 @@ VLIB_REGISTER_NODE (upf_ip6_process_node) = {
     [UPF_PROCESS_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
     [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_PROCESS_NEXT_IP_INPUT]      = "ip6-input",
+    [UPF_PROCESS_NEXT_IP_LOCAL]      = "ip6-local",
   },
 };
 /* *INDENT-ON* */
