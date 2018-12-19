@@ -850,7 +850,16 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	}
       }
 
-    // CREATE_PDR_QER_ID
+    if (ISSET_BIT (pdr->grp.fields, CREATE_PDR_QER_ID))
+      {
+	pfcp_qer_id_t *qer_id;
+
+	vec_foreach (qer_id, pdr->qer_id)
+	{
+	  vec_add1 (create->qer_ids, *qer_id);
+	}
+      }
+
     // CREATE_PDR_ACTIVATE_PREDEFINED_RULES
 
     if ((r = sx_create_pdr (sess, create)) != 0)
@@ -987,7 +996,16 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
 	}
       }
 
-    // UPDATE_PDR_QER_ID
+    if (ISSET_BIT (pdr->grp.fields, UPDATE_PDR_QER_ID))
+      {
+	pfcp_qer_id_t *qer_id;
+
+	vec_foreach (qer_id, pdr->qer_id)
+	{
+	  vec_add1 (update->qer_ids, *qer_id);
+	}
+      }
+
     // UPDATE_PDR_ACTIVATE_PREDEFINED_RULES
   }
 
@@ -1598,6 +1616,155 @@ handle_remove_urr (upf_session_t * sess, pfcp_remove_urr_t * remove_urr,
   return r;
 }
 
+static int
+handle_create_qer (upf_session_t * sess, pfcp_create_qer_t * create_qer,
+		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
+		   pfcp_failed_rule_id_t * failed_rule_id)
+{
+  struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
+  upf_main_t *gtm = &upf_main;
+  pfcp_create_qer_t *qer;
+  int r = 0;
+
+  vec_foreach (qer, create_qer)
+  {
+    upf_qer_t *create;
+
+    create = clib_mem_alloc_no_fail (sizeof (*create));
+    memset (create, 0, sizeof (*create));
+
+    create->id = qer->qer_id;
+
+    create->policer.key =
+      (ISSET_BIT (qer->grp.fields, CREATE_QER_QER_CORRELATION_ID)) ?
+      qer->qer_correlation_id : (u64) (sess -
+				       gtm->sessions) << 32 | create->id;
+    create->policer.value = ~0;
+
+    create->gate_status[UPF_UL] = qer->gate_status.ul;
+    create->gate_status[UPF_DL] = qer->gate_status.dl;
+
+    if (ISSET_BIT (qer->grp.fields, CREATE_QER_MBR))
+      {
+	create->flags |= SX_QER_MBR;
+	create->mbr = qer->mbr;
+      }
+
+    //TODO: gbr;
+    //TODO: packet_rate;
+    //TODO: dl_flow_level_marking;
+    //TODO: qos_flow_identifier;
+    //TODO: reflective_qos;
+
+    if ((r = sx_create_qer (sess, create)) != 0)
+      {
+	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
+	failed_rule_id->id = qer->qer_id;
+	break;
+      }
+  }
+
+  if (r != 0)
+    {
+      response->cause = PFCP_CAUSE_RULE_CREATION_MODIFICATION_FAILURE;
+
+      SET_BIT (grp->fields, failed_rule_id_field);
+      failed_rule_id->type = FAILED_RULE_TYPE_QER;
+    }
+
+  return r;
+}
+
+static int
+handle_update_qer (upf_session_t * sess, pfcp_update_qer_t * update_qer,
+		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
+		   pfcp_failed_rule_id_t * failed_rule_id)
+{
+  struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
+  upf_main_t *gtm = &upf_main;
+  pfcp_update_qer_t *qer;
+  int r = 0;
+
+  vec_foreach (qer, update_qer)
+  {
+    upf_qer_t *update;
+
+    update = sx_get_qer (sess, SX_PENDING, qer->qer_id);
+    if (!update)
+      {
+	gtp_debug ("Sx Session %" PRIu64 ", update QER Id %d not found.\n",
+		   sess->cp_seid, qer->qer_id);
+	failed_rule_id->id = qer->qer_id;
+	r = -1;
+	break;
+      }
+
+    update->policer.key =
+      (ISSET_BIT (qer->grp.fields, UPDATE_QER_QER_CORRELATION_ID)) ?
+      qer->qer_correlation_id : (u64) (sess -
+				       gtm->sessions) << 32 | update->id;
+    update->policer.value = ~0;
+
+    if (ISSET_BIT (qer->grp.fields, UPDATE_QER_GATE_STATUS))
+      {
+	update->gate_status[UPF_UL] = qer->gate_status.ul;
+	update->gate_status[UPF_DL] = qer->gate_status.dl;
+      }
+
+    if (ISSET_BIT (qer->grp.fields, UPDATE_QER_MBR))
+      {
+	update->flags |= SX_QER_MBR;
+	update->mbr = qer->mbr;
+      }
+
+    //TODO: gbr;
+    //TODO: packet_rate;
+    //TODO: dl_flow_level_marking;
+    //TODO: qos_flow_identifier;
+    //TODO: reflective_qos;
+  }
+
+  if (r != 0)
+    {
+      response->cause = PFCP_CAUSE_RULE_CREATION_MODIFICATION_FAILURE;
+
+      SET_BIT (grp->fields, failed_rule_id_field);
+      failed_rule_id->type = FAILED_RULE_TYPE_QER;
+    }
+
+  return r;
+}
+
+static int
+handle_remove_qer (upf_session_t * sess, pfcp_remove_qer_t * remove_qer,
+		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
+		   pfcp_failed_rule_id_t * failed_rule_id)
+{
+  struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
+  pfcp_remove_qer_t *qer;
+  int r = 0;
+
+  vec_foreach (qer, remove_qer)
+  {
+    if ((r = sx_delete_qer (sess, qer->qer_id)) != 0)
+      {
+	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
+	failed_rule_id->id = qer->qer_id;
+	break;
+      }
+  }
+
+  if (r != 0)
+    {
+      response->cause = PFCP_CAUSE_RULE_CREATION_MODIFICATION_FAILURE;
+
+      SET_BIT (grp->fields, failed_rule_id_field);
+      failed_rule_id->type = FAILED_RULE_TYPE_QER;
+    }
+
+  return r;
+}
+
 static pfcp_usage_report_t *
 init_usage_report (upf_urr_t * urr, u32 trigger,
 		   pfcp_usage_report_t ** report)
@@ -1932,6 +2099,21 @@ handle_session_modification_request (sx_msg_t * req,
 	goto out_send_resp;
 
       if ((r = handle_remove_urr (sess, msg->remove_urr, now, &resp.grp,
+				  SESSION_MODIFICATION_RESPONSE_FAILED_RULE_ID,
+				  &resp.failed_rule_id)) != 0)
+	goto out_send_resp;
+
+      if ((r = handle_create_qer (sess, msg->create_qer, now, &resp.grp,
+				  SESSION_MODIFICATION_RESPONSE_FAILED_RULE_ID,
+				  &resp.failed_rule_id)) != 0)
+	goto out_send_resp;
+
+      if ((r = handle_update_qer (sess, msg->update_qer, now, &resp.grp,
+				  SESSION_MODIFICATION_RESPONSE_FAILED_RULE_ID,
+				  &resp.failed_rule_id)) != 0)
+	goto out_send_resp;
+
+      if ((r = handle_remove_qer (sess, msg->remove_qer, now, &resp.grp,
 				  SESSION_MODIFICATION_RESPONSE_FAILED_RULE_ID,
 				  &resp.failed_rule_id)) != 0)
 	goto out_send_resp;

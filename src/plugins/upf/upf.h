@@ -36,6 +36,7 @@
 #include <vnet/dpo/dpo.h>
 #include <vnet/adj/adj_types.h>
 #include <vnet/fib/fib_table.h>
+#include <vnet/policer/policer.h>
 
 #include "pfcp.h"
 #include "flowtable.h"
@@ -329,6 +330,7 @@ typedef struct
   u8 outer_header_removal;
   u16 far_id;
   u16 *urr_ids;
+  u32 *qer_ids;
 } upf_pdr_t;
 
 /* Forward Action Rules - Forwarding Parameters */
@@ -449,6 +451,31 @@ typedef struct
   } usage_before_monitoring_time;
 } upf_urr_t;
 
+/* QoS Enforcement Rules */
+typedef struct
+{
+  /* Required for pool_get_aligned  */
+  CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
+
+  policer_read_response_type_st policer[UPF_DIRECTION_MAX];
+
+  u64 ref_cnt;
+  pfcp_mbr_t mbr;
+} upf_qer_policer_t;
+
+typedef struct
+{
+  u32 id;
+
+  u8 flags;
+#define SX_QER_MBR				BIT(0)
+
+  u8 gate_status[UPF_DIRECTION_MAX];
+
+  pfcp_mbr_t mbr;
+  clib_bihash_kv_8_8_t policer;
+} upf_qer_t;
+
 typedef struct
 {
   /* Required for pool_get_aligned  */
@@ -478,6 +505,7 @@ typedef struct
     upf_pdr_t *pdr;
     upf_far_t *far;
     upf_urr_t *urr;
+    upf_qer_t *qer;
     uint32_t flags;
 #define SX_SDF_IPV4    BIT(0)
 #define SX_SDF_IPV6    BIT(1)
@@ -640,6 +668,10 @@ typedef struct
 
   /* Mapping from sw_if_index to tunnel index */
   u32 *session_index_by_sw_if_index;
+
+  /* policer pool, aligned */
+  upf_qer_policer_t *qer_policers;
+  clib_bihash_8_8_t qer_by_id;
 
   /* list of remote GTP-U peer ref count used to stack FIB DPO objects */
   upf_peer_t *peers;

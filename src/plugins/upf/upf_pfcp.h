@@ -43,22 +43,24 @@ upf_##t##_t *sx_get_##t(upf_session_t *sx, int rule,		\
 int sx_create_##t(upf_session_t *sx, upf_##t##_t *t);		\
 int sx_delete_##t(upf_session_t *sx, u32 t##_id);			\
 
-sx_rule_vector_fns (pdr) sx_rule_vector_fns (far) sx_rule_vector_fns (urr)
-     void
-     sx_send_end_marker (upf_session_t * sx, u16 id);
+/* *INDENT-OFF* */
+sx_rule_vector_fns (pdr)
+sx_rule_vector_fns (far)
+sx_rule_vector_fns (urr)
+sx_rule_vector_fns (qer)
+/* *INDENT-ON* */
 
 #undef sx_rule_vector_fns
 
-     int
-     sx_update_apply (upf_session_t * sx);
-     void
-     sx_update_finish (upf_session_t * sx);
+void sx_send_end_marker (upf_session_t * sx, u16 id);
 
-     upf_session_t *
-     sx_lookup (uint64_t sess_id);
+int sx_update_apply (upf_session_t * sx);
+void sx_update_finish (upf_session_t * sx);
 
-     static inline struct rules *
-     sx_get_rules (upf_session_t * sx, int rules)
+upf_session_t *sx_lookup (uint64_t sess_id);
+
+static inline struct rules *
+sx_get_rules (upf_session_t * sx, int rules)
 {
   return &sx->rules[sx->active ^ rules];
 }
@@ -67,6 +69,10 @@ void vlib_free_combined_counter (vlib_combined_counter_main_t * cm);
 
 u32 process_urrs (vlib_main_t * vm, upf_session_t * sess,
 		  struct rules *active,
+		  upf_pdr_t * pdr, vlib_buffer_t * b,
+		  u8 is_dl, u8 is_ul, u32 next);
+u32 process_qers (vlib_main_t * vm, upf_session_t * sess,
+		  struct rules *r,
 		  upf_pdr_t * pdr, vlib_buffer_t * b,
 		  u8 is_dl, u8 is_ul, u32 next);
 

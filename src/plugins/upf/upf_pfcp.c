@@ -168,6 +168,16 @@ sx_urr_id_compare (const void *p1, const void *p2)
   return intcmp (a->id, b->id);
 }
 
+static int
+sx_qer_id_compare (const void *p1, const void *p2)
+{
+  const upf_qer_t *a = (upf_qer_t *) p1;
+  const upf_qer_t *b = (upf_qer_t *) p2;
+
+  /* compare rule_ids */
+  return intcmp (a->id, b->id);
+}
+
 upf_node_assoc_t *
 sx_get_association (pfcp_node_id_t * node_id)
 {
@@ -624,6 +634,7 @@ make_pending_pdr (upf_session_t * sx)
 
 	pdr->pdi.adr.db_id = upf_adf_get_adr_db (pdr->pdi.adr.application_id);
 	pdr->urr_ids = vec_dup (vec_elt (active->pdr, i).urr_ids);
+	pdr->qer_ids = vec_dup (vec_elt (active->pdr, i).qer_ids);
       }
     }
 
@@ -687,17 +698,107 @@ make_pending_urr (upf_session_t * sx)
   return 0;
 }
 
+static upf_qer_policer_t *
+init_qer_policer (upf_qer_t * qer)
+{
+  sse2_qos_pol_cfg_params_st cfg = {
+    .rate_type = SSE2_QOS_RATE_KBPS,
+    .rnd_type = SSE2_QOS_ROUND_TO_CLOSEST,
+    .rfc = SSE2_QOS_POLICER_TYPE_1R2C,
+    .color_aware = 0,
+    .conform_action = {.action_type = SSE2_QOS_ACTION_TRANSMIT,},
+    .exceed_action = {.action_type = SSE2_QOS_ACTION_DROP,},
+    .violate_action = {.action_type = SSE2_QOS_ACTION_DROP,},
+  };
+  upf_main_t *gtm = &upf_main;
+  upf_qer_policer_t *pol;
+
+  pool_get_aligned_zero (gtm->qer_policers, pol, CLIB_CACHE_LINE_BYTES);
+  qer->policer.value = pol - gtm->qer_policers;
+
+  cfg.rb.kbps.cir_kbps = qer->mbr.ul;
+  sse2_pol_logical_2_physical (&cfg, &pol->policer[UPF_UL]);
+
+  cfg.rb.kbps.cir_kbps = qer->mbr.dl;
+  sse2_pol_logical_2_physical (&cfg, &pol->policer[UPF_DL]);
+
+  clib_bihash_add_del_8_8 (&gtm->qer_by_id, &qer->policer, 1 /* is_add */ );
+
+  return pol;
+}
+
+static void
+attach_qer_policer (upf_qer_t * qer)
+{
+  upf_main_t *gtm = &upf_main;
+  upf_qer_policer_t *pol;
+
+  if (qer->policer.key == ~0 || !(qer->flags & SX_QER_MBR))
+    return;
+
+  if (clib_bihash_search_inline_8_8 (&gtm->qer_by_id, &qer->policer))
+    pol = init_qer_policer (qer);
+  else
+    pol = pool_elt_at_index (gtm->qer_policers, qer->policer.value);
+
+  clib_atomic_fetch_add (&pol->ref_cnt, 1);
+
+  //sse2_pol_logical_2_physical(&qer->cfg, pol);
+}
+
+static void
+detach_qer_policer (upf_qer_t * qer)
+{
+  upf_main_t *gtm = &upf_main;
+  upf_qer_policer_t *pol;
+
+  if (qer->policer.value == ~0)
+    return;
+
+  pol = pool_elt_at_index (gtm->qer_policers, qer->policer.value);
+  if (!clib_atomic_sub_fetch (&pol->ref_cnt, 1))
+    {
+      clib_bihash_add_del_8_8 (&gtm->qer_by_id, &qer->policer,
+			       0 /* is_add */ );
+      pool_put (gtm->qer_policers, pol);
+    }
+}
+
+static int
+make_pending_qer (upf_session_t * sx)
+{
+  struct rules *pending = sx_get_rules (sx, SX_PENDING);
+  struct rules *active = sx_get_rules (sx, SX_ACTIVE);
+  upf_qer_t *qer;
+
+  if (pending->qer)
+    return 0;
+
+  if (active->qer)
+    {
+      pending->qer = vec_dup (active->qer);
+      vec_foreach (qer, pending->qer)
+      {
+	qer->policer.value = ~0;
+      }
+    }
+
+  return 0;
+}
+
 static void
 sx_free_rules (upf_session_t * sx, int rule)
 {
   struct rules *rules = sx_get_rules (sx, rule);
   upf_pdr_t *pdr;
   upf_far_t *far;
+  upf_qer_t *qer;
 
   vec_foreach (pdr, rules->pdr)
   {
     upf_adf_put_adr_db (pdr->pdi.adr.db_id);
     vec_free (pdr->urr_ids);
+    vec_free (pdr->qer_ids);
   }
 
   vec_free (rules->pdr);
@@ -710,6 +811,11 @@ sx_free_rules (upf_session_t * sx, int rule)
   }
   vec_free (rules->far);
   vec_free (rules->urr);
+  vec_foreach (qer, rules->qer)
+  {
+    detach_qer_policer (qer);
+  }
+  vec_free (rules->qer);
   vec_free (rules->vrf_ip);
   vec_free (rules->v4_teid);
   vec_free (rules->v6_teid);
@@ -856,6 +962,7 @@ int sx_delete_##t(upf_session_t *sx, u32 t##_id)			\
 sx_rule_vector_fns(pdr, ({ upf_adf_put_adr_db(p->pdi.adr.db_id); }))
 sx_rule_vector_fns(far, ({}))
 sx_rule_vector_fns(urr, ({}))
+sx_rule_vector_fns(qer, ({}))
 /* *INDENT-ON* */
 
 void
@@ -1290,19 +1397,20 @@ sx_update_apply (upf_session_t * sx)
 {
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
-  int pending_pdr, pending_far, pending_urr;
+  int pending_pdr, pending_far, pending_urr, pending_qer;
   sx_server_main_t *sxsm = &sx_server_main;
   upf_main_t *gtm = &upf_main;
   u32 si = sx - gtm->sessions;
   f64 now = sxsm->now;
   upf_urr_t *urr;
 
-  if (!pending->pdr && !pending->far && !pending->urr)
+  if (!pending->pdr && !pending->far && !pending->urr && !pending->qer)
     return 0;
 
   pending_pdr = ! !pending->pdr;
   pending_far = ! !pending->far;
   pending_urr = ! !pending->urr;
+  pending_qer = ! !pending->qer;
 
   if (pending_pdr)
     {
@@ -1359,6 +1467,18 @@ sx_update_apply (upf_session_t * sx)
 
   if (!pending_urr)
     pending->urr = active->urr;
+
+  if (pending_qer)
+    {
+      upf_qer_t *qer;
+
+      vec_foreach (qer, pending->qer)
+      {
+	attach_qer_policer (qer);
+      }
+    }
+  else
+    pending->qer = active->qer;
 
   if (pending_pdr)
     {
@@ -1495,6 +1615,8 @@ sx_update_apply (upf_session_t * sx)
     }
   else
     pending->urr = NULL;
+  if (!pending_qer)
+    pending->qer = NULL;
 
   return 0;
 }
@@ -1604,6 +1726,60 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
   return next;
 }
 
+u32
+process_qers (vlib_main_t * vm, upf_session_t * sess,
+	      struct rules * r,
+	      upf_pdr_t * pdr, vlib_buffer_t * b,
+	      u8 is_dl, u8 is_ul, u32 next)
+{
+  u8 direction = is_dl ? UPF_DL : UPF_UL;
+  upf_main_t *gtm = &upf_main;
+  u64 time_in_policer_periods;
+  u32 *qer_id;
+  u32 len;
+
+  gtp_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
+
+  /* must be UL or DL, not both and not none */
+  if ((is_ul + is_dl) != 1)
+    return UPF_PROCESS_NEXT_DROP;
+
+  time_in_policer_periods =
+    clib_cpu_time_now () >> POLICER_TICKS_PER_PERIOD_SHIFT;
+
+  len = vlib_buffer_length_in_chain (vm, b);
+
+  vec_foreach (qer_id, pdr->qer_ids)
+  {
+    upf_qer_t *qer = sx_get_qer_by_id (r, *qer_id);
+    upf_qer_policer_t *pol;
+    u32 col __attribute__ ((unused));
+
+    if (!qer)
+      continue;
+
+    if (!(qer->flags & SX_QER_MBR))
+      continue;
+
+    if (qer->gate_status[direction])
+      {
+	next = UPF_PROCESS_NEXT_DROP;
+	break;
+      }
+
+    pol = pool_elt_at_index (gtm->qer_policers, qer->policer.value);
+    col =
+      vnet_police_packet (&pol->policer[direction], len, POLICE_CONFORM,
+			  time_in_policer_periods);
+    gtp_debug ("QER color: %d\n", col);
+  }
+
+  return next;
+}
+
+
+
+
 static const char *apply_action_flags[] = {
   "DROP",
   "FORWARD",
@@ -1653,6 +1829,12 @@ static const char *outer_header_removal_str[] = {
   "GTP-U/UDP/IPv6",
   "UDP/IPv4",
   "UDP/IPv6"
+};
+
+static const char *qer_gate_status_flags[] = {
+  "OPEN",
+  "CLOSED",
+  NULL
 };
 
 static u8 *
@@ -1716,6 +1898,7 @@ format_sx_session (u8 * s, va_list * args)
   upf_pdr_t *pdr;
   upf_far_t *far;
   upf_urr_t *urr;
+  upf_qer_t *qer;
 
   s = format (s,
 	      "CP F-SEID: 0x%016" PRIx64 " (%" PRIu64 ") @ %U\n"
@@ -1797,6 +1980,10 @@ format_sx_session (u8 * s, va_list * args)
     vec_foreach_index (j, pdr->urr_ids) s =
       format (s, "%s%u", j != 0 ? "," : "", vec_elt (pdr->urr_ids, j));
     s = format (s, "] @ %p\n", pdr->urr_ids);
+    s = format (s, "  QER Ids: [");
+    vec_foreach_index (j, pdr->qer_ids) s =
+      format (s, "%s%u", j != 0 ? "," : "", vec_elt (pdr->qer_ids, j));
+    s = format (s, "] @ %p\n", pdr->qer_ids);
   }
 
   vec_foreach (far, rules->far)
@@ -1903,6 +2090,19 @@ format_sx_session (u8 * s, va_list * args)
 	      }
 	  }
       }
+  }
+  vec_foreach (qer, rules->qer)
+  {
+      /* *INDENT-OFF* */
+      s = format (s, "QER: %u\n"
+		  "  UL Gate: %d == %U\n"
+		  "  DL Gate: %d == %U\n",
+		  qer->id,
+		  qer->gate_status[UPF_UL],
+		  format_flags, (u64)qer->gate_status[UPF_UL], qer_gate_status_flags,
+		  qer->gate_status[UPF_DL],
+		  format_flags, (u64)qer->gate_status[UPF_DL], qer_gate_status_flags);
+      /* *INDENT-ON* */
   }
   return s;
 }
