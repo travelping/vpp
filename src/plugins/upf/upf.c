@@ -1075,6 +1075,10 @@ upf_init (vlib_main_t * vm)
   sm->vtep6 = hash_create_mem (0, sizeof (ip6_address_t), sizeof (uword));
 #endif
 
+  clib_bihash_init_8_8 (&sm->qer_by_id,
+			"upf_qer_by_ie", UPF_MAPPING_BUCKETS,
+			UPF_MAPPING_MEMORY_SIZE);
+
   udp_register_dst_port (vm, UDP_DST_PORT_GTPU,
 			 gtpu4_input_node.index, /* is_ip4 */ 1);
   udp_register_dst_port (vm, UDP_DST_PORT_GTPU6,

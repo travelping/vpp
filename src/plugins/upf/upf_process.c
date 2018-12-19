@@ -291,6 +291,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
 
 	      gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
+	      next = process_qers (vm, sess, active, pdr, b,
+				   IS_DL (pdr, far), IS_UL (pdr, far), next);
 	      next = process_urrs (vm, sess, active, pdr, b,
 				   IS_DL (pdr, far), IS_UL (pdr, far), next);
 
