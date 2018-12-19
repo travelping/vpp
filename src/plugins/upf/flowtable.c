@@ -20,6 +20,8 @@
 #include <vppinfra/vec.h>
 #include <vnet/ip/ip4_packet.h>
 
+#include "upf.h"
+#include "upf_adf.h"
 #include "flowtable.h"
 #include "flowtable_tcp.h"
 
@@ -245,6 +247,7 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   f->lifetime = flowtable_lifetime_calculate (fm, &f->key);
   f->expire = now + f->lifetime;
   memset (&f->pdr_id, ~0, sizeof (f->pdr_id));
+  f->application_id = ~0;
   f->next[FT_ORIGIN] = FT_NEXT_CLASSIFY;
   f->next[FT_REVERSE] = FT_NEXT_CLASSIFY;
 
@@ -342,15 +345,27 @@ format_flow (u8 * s, va_list * args)
 {
   flow_entry_t *flow = va_arg (*args, flow_entry_t *);
   int is_reverse = flow->is_reverse;
+  upf_main_t *sm = &upf_main;
+  u8 *app_name = NULL;
+
+  if (flow->application_id != ~0)
+    {
+      upf_adf_app_t *app =
+	pool_elt_at_index (sm->upf_apps, flow->application_id);
+      app_name = format (0, "%v", app->name);
+    }
+  else
+    app_name = format (0, "%s", "None");
 
   return format (s, "%U, UL pkt %u, DL pkt %u, "
 		 "Forward PDR %u, Reverse PDR %u, "
-		 "lifetime %u",
+		 "app %v, lifetime %u",
 		 format_flow_key, &flow->key,
 		 flow->stats[is_reverse].pkts,
 		 flow->stats[is_reverse ^ FT_REVERSE].pkts,
 		 flow->pdr_id[is_reverse],
-		 flow->pdr_id[is_reverse ^ FT_REVERSE], flow->lifetime);
+		 flow->pdr_id[is_reverse ^ FT_REVERSE],
+		 app_name, flow->lifetime);
 }
 
 static clib_error_t *

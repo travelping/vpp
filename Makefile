@@ -71,6 +71,10 @@ DEB_DEPENDS += liburcu-dev
 DEB_DEPENDS += cmake ninja-build uuid-dev python3-jsonschema
 ifeq ($(OS_VERSION_ID),14.04)
 	DEB_DEPENDS += libssl-dev
+else ifeq ($(filter 18.04 18.10 19.04,$(OS_VERSION_ID)),$(OS_VERSION_ID))
+	DEB_DEPENDS += default-jdk-headless
+	DEB_DEPENDS += libssl-dev
+	DEB_DEPENDS += libhyperscan-dev
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),debian-8)
 	DEB_DEPENDS += libssl-dev
 	APT_ARGS = -t jessie-backports
@@ -111,7 +115,7 @@ endif
 
 # +ganglia-devel if building the ganglia plugin
 
-RPM_DEPENDS += userspace-rcu-devel
+RPM_DEPENDS += userspace-rcu-devel hyperscan-devel
 RPM_DEPENDS += chrpath libffi-devel rpm-build
 # lowercase- replace spaces with dashes.
 SUSE_NAME= $(shell grep '^NAME=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g' | sed -e 's/ /-/' | awk '{print tolower($$0)}')
@@ -121,7 +125,7 @@ RPM_SUSE_BUILDTOOLS_DEPS += clang cmake indent libtool make ninja python3-ply
 
 RPM_SUSE_DEVEL_DEPS = glibc-devel-static libnuma-devel
 RPM_SUSE_DEVEL_DEPS += libopenssl-devel openssl-devel mbedtls-devel libuuid-devel
-RPM_SUSE_DEVEL_DEPS += liburcu-devel
+RPM_SUSE_DEVEL_DEPS += liburcu-devel hyperscan-devel
 
 RPM_SUSE_PYTHON_DEPS = python-devel python3-devel python-pip python3-pip
 RPM_SUSE_PYTHON_DEPS += python-rpm-macros python3-rpm-macros
