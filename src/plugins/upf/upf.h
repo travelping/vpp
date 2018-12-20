@@ -214,10 +214,8 @@ typedef struct
     ACL_OUT
   } direction;
   u8 proto;
-  ipfilter_address_t src_address;
-  ipfilter_address_t dst_address;
-  ipfilter_port_t src_port;
-  ipfilter_port_t dst_port;
+  ipfilter_address_t address[2];
+  ipfilter_port_t port[2];
 } acl_rule_t;
 
 #define IPFILTER_RULE_FIELD_SRC 0
@@ -268,10 +266,8 @@ typedef struct
 typedef struct
 {
   u8 protocol;
-  ip46_address_t src_address;
-  ip46_address_t dst_address;
-  u16 src_port;
-  u16 dst_port;
+  ip46_address_t address[2];
+  u16 port[2];
 } upf_acl_5tuple_t;
 
 typedef struct

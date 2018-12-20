@@ -272,6 +272,26 @@ ip4_address_is_equal_masked (const ip4_address_t * a,
 }
 
 always_inline int
+acl_ip4_is_equal_masked (const ip4_address_t * ip, upf_acl_t * acl, int field)
+{
+  return ip4_address_is_equal_masked (ip, &acl->match.address[field].ip4,
+				      &acl->mask.address[field].ip4);
+}
+
+always_inline int
+acl_ip6_is_equal_masked (const ip6_address_t * ip, upf_acl_t * acl, int field)
+{
+  return ip6_address_is_equal_masked (ip, &acl->match.address[field].ip6,
+				      &acl->mask.address[field].ip6);
+}
+
+always_inline int
+acl_port_in_range (const u16 port, upf_acl_t * acl, int field)
+{
+  return (port >= acl->mask.port[field] && port <= acl->match.port[field]);
+}
+
+always_inline int
 upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
 		      upf_acl_t * acl)
 {
@@ -316,12 +336,8 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
 	  (acl->match.protocol & acl->mask.protocol))
 	return 0;
 
-      if (!ip4_address_is_equal_masked (&ip4h->src_address,
-					&acl->match.src_address.ip4,
-					&acl->mask.src_address.ip4) ||
-	  !ip4_address_is_equal_masked (&ip4h->dst_address,
-					&acl->match.dst_address.ip4,
-					&acl->mask.dst_address.ip4))
+      if (!acl_ip4_is_equal_masked (&ip4h->src_address, acl, UPF_ACL_FIELD_SRC)
+	  || !acl_ip4_is_equal_masked (&ip4h->dst_address, acl, UPF_ACL_FIELD_DST))
 	return 0;
 
       proto_hdr = (udp_header_t *) ip4_next_header (ip4h);
@@ -346,21 +362,17 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
 	  (acl->match.protocol & acl->mask.protocol))
 	return 0;
 
-      if (!ip6_address_is_equal_masked (&ip6h->src_address,
-					&acl->match.src_address.ip6,
-					&acl->mask.src_address.ip6) ||
-	  !ip6_address_is_equal_masked (&ip6h->dst_address,
-					&acl->match.dst_address.ip6,
-					&acl->mask.dst_address.ip6))
+      if (!acl_ip6_is_equal_masked (&ip6h->src_address, acl, UPF_ACL_FIELD_SRC)
+	  || !acl_ip6_is_equal_masked (&ip6h->dst_address, acl, UPF_ACL_FIELD_DST))
 	return 0;
 
       proto_hdr = (udp_header_t *) ip6_next_header (ip6h);
     }
 
-  if (clib_net_to_host_u16 (proto_hdr->src_port) < acl->mask.src_port ||
-      clib_net_to_host_u16 (proto_hdr->src_port) > acl->match.src_port ||
-      clib_net_to_host_u16 (proto_hdr->dst_port) < acl->mask.dst_port ||
-      clib_net_to_host_u16 (proto_hdr->dst_port) > acl->match.dst_port)
+  if (!acl_port_in_range(clib_net_to_host_u16 (proto_hdr->src_port),
+			 acl, UPF_ACL_FIELD_SRC)
+      ||  !acl_port_in_range(clib_net_to_host_u16 (proto_hdr->dst_port),
+			     acl, UPF_ACL_FIELD_DST))
     return 0;
 
   return 1;

@@ -1095,12 +1095,17 @@ format_upf_acl (u8 * s, va_list * args)
 		 ! !acl->match_teid, ! !acl->match_ue_ip, ! !acl->match_sdf,
 		 acl->teid, format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
 		 acl->match.protocol, acl->mask.protocol, format_ip46_address,
-		 &acl->match.src_address, IP46_TYPE_ANY, format_ip46_address,
-		 &acl->mask.src_address, IP46_TYPE_ANY, acl->mask.src_port,
-		 acl->match.src_port, format_ip46_address,
-		 &acl->match.dst_address, IP46_TYPE_ANY, format_ip46_address,
-		 &acl->mask.dst_address, IP46_TYPE_ANY, acl->mask.dst_port,
-		 acl->match.dst_port);
+		 &acl->match.address[IPFILTER_RULE_FIELD_SRC], IP46_TYPE_ANY,
+		 format_ip46_address,
+		 &acl->mask.address[IPFILTER_RULE_FIELD_SRC], IP46_TYPE_ANY,
+		 acl->mask.port[IPFILTER_RULE_FIELD_SRC],
+		 acl->match.port[IPFILTER_RULE_FIELD_SRC],
+		 format_ip46_address,
+		 &acl->match.address[IPFILTER_RULE_FIELD_DST], IP46_TYPE_ANY,
+		 format_ip46_address,
+		 &acl->mask.address[IPFILTER_RULE_FIELD_DST], IP46_TYPE_ANY,
+		 acl->mask.port[IPFILTER_RULE_FIELD_DST],
+		 acl->match.port[IPFILTER_RULE_FIELD_DST]);
 }
 
 /* Maybe should be moved into the core somewhere */
@@ -1173,9 +1178,9 @@ static void
 ip_assign_address (int dst, int src, int is_ip4, const upf_pdr_t * pdr,
 		   upf_acl_t * acl)
 {
-  ip46_address_t *mask = &acl->mask.src_address + dst;
-  ip46_address_t *ip = &acl->match.src_address + dst;
-  const ipfilter_address_t *addr = &pdr->pdi.acl.src_address + src;
+  ip46_address_t *mask = &acl->mask.address[dst];
+  ip46_address_t *ip = &acl->match.address[dst];
+  const ipfilter_address_t *addr = &pdr->pdi.acl.address[src];
 
   if (src == IPFILTER_RULE_FIELD_SRC &&
       !ipfilter_address_cmp_const (addr, ACL_FROM_ANY))
@@ -1200,12 +1205,10 @@ ip_assign_address (int dst, int src, int is_ip4, const upf_pdr_t * pdr,
 static void
 ip_assign_port (int dst, int src, const upf_pdr_t * pdr, upf_acl_t * acl)
 {
-  u16 *min = &acl->mask.src_port + dst;
-  u16 *max = &acl->match.src_port + dst;
-  const ipfilter_port_t *port = &pdr->pdi.acl.src_port + src;
+  const ipfilter_port_t *port = &pdr->pdi.acl.port[src];
 
-  *min = port->min;
-  *max = port->max;
+  acl->mask.port[dst] = port->min;
+  acl->match.port[dst] = port->max;
 }
 
 static void
@@ -1213,14 +1216,6 @@ compile_sdf (int is_ip4, const upf_pdr_t * pdr, upf_acl_t * acl)
 {
   if (!(pdr->pdi.fields & F_PDI_SDF_FILTER))
     return;
-
-  /*
-     if ((!acl_is_from_any (&pdr->pdi.acl.src_address) &&
-     (!is_ip4 == !ip46_address_is_ip4 (&pdr->pdi.acl.src_address.address))) ||
-     (!acl_is_to_assigned (&pdr->pdi.acl.dst_address) &&
-     (!is_ip4 == !ip46_address_is_ip4 (&pdr->pdi.acl.dst_address.address))))
-     return -1;
-   */
 
   acl->match_sdf = 1;
 
@@ -1266,7 +1261,7 @@ compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
   compile_sdf (is_ip4, pdr, acl);
   compile_ue_ip (is_ip4, pdr, acl);
 
-  gtp_debug("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
+  gtp_debug ("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
   return 0;
 }
 
