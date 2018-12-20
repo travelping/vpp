@@ -93,12 +93,32 @@ format_upf_classify_trace (u8 * s, va_list * args)
   return s;
 }
 
+always_inline int
+ip4_address_is_equal (const ip4_address_t * a, const ip4_address_t * b)
+{
+  return a->as_u32 == b->as_u32;
+}
+
+always_inline int
+ip4_address_is_equal_masked (const ip4_address_t * a,
+			     const ip4_address_t * b,
+			     const ip4_address_t * mask)
+{
+  gtp_debug ("IP: %U/%U, %U\n",
+	     format_ip4_address, a,
+	     format_ip4_address, b, format_ip4_address, mask);
+
+  return (a->as_u32 & mask->as_u32) == (b->as_u32 & mask->as_u32);
+}
+
 always_inline void
 upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 			   flow_entry_t * flow, struct rules *active,
 			   u8 is_ip4)
 {
   u32 offs = vnet_buffer (b)->gtpu.data_offset;
+  ip4_header_t *ip4 = NULL;
+  ip6_header_t *ip6 = NULL;
   upf_pdr_t *adr;
   upf_pdr_t *pdr;
   u8 *proto_hdr;
@@ -107,6 +127,7 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
   word len, uri_len;
   u8 *eol;
   u8 *s;
+  u8 src_intf;
   u8 *url = NULL;
 
   // known PDR.....
@@ -117,15 +138,13 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 
   if (is_ip4)
     {
-      ip4_header_t *ip4 =
-	(ip4_header_t *) (vlib_buffer_get_current (b) + offs);
+      ip4 = (ip4_header_t *) (vlib_buffer_get_current (b) + offs);
       proto_hdr = ip4_next_header (ip4);
       len = clib_net_to_host_u16 (ip4->length) - sizeof (ip4_header_t);
     }
   else
     {
-      ip6_header_t *ip6 =
-	(ip6_header_t *) (vlib_buffer_get_current (b) + offs);
+      ip6 = (ip6_header_t *) (vlib_buffer_get_current (b) + offs);
       proto_hdr = ip6_next_header (ip6);
       len = clib_net_to_host_u16 (ip6->payload_length);
     }
@@ -198,15 +217,80 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
   adr = vec_elt_at_index (active->pdr, vnet_buffer (b)->gtpu.pdr_idx);
   adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
 	     vnet_buffer (b)->gtpu.pdr_idx);
+  src_intf = adr->pdi.src_intf;
+
+  /*
+   * see 3GPP TS 23.214 Table 5.2.2-1 for valid ADR combinations
+   */
   vec_foreach (pdr, active->pdr)
   {
     if (!(pdr->pdi.fields & F_PDI_APPLICATION_ID))
-      continue;
+      {
+	adf_debug("skip PDR %u for no ADR\n", pdr->id);
+	continue;
+      }
 
     if (pdr->precedence >= adr->precedence)
-      continue;
+      {
+	adf_debug("skip PDR %u for lower precedence\n", pdr->id);
+	continue;
+      }
 
-    gtp_debug ("Scanning %p, db_id %u\n", pdr, pdr->pdi.adr.db_id);
+    if ((pdr->pdi.fields & F_PDI_UE_IP_ADDR))
+      {
+	if (is_ip4)
+	  {
+	    const ip4_address_t * addr;
+
+	    if (!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V4))
+	      {
+		adf_debug("skip PDR %u for no UE IPv4 address\n", pdr->id);
+		continue;
+	      }
+	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
+	      &ip4->src_address : &ip4->dst_address;
+
+	    if (!ip4_address_is_equal(&pdr->pdi.ue_addr.ip4, addr))
+	      {
+		adf_debug("skip PDR %u for UE IP mismatch\n", pdr->id);
+		continue;
+	      }
+	  }
+	else
+	  {
+	    const ip6_address_t * addr;
+
+	    if (!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V6))
+	      {
+		adf_debug("skip PDR %u for no UE IPv6 address\n", pdr->id);
+		continue;
+	      }
+	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
+	      &ip6->src_address : &ip6->dst_address;
+
+	    if (!ip6_address_is_equal(&pdr->pdi.ue_addr.ip6, addr))
+	      {
+		adf_debug("skip PDR %u for UE IP mismatch\n", pdr->id);
+		continue;
+	      }
+	  }
+      }
+
+    if ((pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
+	vnet_buffer (b)->gtpu.teid != pdr->pdi.teid.teid)
+      {
+	adf_debug("skip PDR %u for TEID type mismatch\n", pdr->id);
+	continue;
+      }
+
+    if (pdr->pdi.src_intf != src_intf)
+      {
+	/* must have the same direction as the original SDF that permited the flow */
+	adf_debug("skip PDR %u for Src Intf mismatch\n", pdr->id);
+	continue;
+      }
+
+    adf_debug ("Scanning %p, db_id %u\n", pdr, pdr->pdi.adr.db_id);
     if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url)) == 0)
       adr = pdr;
   }
@@ -233,7 +317,7 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
   upf_pdr_t *pdr;
 
   adr = vec_elt_at_index (active->pdr, vnet_buffer (b)->gtpu.pdr_idx);
-  gtp_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
+  adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
 	     vnet_buffer (b)->gtpu.pdr_idx);
   vec_foreach (pdr, active->pdr)
   {
@@ -246,29 +330,11 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
-  gtp_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
+  adf_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
 	     vnet_buffer (b)->gtpu.pdr_idx);
 
   /* switch return traffic to processing node */
   flow->next[flow->is_reverse ^ FT_REVERSE] = FT_NEXT_PROCESS;
-}
-
-always_inline int
-ip4_address_is_equal (const ip4_address_t * a, const ip4_address_t * b)
-{
-  return a->as_u32 == b->as_u32;
-}
-
-always_inline int
-ip4_address_is_equal_masked (const ip4_address_t * a,
-			     const ip4_address_t * b,
-			     const ip4_address_t * mask)
-{
-  gtp_debug ("IP: %U/%U, %U\n",
-	     format_ip4_address, a,
-	     format_ip4_address, b, format_ip4_address, mask);
-
-  return (a->as_u32 & mask->as_u32) == (b->as_u32 & mask->as_u32);
 }
 
 always_inline int
