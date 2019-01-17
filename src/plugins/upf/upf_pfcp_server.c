@@ -38,6 +38,9 @@
 
 #define RESPONSE_TIMEOUT 30
 
+#define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
+#define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
+
 #undef CLIB_DEBUG
 #define CLIB_DEBUG 0
 #if CLIB_DEBUG > 0
@@ -670,10 +673,13 @@ upf_pfcp_session_stop_urr_time (urr_time_t * t)
 }
 
 void
-upf_pfcp_session_start_stop_urr_time (u32 si, f64 now, urr_time_t * t,
-				      u8 start_it)
+upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
 {
   sx_server_main_t *sx = &sx_server_main;
+
+  /* the timer interval must be based on tw->current_tick, so for calculating that
+   * we need to use the now timestamp of that current_tick */
+  const f64 now = sx->timer.last_run_time;
 
   if (t->handle != ~0)
     upf_pfcp_session_stop_urr_time (t);
@@ -684,23 +690,28 @@ upf_pfcp_session_start_stop_urr_time (u32 si, f64 now, urr_time_t * t,
 
       // start timer.....
 
-      interval = t->period * 100 - ceil ((now - t->base) * 100.0) + 1;
+      interval = t->period * TW_CLOCKS_PER_SECOND -
+	ceil ((now - t->base) * TW_CLOCKS_PER_SECOND);
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, interval);
 
       gtp_debug
 	("starting URR timer %u, now is %.3f, base is %.3f, expire in %lu ticks,"
 	 " alternate %.4f, %.4f, clib_now %.4f, current tick: %u", si, now,
-	 t->base, interval, ((t->base + (f64) interval) - now) * 100,
-	 ((t->base + interval) - now) * 100, vlib_time_now (sx->vlib_main),
+	 t->base, interval, ((t->base + (f64) interval) - now) * TW_CLOCKS_PER_SECOND,
+	 ((t->base + interval) - now) * TW_CLOCKS_PER_SECOND, unix_time_now (),
 	 sx->timer.current_tick);
     }
 }
 
 void
-upf_pfcp_session_start_stop_urr_time_abs (u32 si, f64 now, urr_time_t * t)
+upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
 {
   sx_server_main_t *sx = &sx_server_main;
+
+  /* the timer interval must be based on tw->current_tick, so for calculating that
+   * we need to use the now timestamp of that current_tick */
+  f64 now = sx->timer.last_run_time;
 
   if (t->handle != ~0)
     upf_pfcp_session_stop_urr_time (t);
@@ -710,7 +721,7 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, f64 now, urr_time_t * t)
       u64 ticks;
 
       // start timer.....
-      ticks = ceil ((t->base - now) * 100.0);
+      ticks = ceil ((t->base - now) * TW_CLOCKS_PER_SECOND) + 1;
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, ticks);
 
       gtp_debug
@@ -720,9 +731,9 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, f64 now, urr_time_t * t)
 }
 
 static void
-upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now, f64 cnow)
+upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 {
-  gtp_debug ("upf_pfcp_session_urr_timer (%p, %u, %.3f, %.4f", sx, now, cnow);
+  gtp_debug ("upf_pfcp_session_urr_timer (%p, %u, %.3f, %.4f", sx, now);
 
   pfcp_session_report_request_t req;
   upf_main_t *gtm = &upf_main;
@@ -744,17 +755,17 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now, f64 cnow)
 
 #define urr_check(V, NOW)					\
       (((V).base != 0) && ((V).period != 0) &&			\
-       (trunc(((NOW) - (V).base - (f64)(V).period) * 100) >= 0))
+       (trunc(((NOW) - (V).base - (f64)(V).period) * TW_CLOCKS_PER_SECOND) >= 0))
 
 #define urr_debug(Label, t)						\
-      clib_warning( "%-10s %20lu secs @ %U, in %9.3f secs (%9.3f  %9.3f), %.4f, handle 0x%08x, check: %u", \
+      clib_warning( "%-10s %20lu secs @ %U, in %9.3f secs (%9.3f  %9.3f), handle 0x%08x, check: %u", \
 		    (Label), (t).period,				\
 		    /* VPP does not support ISO dates... */		\
 		    format_time_float, 0, (t).base + (f64)(t).period,	\
 		    ((f64)(t).period) - (now - (t).base),		\
-		    (now - (t).base - (t).period) * 100,		\
-		    trunc((now - (t).base - (t).period) * 100),		\
-		    cnow, (t).handle, urr_check(t, now));
+		    (now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND, \
+		    trunc((now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND), \
+		    (t).handle, urr_check(t, now));
 
     clib_warning ("URR: %p, Id: %u", urr, urr->id);
     urr_debug ("Period", urr->measurement_period);
@@ -773,7 +784,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now, f64 cnow)
 
 	/* rearm Measurement Period */
 	upf_pfcp_session_start_stop_urr_time
-	  (si, now, &urr->measurement_period, 1);
+	  (si, &urr->measurement_period, 1);
 
       }
     if (urr_check (urr->time_threshold, now))
@@ -879,33 +890,28 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
   upf_main_t *gtm = &upf_main;
   u32 *expired = NULL;
 
-  sxsm->timer.last_run_time = vlib_time_now (sxsm->vlib_main);
-  sxsm->now = unix_time_now ();
+  sxsm->timer.last_run_time =
+    sxsm->now = unix_time_now ();
 
   while (1)
     {
       uword event_type, *event_data = 0;
       u32 ticks_until_expiration;
       f64 timeout;
-      f64 now;
 
       ticks_until_expiration =
 	TW (tw_timer_first_expires_in_ticks) (&sxsm->timer);
+      /* min 1 tick wait */
+      ticks_until_expiration = clib_max (ticks_until_expiration, 1);
+      /* sleep max 1s */
+      ticks_until_expiration =
+	clib_min (ticks_until_expiration, TW_CLOCKS_PER_SECOND);
 
-      /* Nothing on the fast wheel, sleep 10ms */
-      if (ticks_until_expiration == TW_SLOTS_PER_RING)
-	{
-	  timeout = 10e-3;
-	}
-      else
-	{
-	  timeout = (f64) ticks_until_expiration *1e-5;
-	}
+      timeout = (f64) ticks_until_expiration * TW_SECS_PER_CLOCK;
 
       (void) vlib_process_wait_for_event_or_clock (vm, timeout);
       event_type = vlib_process_get_events (vm, &event_data);
 
-      now = vlib_time_now (sxsm->vlib_main);
       sxsm->now = unix_time_now ();
 
       switch (event_type)
@@ -974,7 +980,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
          gtp_debug ("tw_timer_expire_timers_vec (%p, %lu, %p);", &sx->timer, now, expired);
        */
 
-      expired = TW (tw_timer_expire_timers_vec) (&sxsm->timer, now, expired);
+      expired = TW (tw_timer_expire_timers_vec) (&sxsm->timer, sxsm->now, expired);
       //gtp_debug ("Expired %d elements", vec_len (expired));
 
       for (int i = 0; i < vec_len (expired); i++)
@@ -992,7 +998,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		gtp_debug ("wheel current tick: %u",
 			   sxsm->timer.current_tick);
 		sx = pool_elt_at_index (gtm->sessions, si);
-		upf_pfcp_session_urr_timer (sx, sxsm->now, now);
+		upf_pfcp_session_urr_timer (sx, sxsm->now);
 	      }
 	      break;
 
@@ -1024,6 +1030,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	{
 	  _vec_len (expired) = 0;
 	}
+
       if (event_data)
 	{
 	  _vec_len (event_data) = 0;
