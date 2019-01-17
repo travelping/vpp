@@ -97,10 +97,8 @@ extern vlib_node_registration_t sx6_input_node;
 #define UDP_DST_PORT_SX 8805
 
 void upf_pfcp_session_stop_urr_time (urr_time_t * t);
-void upf_pfcp_session_start_stop_urr_time (u32 si, f64 now, urr_time_t * t,
-					   u8 start_it);
-void upf_pfcp_session_start_stop_urr_time_abs (u32 si, f64 now,
-					       urr_time_t * t);
+void upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it);
+void upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t);
 
 u32 upf_pfcp_server_start_timer (u8 type, u32 id, u32 seconds);
 void upf_pfcp_server_stop_timer (u32 handle);
