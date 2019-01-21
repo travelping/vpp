@@ -53,7 +53,8 @@ Description: Vector Packet Processing--runtime libraries
 Package: vpp-plugin-core
 Architecture: any
 Depends: vpp (= ${source:Version}),
-         ${shlibs:Depends}
+         ${shlibs:Depends},
+         ${misc:Depends}
 Description: Vector Packet Processing--runtime core plugins
  This package contains VPP core plugins
  .
@@ -61,7 +62,8 @@ Description: Vector Packet Processing--runtime core plugins
 Package: vpp-plugin-dpdk
 Architecture: any
 Depends: vpp (= ${source:Version}),
-         ${shlibs:Depends}
+         ${shlibs:Depends},
+         ${misc:Depends}
 Description: Vector Packet Processing--runtime dpdk plugin
  This package contains the VPP dpdk plugin
  .
