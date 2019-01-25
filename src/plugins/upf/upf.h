@@ -221,27 +221,27 @@ typedef struct
 #define IPFILTER_RULE_FIELD_SRC 0
 #define IPFILTER_RULE_FIELD_DST 1
 
-#define ACL_FROM_ANY				\
+#define ACL_ADDR_ANY				\
   (ipfilter_address_t){				\
     .address.as_u64 = {(u64)~0, (u64)~0},	\
     .mask = 0,					\
   }
 
-#define acl_is_from_any(ip)			\
-  (((ip)->address.as_u64[0] == (u64)~0) &&	\
-   ((ip)->address.as_u64[0] == (u64)~0) &&	\
-   ((ip)->mask == 0))
+#define acl_addr_is_any(ip)			\
+  ((~0 == (ip)->address.as_u64[0]) &&		\
+   (~0 == (ip)->address.as_u64[1]) &&		\
+   ((u8)0 == (ip)->mask))
 
-#define ACL_TO_ASSIGNED				\
+#define ACL_ADDR_ASSIGNED			\
   (ipfilter_address_t){				\
     .address.as_u64 = {(u64)~0, (u64)~0},	\
     .mask = (u8)~0,				\
   }
 
-#define acl_is_to_assigned(ip)			\
-  (((ip)->address.as_u64[0] == (u64)~0) &&	\
-   ((ip)->address.as_u64[0] == (u64)~0) &&	\
-   ((ip)->mask == (u8)~0))
+#define acl_addr_is_assigned(ip)		\
+  ((~0 == (ip)->address.as_u64[0]) &&		\
+   (~0 == (ip)->address.as_u64[1]) &&		\
+   ((u8)~0 == (ip)->mask))
 
 #define INTF_ACCESS	0
 #define INTF_CORE	1
@@ -272,7 +272,6 @@ typedef struct
 
 typedef struct
 {
-  u32 pdr_idx;
   u32 precedence;
 
   int is_ip4:1;
@@ -280,12 +279,16 @@ typedef struct
   int match_ue_ip:3;
   int match_sdf:1;
 
+  u32 fib_index;
   u32 teid;			// TEID
   ip46_address_t ue_ip;		// UE-IP
 
   /* SDF */
   upf_acl_5tuple_t mask;
   upf_acl_5tuple_t match;
+
+  /* volatile struct members, not used for sorting */
+  u32 pdr_idx;
 } upf_acl_t;
 
 #define UPF_ACL_FIELD_SRC 0
@@ -510,7 +513,8 @@ typedef struct
     upf_acl_t *v4_acls;
     upf_acl_t *v6_acls;
 
-    ip46_address_fib_t *vrf_ip;
+    ip46_address_fib_t *ue_src_ip;
+    ip46_address_fib_t *ue_dst_ip;
     gtpu4_tunnel_key_t *v4_teid;
     gtpu6_tunnel_key_t *v6_teid;
 
@@ -589,7 +593,7 @@ typedef struct
 typedef struct
 {
   u8 *name;
-  u32 vrf;
+  u32 table_id;
 } upf_nwi_t;
 
 typedef struct
@@ -658,6 +662,10 @@ typedef struct
   /* lookup tunnel by TEID */
   clib_bihash_8_8_t v4_tunnel_by_key;	/* keyed session id */
   clib_bihash_24_8_t v6_tunnel_by_key;	/* keyed session id */
+
+  /* lookup session by ingress VRF and UE (src) IP */
+  //  clib_bihash_8_8_t *session_by_tdf_ue_ip;
+  u32 *tdf_ul_table[FIB_PROTOCOL_IP_MAX];
 
   /* Free vlib hw_if_indices */
   u32 *free_session_hw_if_indices;

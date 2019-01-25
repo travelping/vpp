@@ -142,17 +142,27 @@ unformat_ipfilter_address_port (unformat_input_t * i, va_list * args)
   if (unformat_check_input (i) == UNFORMAT_END_OF_INPUT)
     return 0;
 
-  if (!unformat (i, "%U", unformat_ip46_address, &ip->address, IP46_TYPE_ANY))
+  if (unformat (i, "any"))
+    {
+      *ip = ACL_ADDR_ANY;
+    }
+  else if (unformat (i, "assigned"))
+    {
+      *ip = ACL_ADDR_ASSIGNED;
+    }
+  else if (unformat (i, "%U", unformat_ip46_address, &ip->address, IP46_TYPE_ANY))
+    {
+      is_ip4 = ip46_address_is_ip4 (&ip->address);
+      acl->type = is_ip4 ? IPFILTER_IPV4 : IPFILTER_IPV6;
+      ip->mask = is_ip4 ? 32 : 128;
+
+      if (unformat_check_input (i) == UNFORMAT_END_OF_INPUT)
+	return 1;
+      if (unformat (i, "/%d", &ip->mask))
+	;
+    }
+  else
     return 0;
-
-  is_ip4 = ip46_address_is_ip4 (&ip->address);
-  acl->type = is_ip4 ? IPFILTER_IPV4 : IPFILTER_IPV6;
-  ip->mask = is_ip4 ? 32 : 128;
-
-  if (unformat_check_input (i) == UNFORMAT_END_OF_INPUT)
-    return 1;
-  if (unformat (i, "/%d", &ip->mask))
-    ;
 
   if (unformat_check_input (i) == UNFORMAT_END_OF_INPUT)
     return 1;
@@ -217,14 +227,8 @@ unformat_ipfilter (unformat_input_t * i, acl_rule_t * acl)
 	  break;
 
 	case 3:		/* from src */
-	  if (unformat (i, "from any"))
-	    {
-	      acl->address[UPF_ACL_FIELD_SRC] = ACL_FROM_ANY;
-	      acl->port[UPF_ACL_FIELD_SRC].min = 0;
-	      acl->port[UPF_ACL_FIELD_SRC].max = ~0;
-	    }
-	  else if (unformat (i, "from %U", unformat_ipfilter_address_port,
-			     acl, UPF_ACL_FIELD_SRC))
+	  if (unformat (i, "from %U", unformat_ipfilter_address_port,
+			acl, UPF_ACL_FIELD_SRC))
 	    ;
 	  else
 	    return 0;
@@ -232,14 +236,8 @@ unformat_ipfilter (unformat_input_t * i, acl_rule_t * acl)
 	  break;
 
 	case 4:
-	  if (unformat (i, "to assigned"))
-	    {
-	      acl->address[UPF_ACL_FIELD_DST] = ACL_TO_ASSIGNED;
-	      acl->port[UPF_ACL_FIELD_DST].min = 0;
-	      acl->port[UPF_ACL_FIELD_DST].max = ~0;
-	    }
-	  else if (unformat (i, "to %U", unformat_ipfilter_address_port,
-			     acl, UPF_ACL_FIELD_DST))
+	  if (unformat (i, "to %U", unformat_ipfilter_address_port,
+			acl, UPF_ACL_FIELD_DST))
 	    ;
 	  else
 	    return 0;
@@ -261,16 +259,14 @@ format_ipfilter_address_port (u8 * s, va_list * args)
 {
   acl_rule_t *acl = va_arg (*args, acl_rule_t *);
   int field = va_arg (*args, int);
-  int direction = va_arg (*args, int);
   ipfilter_address_t *ip = &acl->address[field];
   ipfilter_port_t *port = &acl->port[field];
 
-  if (direction == 0 && ipfilter_address_cmp_const (ip, ACL_FROM_ANY) == 0)
+  if (acl_addr_is_any (ip))
     {
       s = format (s, "any");
     }
-  else if (direction == 1 &&
-	   ipfilter_address_cmp_const (ip, ACL_TO_ASSIGNED) == 0)
+  else if (acl_addr_is_assigned (ip))
     {
       s = format (s, "assigned");
     }
@@ -332,10 +328,10 @@ format_ipfilter (u8 * s, va_list * args)
     s = format (s, "%d ", acl->proto);
 
   s = format (s, "from %U ", format_ipfilter_address_port,
-	      acl, UPF_ACL_FIELD_SRC, 0);
+	      acl, UPF_ACL_FIELD_SRC);
   s =
     format (s, "to %U ", format_ipfilter_address_port,
-	    acl, UPF_ACL_FIELD_DST, 1);
+	    acl, UPF_ACL_FIELD_DST);
 
   return s;
 }
@@ -803,6 +799,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	unformat_init_vector (&sdf, pdr->pdi.sdf_filter.flow);
 	if (!unformat_ipfilter (&sdf, &create->pdi.acl))
 	  {
+	    failed_rule_id->id = pdr->pdr_id;
 	    gtp_debug ("failed to parse SDF '%s'", pdr->pdi.sdf_filter.flow);
 	    r = -1;
 	    break;
@@ -1195,7 +1192,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 		break;
 	      }
 
-	    create->forward.table_id = nwi->vrf;
+	    create->forward.table_id = nwi->table_id;
 	    create->forward.nwi = nwi - gtm->nwis;
 	  }
 
@@ -1320,7 +1317,7 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 		    failed_rule_id->id = far->far_id;
 		    break;
 		  }
-		update->forward.table_id = nwi->vrf;
+		update->forward.table_id = nwi->table_id;
 		update->forward.nwi = nwi - gtm->nwis;
 	      }
 	    else

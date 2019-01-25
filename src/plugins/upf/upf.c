@@ -22,6 +22,9 @@
 #include <vnet/vnet.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
+#include <vnet/dpo/lookup_dpo.h>
+#include <vnet/fib/ip4_fib.h>
+#include <vnet/fib/ip6_fib.h>
 #include <vnet/ip/ip6_hop_by_hop.h>
 
 #include <upf/upf.h>
@@ -285,7 +288,7 @@ VLIB_CLI_COMMAND (upf_pfcp_show_endpoint_command, static) =
 /* *INDENT-ON* */
 
 int
-vnet_upf_nwi_add_del (u8 * name, u32 vrf, u8 add)
+vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add)
 {
   upf_main_t *gtm = &upf_main;
   upf_nwi_t *nwi;
@@ -300,7 +303,7 @@ vnet_upf_nwi_add_del (u8 * name, u32 vrf, u8 add)
 
       pool_get (gtm->nwis, nwi);
       nwi->name = vec_dup (name);
-      nwi->vrf = vrf;
+      nwi->table_id = table_id;
 
       hash_set_mem (gtm->nwi_index_by_name, nwi->name, nwi - gtm->nwis);
     }
@@ -365,7 +368,7 @@ upf_nwi_add_del_command_fn (vlib_main_t * vm,
   clib_error_t *error = NULL;
   u8 *name = NULL;
   u8 *s;
-  u32 vrf = 0;
+  u32 table_id = 0;
   u8 add = 1;
   int rv;
 
@@ -383,7 +386,9 @@ upf_nwi_add_del_command_fn (vlib_main_t * vm,
 	  name = upf_name_to_labels (s);
 	  vec_free (s);
 	}
-      else if (unformat (line_input, "vrf %u", &vrf))
+      else if (unformat (line_input, "table %u", &table_id))
+	;
+      else if (unformat (line_input, "vrf %u", &table_id))
 	;
       else
 	{
@@ -398,12 +403,12 @@ upf_nwi_add_del_command_fn (vlib_main_t * vm,
       goto done;
     }
 
-  if (~0 == fib_table_find (FIB_PROTOCOL_IP4, vrf))
-      clib_warning ("vrf %d in not (yet) defined for IPv4", vrf);
-  if (~0 == fib_table_find (FIB_PROTOCOL_IP6, vrf))
-      clib_warning ("vrf %d in not (yet) defined for IPv6", vrf);
+  if (~0 == fib_table_find (FIB_PROTOCOL_IP4, table_id))
+    clib_warning ("table %d not (yet) defined for IPv4", table_id);
+  if (~0 == fib_table_find (FIB_PROTOCOL_IP6, table_id))
+    clib_warning ("table %d not (yet) defined for IPv6", table_id);
 
-  rv = vnet_upf_nwi_add_del (name, vrf, add);
+  rv = vnet_upf_nwi_add_del (name, table_id, add);
 
   switch (rv)
     {
@@ -434,7 +439,7 @@ VLIB_CLI_COMMAND (upf_nwi_add_del_command, static) =
 {
   .path = "upf nwi",
   .short_help =
-  "upf nwi name <name> [vrf <table-id>] [del]",
+  "upf nwi name <name> [table <table-id>] [del]",
   .function = upf_nwi_add_del_command_fn,
 };
 /* *INDENT-ON* */
@@ -477,8 +482,8 @@ upf_show_nwi_command_fn (vlib_main_t * vm,
     if (name && !vec_is_equal(name, nwi->name))
       continue;
 
-    vlib_cli_output (vm, "%U, vrf: %u\n",
-		     format_network_instance, nwi->name, nwi->vrf);
+    vlib_cli_output (vm, "%U, table-id: %u\n",
+		     format_network_instance, nwi->name, nwi->table_id);
   }));
   /* *INDENT-ON* */
 
@@ -722,6 +727,325 @@ done:
   unformat_free (line_input);
   return error;
 }
+
+/**********************************************************/
+
+int
+vnet_upf_tdf_ul_table_add_del (u32 vrf, fib_protocol_t fproto, u32 table_id, u8 add)
+{
+  u32 fib_index, vrf_fib_index;
+  upf_main_t *gtm = &upf_main;
+
+  if (add)
+    {
+      vrf_fib_index = fib_table_find (fproto, vrf);
+      if (~0 == vrf_fib_index)
+	return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+      fib_index = fib_table_find_or_create_and_lock (fproto, table_id, FIB_SOURCE_PLUGIN_LOW);
+
+      vec_validate_init_empty (gtm->tdf_ul_table[fproto], vrf_fib_index, ~0);
+      vec_elt (gtm->tdf_ul_table[fproto], vrf_fib_index) = fib_index;
+    }
+  else
+    {
+      vrf_fib_index = fib_table_find (fproto, vrf);
+      if (~0 == vrf_fib_index)
+	return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+      if (vrf_fib_index >= vec_len(gtm->tdf_ul_table[fproto]))
+	return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+      fib_index = fib_table_find (fproto, table_id);
+      if (~0 == fib_index)
+	return VNET_API_ERROR_NO_SUCH_FIB;
+
+      if (vec_elt (gtm->tdf_ul_table[fproto], vrf_fib_index) != fib_index)
+	return VNET_API_ERROR_NO_SUCH_TABLE;
+
+      vec_elt (gtm->tdf_ul_table[fproto], vrf_fib_index) = ~0;
+      fib_table_unlock (fib_index, fproto, FIB_SOURCE_PLUGIN_LOW);
+
+      return (0);
+    }
+
+  return 0;
+}
+
+static clib_error_t *
+upf_tdf_ul_table_add_del_command_fn (vlib_main_t * vm,
+				     unformat_input_t * main_input,
+				     vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  clib_error_t *error = NULL;
+  fib_protocol_t fproto = FIB_PROTOCOL_IP4;
+  u32 table_id = ~0;
+  u32 vrf = 0;
+  u8 add = 1;
+  int rv;
+
+  if (!unformat_user (main_input, unformat_line_input, line_input))
+    return 0;
+
+  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+    {
+      if (unformat (line_input, "del"))
+	add = 0;
+      else if (unformat (line_input, "add"))
+	add = 1;
+      else if (unformat (line_input, "vrf %u", &vrf))
+	;
+      else if (unformat (line_input, "ip4"))
+	fproto = FIB_PROTOCOL_IP4;
+      else if (unformat (line_input, "ip6"))
+	fproto = FIB_PROTOCOL_IP6;
+      else if (unformat (line_input, "table-id %u", &table_id))
+	;
+      else
+	{
+	  error = unformat_parse_error (line_input);
+	  goto done;
+	}
+    }
+
+  if (table_id == ~0)
+    return clib_error_return (0, "table-id must be specified");
+
+  rv = vnet_upf_tdf_ul_table_add_del (vrf, fproto, table_id, add);
+
+  switch (rv)
+    {
+    case 0:
+      break;
+
+    case VNET_API_ERROR_NO_SUCH_FIB:
+      error = clib_error_return (0, "TDF UL lookup table already exists...");
+      break;
+
+    case VNET_API_ERROR_NO_SUCH_ENTRY:
+      error = clib_error_return (0, "In VRF instance does not exist...");
+      break;
+
+    default:
+      error = clib_error_return (0, "vvnet_upf_tdf_ul_table_add_del %d", rv);
+      break;
+    }
+
+done:
+  unformat_free (line_input);
+  return error;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_tdf_ul_table_add_del_command, static) =
+{
+  .path = "upf tdf ul table",
+  .short_help =
+  "upf tdf ul table vrf <table-id> [ip4|ip6] table-id <src-lookup-table-id> [del]",
+  .function = upf_tdf_ul_table_add_del_command_fn,
+};
+/* *INDENT-ON* */
+
+static u32
+upf_table_id_from_fib_index(fib_protocol_t fproto, u32 fib_index)
+{
+  return (fproto == FIB_PROTOCOL_IP4) ?
+    ip4_fib_get(fib_index)->table_id :
+    ip6_fib_get(fib_index)->table_id;
+};
+
+static clib_error_t *
+upf_tdf_ul_table_show_fn (vlib_main_t * vm,
+			  unformat_input_t * input, vlib_cli_command_t * cmd)
+{
+  upf_main_t *gtm = &upf_main;
+  fib_protocol_t fproto;
+  u32 ii;
+
+  vlib_cli_output (vm, "UPF TDF UpLink VRF to fib-index mappings:");
+  FOR_EACH_FIB_IP_PROTOCOL (fproto)
+  {
+    vlib_cli_output (vm, " %U", format_fib_protocol, fproto);
+    vec_foreach_index (ii, gtm->tdf_ul_table[fproto])
+    {
+      if (~0 != vec_elt (gtm->tdf_ul_table[fproto], ii))
+	{
+	  u32 vrf_table_id =
+	    upf_table_id_from_fib_index (fproto, ii);
+	  u32 fib_table_id =
+	    upf_table_id_from_fib_index (fproto, vec_elt (gtm->tdf_ul_table[fproto], ii));
+
+	  vlib_cli_output (vm, "  %u -> %u", vrf_table_id, fib_table_id);
+	}
+    }
+  }
+  return (NULL);
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_tdf_ul_table_show_command, static) = {
+  .path = "show upf tdf ul tables",
+  .short_help = "Show UPF TDF UpLink tables",
+  .function = upf_tdf_ul_table_show_fn,
+};
+/* *INDENT-ON* */
+
+int
+vnet_upf_tdf_ul_lookup_add_i (u32 tdf_ul_fib_index, const fib_prefix_t * pfx, u32 ue_fib_index)
+{
+  dpo_id_t dpo = DPO_INVALID;
+
+  /*
+   * create a data-path object to perform the source address lookup
+   * in the TDF FIB
+   */
+  lookup_dpo_add_or_lock_w_fib_index (tdf_ul_fib_index,
+				      fib_proto_to_dpo (pfx->fp_proto),
+				      LOOKUP_UNICAST,
+				      LOOKUP_INPUT_SRC_ADDR,
+				      LOOKUP_TABLE_FROM_CONFIG, &dpo);
+
+  /*
+   * add the entry to the destination FIB that uses the lookup DPO
+   */
+  fib_table_entry_special_dpo_add (ue_fib_index, pfx,
+				   FIB_SOURCE_PLUGIN_LOW,
+				   FIB_ENTRY_FLAG_EXCLUSIVE, &dpo);
+
+  /*
+   * the DPO is locked by the FIB entry, and we have no further
+   * need for it.
+   */
+   dpo_unlock (&dpo);
+
+  return 0;
+}
+
+
+int
+vnet_upf_tdf_ul_lookup_delete (u32 tdf_ul_fib_index, const fib_prefix_t * pfx)
+{
+  fib_table_entry_special_remove (tdf_ul_fib_index, pfx, FIB_SOURCE_PLUGIN_LOW);
+
+  return (0);
+}
+
+static int
+upf_tdf_ul_enable (fib_protocol_t fproto, u32 sw_if_index)
+{
+  upf_main_t *gtm = &upf_main;
+  fib_prefix_t pfx = {
+    .fp_proto = fproto,
+  };
+  u32 fib_index;
+
+  fib_index =
+    fib_table_get_index_for_sw_if_index (fproto, sw_if_index);
+
+  if (fib_index >= vec_len(gtm->tdf_ul_table[fproto]))
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+  if (~0 == vec_elt (gtm->tdf_ul_table[fproto], fib_index))
+    return VNET_API_ERROR_NO_SUCH_FIB;
+
+  /*
+   * now we know which interface the table will serve, we can add the default
+   * route to use the table that the interface is bound to.
+   */
+  vnet_upf_tdf_ul_lookup_add_i (vec_elt (gtm->tdf_ul_table[fproto], fib_index), &pfx, fib_index);
+
+
+  /*
+  vnet_feature_enable_disable ((FIB_PROTOCOL_IP4 == fproto ?
+				"ip4-unicast" :
+				"ip6-unicast"),
+			       (FIB_PROTOCOL_IP4 == fproto ?
+				"svs-ip4" :
+				"svs-ip6"), sw_if_index, 1, NULL, 0);
+  */
+
+  return 0;
+}
+
+static int
+upf_tdf_ul_disable (fib_protocol_t fproto, u32 sw_if_index)
+{
+  upf_main_t *gtm = &upf_main;
+  u32 fib_index;
+
+  fib_index =
+    fib_table_get_index_for_sw_if_index (fproto, sw_if_index);
+
+  if (fib_index >= vec_len(gtm->tdf_ul_table[fproto]))
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+  if (~0 == vec_elt (gtm->tdf_ul_table[fproto], fib_index))
+    return VNET_API_ERROR_NO_SUCH_FIB;
+
+  /*
+  vnet_feature_enable_disable ((FIB_PROTOCOL_IP4 == fproto ?
+				"ip4-unicast" :
+				"ip6-unicast"),
+			       (FIB_PROTOCOL_IP4 == fproto ?
+				"svs-ip4" :
+				"svs-ip6"), sw_if_index, 0, NULL, 0);
+  */
+  return 0;
+}
+
+static clib_error_t *
+upf_tdf_ul_enable_command_fn (vlib_main_t * vm,
+			      unformat_input_t * main_input,
+			      vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  fib_protocol_t fproto = FIB_PROTOCOL_IP4;
+  vnet_main_t *vnm = vnet_get_main ();
+  u32 sw_if_index = ~0;
+  u8 enable = 1;
+
+  if (!unformat_user (main_input, unformat_line_input, line_input))
+    return 0;
+
+  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+    {
+      if (unformat (line_input, "%U", unformat_vnet_sw_interface,
+		    vnm, &sw_if_index))
+	;
+      else if (unformat (line_input, "enable"))
+	enable = 1;
+      else if (unformat (line_input, "disable"))
+	enable = 0;
+      else if (unformat (line_input, "ip4"))
+	fproto = FIB_PROTOCOL_IP4;
+      else if (unformat (line_input, "ip6"))
+	fproto = FIB_PROTOCOL_IP6;
+      else
+	break;
+    }
+
+  if (~0 == sw_if_index)
+    return clib_error_return (0, "interface must be specified");
+
+  if (enable)
+    upf_tdf_ul_enable (fproto, sw_if_index);
+  else
+    upf_tdf_ul_disable (fproto, sw_if_index);
+
+  return NULL;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_tdf_ul_enable_command, static) = {
+    .path = "upf tdf ul enable",
+    .short_help = "UPF TDF UpLink [enable|disable] [ip4|ip6] <interface>",
+    .function = upf_tdf_ul_enable_command_fn,
+};
+/* *INDENT-ON* */
+
+
+/**********************************************************/
 
 /* *INDENT-OFF* */
 VLIB_CLI_COMMAND (upf_gtpu_endpoint_command, static) =
