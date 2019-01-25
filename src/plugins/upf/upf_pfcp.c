@@ -54,9 +54,10 @@ upf_main_t upf_main;
 #define SESS_MODIFY 1
 #define SESS_DEL 2
 
-static void sx_add_del_vrf_ip (const void *vrf_ip, void *si, int is_add);
+static void sx_add_del_ue_ip (const void *ue_ip, void *si, int is_add);
 static void sx_add_del_v4_teid (const void *teid, void *si, int is_add);
 static void sx_add_del_v6_teid (const void *teid, void *si, int is_add);
+static u8 * format_upf_acl (u8 * s, va_list * args);
 
 #define vec_bsearch(k, v, compar)				\
 	bsearch((k), (v), vec_len((v)), sizeof((v)[0]), compar)
@@ -819,7 +820,8 @@ sx_free_rules (upf_session_t * sx, int rule)
     detach_qer_policer (qer);
   }
   vec_free (rules->qer);
-  vec_free (rules->vrf_ip);
+  vec_free (rules->ue_src_ip);
+  vec_free (rules->ue_dst_ip);
   vec_free (rules->v4_teid);
   vec_free (rules->v6_teid);
   vec_free (rules->v4_acls);
@@ -862,7 +864,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   sx_server_main_t *sxsm = &sx_server_main;
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
-  ip46_address_fib_t *vrf_ip;
+  ip46_address_fib_t *ue_dst_ip;
   gtpu4_tunnel_key_t *v4_teid;
   gtpu6_tunnel_key_t *v6_teid;
   upf_urr_t *urr;
@@ -870,7 +872,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   hash_unset (gtm->session_by_id, sx->cp_seid);
   vec_foreach (v4_teid, active->v4_teid) sx_add_del_v4_teid (v4_teid, sx, 0);
   vec_foreach (v6_teid, active->v6_teid) sx_add_del_v6_teid (v6_teid, sx, 0);
-  vec_foreach (vrf_ip, active->vrf_ip) sx_add_del_vrf_ip (vrf_ip, sx, 0);
+  vec_foreach (ue_dst_ip, active->ue_dst_ip) sx_add_del_ue_ip (ue_dst_ip, sx, 0);
 
   node_assoc_detach_session (sx);
 
@@ -1027,26 +1029,32 @@ v6_teid_cmp (const void *a, const void *b)
   return memcmp (a, b, sizeof (gtpu6_tunnel_key_t));
 }
 
+static int
+upf_acl_cmp (const void *a, const void *b)
+{
+  return memcmp (a, b, offsetof (upf_acl_t, pdr_idx));
+}
+
 //TODO: instead of using the UE IP, we should use the DL SDF dst fields
 static void
-sx_add_del_vrf_ip (const void *ip, void *si, int is_add)
+sx_add_del_ue_ip (const void *ip, void *si, int is_add)
 {
-  const ip46_address_fib_t *vrf_ip = ip;
+  const ip46_address_fib_t *ue_ip = ip;
   upf_session_t *sess = si;
   fib_prefix_t pfx;
 
   memset (&pfx, 0, sizeof (pfx));
 
-  if (ip46_address_is_ip4 (&vrf_ip->addr))
+  if (ip46_address_is_ip4 (&ue_ip->addr))
     {
-      pfx.fp_addr.ip4.as_u32 = vrf_ip->addr.ip4.as_u32;
+      pfx.fp_addr.ip4.as_u32 = ue_ip->addr.ip4.as_u32;
       pfx.fp_len = 32;
       pfx.fp_proto = FIB_PROTOCOL_IP4;
     }
   else
     {
-      pfx.fp_addr.ip6.as_u64[0] = vrf_ip->addr.ip6.as_u64[0];
-      pfx.fp_addr.ip6.as_u64[1] = vrf_ip->addr.ip6.as_u64[1];
+      pfx.fp_addr.ip6.as_u64[0] = ue_ip->addr.ip6.as_u64[0];
+      pfx.fp_addr.ip6.as_u64[1] = ue_ip->addr.ip6.as_u64[1];
       pfx.fp_len = 64;
       pfx.fp_proto = FIB_PROTOCOL_IP6;
     }
@@ -1054,7 +1062,7 @@ sx_add_del_vrf_ip (const void *ip, void *si, int is_add)
   if (is_add)
     {
       /* add reverse route for client ip */
-      fib_table_entry_path_add (vrf_ip->fib_index, &pfx,
+      fib_table_entry_path_add (ue_ip->fib_index, &pfx,
 				FIB_SOURCE_PLUGIN_HI, FIB_ENTRY_FLAG_ATTACHED,
 				fib_proto_to_dpo (pfx.fp_proto),
 				NULL, sess->sw_if_index, ~0,
@@ -1063,7 +1071,7 @@ sx_add_del_vrf_ip (const void *ip, void *si, int is_add)
   else
     {
       /* delete reverse route for client ip */
-      fib_table_entry_path_remove (vrf_ip->fib_index, &pfx,
+      fib_table_entry_path_remove (ue_ip->fib_index, &pfx,
 				   FIB_SOURCE_PLUGIN_HI,
 				   fib_proto_to_dpo (pfx.fp_proto),
 				   NULL, sess->sw_if_index, ~0, 1,
@@ -1111,26 +1119,94 @@ sx_add_del_v6_teid (const void *teid, void *si, int is_add)
   clib_bihash_add_del_24_8 (&gtm->v6_tunnel_by_key, &kv, is_add);
 }
 
-u8 *
+static void
+sx_add_del_tdf (const void *tdf, void *si, int is_ip4, int is_add)
+{
+  upf_main_t *gtm = &upf_main;
+  upf_acl_t *acl = (upf_acl_t *)tdf;
+  upf_session_t *sess = si;
+  fib_prefix_t pfx = {
+    .fp_addr = acl->match.address[UPF_ACL_FIELD_SRC],
+  };
+  u32 fib_index;
+
+  if (acl->fib_index >= vec_len (gtm->tdf_ul_table[pfx.fp_proto]))
+    return;
+
+  clib_warning("acl fib idx: 0x%08x, tdf fib idx: 0x%08x, ACL: %U\n",
+	       acl->fib_index,
+	       vec_elt (gtm->tdf_ul_table[pfx.fp_proto], acl->fib_index),
+	       format_upf_acl, acl);
+
+  fib_index = vec_elt (gtm->tdf_ul_table[pfx.fp_proto], acl->fib_index);
+  if (~0 == fib_index)
+    return;
+
+  if (is_ip4)
+    {
+      pfx.fp_proto = FIB_PROTOCOL_IP4;
+      pfx.fp_len = ip4_mask_to_preflen(&acl->mask.address[UPF_ACL_FIELD_SRC].ip4);
+    }
+  else
+    {
+      pfx.fp_proto = FIB_PROTOCOL_IP6;
+      pfx.fp_len = ip6_mask_to_preflen(&acl->mask.address[UPF_ACL_FIELD_SRC].ip6);
+    }
+
+  if (is_add)
+    {
+      /* add reverse route for client ip */
+      fib_table_entry_update_one_path (fib_index, &pfx,
+				       FIB_SOURCE_PLUGIN_HI, FIB_ENTRY_FLAG_ATTACHED,
+				       fib_proto_to_dpo (pfx.fp_proto),
+				       NULL, sess->sw_if_index, ~0,
+				       1, NULL, FIB_ROUTE_PATH_FLAG_NONE);
+    }
+  else
+    {
+      /* delete reverse route for client ip */
+      fib_table_entry_path_remove (fib_index, &pfx,
+				   FIB_SOURCE_PLUGIN_HI,
+				   fib_proto_to_dpo (pfx.fp_proto),
+				   NULL, sess->sw_if_index, ~0, 1,
+				   FIB_ROUTE_PATH_FLAG_NONE);
+    }
+}
+
+static void
+sx_add_del_v4_tdf (const void *tdf, void *si, int is_add)
+{
+  sx_add_del_tdf (tdf, si, 1 /* is_ip4 */, is_add);
+}
+
+static void
+sx_add_del_v6_tdf (const void *tdf, void *si, int is_add)
+{
+  sx_add_del_tdf (tdf, si, 0 /* is_ip4 */, is_add);
+}
+
+static u8 *
 format_upf_acl (u8 * s, va_list * args)
 {
   upf_acl_t *acl = va_arg (*args, upf_acl_t *);
+  ip46_type_t itype =
+    (acl->is_ip4) ? IP46_TYPE_IP4 : IP46_TYPE_IP6;
 
   return format (s,
 		 "%u: %u, (%u/%u/%u/%u) TEID 0x%08x, UE-IP %U, %u/%u, %U/%U:%u-%u <-> %U/%U:%u-%u",
 		 acl->pdr_idx, acl->precedence, ! !acl->is_ip4,
 		 ! !acl->match_teid, ! !acl->match_ue_ip, ! !acl->match_sdf,
-		 acl->teid, format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
+		 acl->teid, format_ip46_address, &acl->ue_ip, itype,
 		 acl->match.protocol, acl->mask.protocol, format_ip46_address,
-		 &acl->match.address[IPFILTER_RULE_FIELD_SRC], IP46_TYPE_ANY,
+		 &acl->match.address[IPFILTER_RULE_FIELD_SRC], itype,
 		 format_ip46_address,
-		 &acl->mask.address[IPFILTER_RULE_FIELD_SRC], IP46_TYPE_ANY,
+		 &acl->mask.address[IPFILTER_RULE_FIELD_SRC], itype,
 		 acl->mask.port[IPFILTER_RULE_FIELD_SRC],
 		 acl->match.port[IPFILTER_RULE_FIELD_SRC],
 		 format_ip46_address,
-		 &acl->match.address[IPFILTER_RULE_FIELD_DST], IP46_TYPE_ANY,
+		 &acl->match.address[IPFILTER_RULE_FIELD_DST], itype,
 		 format_ip46_address,
-		 &acl->mask.address[IPFILTER_RULE_FIELD_DST], IP46_TYPE_ANY,
+		 &acl->mask.address[IPFILTER_RULE_FIELD_DST], itype,
 		 acl->mask.port[IPFILTER_RULE_FIELD_DST],
 		 acl->match.port[IPFILTER_RULE_FIELD_DST]);
 }
@@ -1209,11 +1285,9 @@ ip_assign_address (int dst, int src, int is_ip4, const upf_pdr_t * pdr,
   ip46_address_t *ip = &acl->match.address[dst];
   const ipfilter_address_t *addr = &pdr->pdi.acl.address[src];
 
-  if (src == IPFILTER_RULE_FIELD_SRC &&
-      !ipfilter_address_cmp_const (addr, ACL_FROM_ANY))
+  if (acl_addr_is_any (addr))
     ;
-  else if (src == IPFILTER_RULE_FIELD_DST &&
-	   !ipfilter_address_cmp_const (addr, ACL_TO_ASSIGNED))
+  else if (acl_addr_is_assigned (addr))
     acl_set_ue_ip (ip, mask, is_ip4, pdr);
   else
     {
@@ -1276,13 +1350,17 @@ compile_sdf (int is_ip4, const upf_pdr_t * pdr, upf_acl_t * acl)
 
 static int
 compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
-		       upf_acl_t * acl)
+		       u32 table_id, upf_acl_t * acl)
 {
+  fib_protocol_t proto =
+    (is_ip4) ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6;
+
   memset (acl, 0, sizeof (*acl));
 
   acl->is_ip4 = is_ip4;
-  acl->pdr_idx = pdr_idx;
   acl->precedence = pdr->precedence;
+  acl->fib_index = fib_table_find (proto, table_id);
+  acl->pdr_idx = pdr_idx;
 
   compile_teid (pdr, acl);
   compile_sdf (is_ip4, pdr, acl);
@@ -1314,6 +1392,29 @@ rules_add_v6_teid (struct rules *r, const ip6_address_t * addr, u32 teid)
   vec_add1 (r->v6_teid, key);
 }
 
+static void
+rules_add_ue_ip(struct rules * r, fib_protocol_t fproto,
+		ip46_address_fib_t * ue_ip, u8 is_dst)
+{
+  upf_main_t *gtm = &upf_main;
+
+  if (is_dst)
+    vec_add1(r->ue_dst_ip, *ue_ip);
+  else
+    {
+      u32 fib_index = ~0;
+
+      if (ue_ip->fib_index < vec_len (gtm->tdf_ul_table[fproto]))
+	fib_index = vec_elt (gtm->tdf_ul_table[fproto], ue_ip->fib_index);
+
+      if (~0 != fib_index)
+	{
+	  ue_ip->fib_index = fib_index;
+	  vec_add1(r->ue_src_ip, *ue_ip);
+	}
+    }
+}
+
 static int
 build_sx_rules (upf_session_t * sx)
 {
@@ -1323,6 +1424,14 @@ build_sx_rules (upf_session_t * sx)
 
   vec_foreach (pdr, pending->pdr)
   {
+    u32 table_id = 0;
+
+    if (pdr->pdi.nwi != ~0)
+      {
+	upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi);
+	table_id = nwi->table_id;
+      }
+
     /* create UE IP route from SGi Network Instance into Session */
 
     /*
@@ -1336,33 +1445,23 @@ build_sx_rules (upf_session_t * sx)
     if (!(pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
 	pdr->pdi.fields & F_PDI_UE_IP_ADDR)
       {
-	ip46_address_fib_t *vrf_ip;
-	u32 fib_index = 0;
-
-	if (pdr->pdi.nwi != ~0)
-	  {
-	    upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi);
-	    fib_index = nwi->vrf;
-	  }
+	ip46_address_fib_t ue_ip;
+	u8 is_dst = ! !(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD);
 
 	if (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V4)
 	  {
-	    vec_alloc (pending->vrf_ip, 1);
-	    vrf_ip = vec_end (pending->vrf_ip);
-	    ip46_address_set_ip4 (&vrf_ip->addr, &pdr->pdi.ue_addr.ip4);
-	    vrf_ip->fib_index = fib_index;
+	    ip46_address_set_ip4 (&ue_ip.addr, &pdr->pdi.ue_addr.ip4);
+	    ue_ip.fib_index = fib_table_find (FIB_PROTOCOL_IP4, table_id);
 
-	    _vec_len (pending->vrf_ip)++;
+	    rules_add_ue_ip(pending, FIB_PROTOCOL_IP4, &ue_ip, is_dst);
 	  }
 
 	if (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V6)
 	  {
-	    vec_alloc (pending->vrf_ip, 1);
-	    vrf_ip = vec_end (pending->vrf_ip);
-	    vrf_ip->addr.ip6 = pdr->pdi.ue_addr.ip6;
-	    vrf_ip->fib_index = fib_index;
+	    ue_ip.addr.ip6 = pdr->pdi.ue_addr.ip6;
+	    ue_ip.fib_index = fib_table_find (FIB_PROTOCOL_IP6, table_id);
 
-	    _vec_len (pending->vrf_ip)++;
+	    rules_add_ue_ip(pending, FIB_PROTOCOL_IP6, &ue_ip, is_dst);
 	  }
       }
 
@@ -1387,8 +1486,8 @@ build_sx_rules (upf_session_t * sx)
 	    acl = vec_end (pending->v4_acls);
 
 	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (1 /* is_ip4 */ , pdr, pdr - pending->pdr,
-				   acl);
+	    compile_ipfilter_rule (1 /* is_ip4 */, pdr, pdr - pending->pdr,
+				   table_id, acl);
 
 	    _vec_len (pending->v4_acls)++;
 	  }
@@ -1402,8 +1501,8 @@ build_sx_rules (upf_session_t * sx)
 	    acl = vec_end (pending->v6_acls);
 
 	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (0 /* is_ip4 */ , pdr, pdr - pending->pdr,
-				   acl);
+	    compile_ipfilter_rule (0 /* is_ip4 */, pdr, pdr - pending->pdr,
+				   table_id, acl);
 
 	    _vec_len (pending->v6_acls)++;
 	  }
@@ -1446,8 +1545,11 @@ sx_update_apply (upf_session_t * sx)
     {
       pending->pdr = active->pdr;
 
-      pending->vrf_ip = active->vrf_ip;
-      active->vrf_ip = NULL;
+      pending->ue_src_ip = active->ue_src_ip;
+      active->ue_src_ip = NULL;
+
+      pending->ue_dst_ip = active->ue_dst_ip;
+      active->ue_dst_ip = NULL;
 
       pending->v4_teid = active->v4_teid;
       active->v4_teid = NULL;
@@ -1513,14 +1615,27 @@ sx_update_apply (upf_session_t * sx)
       synchronize_rcu ();
 
       /* update UE addresses and TEIDs */
-      vec_diff (pending->vrf_ip, active->vrf_ip, ip46_address_fib_cmp,
-		sx_add_del_vrf_ip, sx);
+      vec_diff (pending->ue_dst_ip, active->ue_dst_ip, ip46_address_fib_cmp,
+		sx_add_del_ue_ip, sx);
       vec_diff (pending->v4_teid, active->v4_teid, v4_teid_cmp,
 		sx_add_del_v4_teid, sx);
       vec_diff (pending->v6_teid, active->v6_teid, v6_teid_cmp,
 		sx_add_del_v6_teid, sx);
 
-      // TODO: add SDF rules to global table
+      clib_warning("v4 TEIDs %u\n", pending->v4_teid);
+      clib_warning("v6 TEIDs %u\n", pending->v6_teid);
+      clib_warning("UE Src IPs %u\n", pending->ue_src_ip);
+      clib_warning("v4 ACLs %u\n", pending->v4_acls);
+      clib_warning("v6 ACLs %u\n", pending->v6_acls);
+
+      vec_diff (pending->ue_src_ip, active->ue_src_ip, ip46_address_fib_cmp,
+		sx_add_del_ue_ip, sx);
+
+      /* has PDRs but no TEIDs or UE IPs, add to global wildcard TDF table */
+      vec_diff (pending->v4_acls, active->v4_acls, upf_acl_cmp,
+		sx_add_del_v4_tdf, sx);
+      vec_diff (pending->v6_acls, active->v6_acls, upf_acl_cmp,
+		sx_add_del_v6_tdf, sx);
     }
 
   /* flip the switch */
