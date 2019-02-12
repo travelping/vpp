@@ -49,6 +49,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <execinfo.h>
 
 /** Default CLI pager limit is not configured in startup.conf */
 #define UNIX_CLI_DEFAULT_PAGER_LIMIT 100000
@@ -160,7 +161,7 @@ unix_signal_handler (int signum, siginfo_t * si, ucontext_t * uc)
 
   if (fatal)
     {
-      syslog (LOG_ERR | LOG_DAEMON, "%s", syslog_msg);
+      fprintf(stderr, "%s\n", syslog_msg);
 
       /* Address of callers: outer first, inner last. */
       uword callers[15];
@@ -174,8 +175,10 @@ unix_signal_handler (int signum, siginfo_t * si, ucontext_t * uc)
 	    format (syslog_msg, "#%-2d 0x%016lx %U%c", i, callers[i],
 		    format_clib_elf_symbol_with_address, callers[i], 0);
 
-	  syslog (LOG_ERR | LOG_DAEMON, "%s", syslog_msg);
+	  fprintf(stderr, "%s\n", syslog_msg);
 	}
+
+      backtrace_symbols_fd((void **)&callers, ARRAY_LEN (callers), STDERR_FILENO);
 
       /* have to remove SIGABRT to avoid recursive - os_exit calling abort() */
       unsetup_signal_handlers (SIGABRT);
