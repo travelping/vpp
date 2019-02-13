@@ -1671,7 +1671,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	      upf_pdr_t * pdr, vlib_buffer_t * b,
 	      u8 is_dl, u8 is_ul, u32 next)
 {
-  int r = URR_OK;
+  int status = URR_OK;
   u16 *urr_id;
 
   gtp_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
@@ -1681,6 +1681,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
   vec_foreach (urr_id, pdr->urr_ids)
   {
     upf_urr_t *urr = sx_get_urr_by_id (active, *urr_id);
+    int r = URR_OK;
 
     if (!urr)
       continue;
@@ -1714,11 +1715,13 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
     if (PREDICT_FALSE (urr->status & URR_OVER_QUOTA))
       next = UPF_PROCESS_NEXT_DROP;
+
+    status |= r;
   }
 
   clib_spinlock_unlock (&sess->lock);
 
-  if (PREDICT_FALSE (r != URR_OK))
+  if (PREDICT_FALSE (status != URR_OK))
     upf_pfcp_server_session_usage_report (sess);
 
   return next;
