@@ -1145,15 +1145,13 @@ static u32
 upf_ip46_get_resolving_interface (u32 fib_index, ip46_address_t * pa46,
 				  int is_ip4)
 {
-  u32 sw_if_index = ~0;
-  if (~0 != fib_index)
-    {
-      fib_node_index_t fib_entry_index;
-      fib_entry_index =
-	upf_ip46_fib_table_lookup_host (fib_index, pa46, is_ip4);
-      sw_if_index = fib_entry_get_resolving_interface (fib_entry_index);
-    }
-  return sw_if_index;
+  fib_node_index_t fib_entry_index;
+
+  ASSERT (~0 != fib_index);
+
+  fib_entry_index =
+    upf_ip46_fib_table_lookup_host (fib_index, pa46, is_ip4);
+  return  fib_entry_get_resolving_interface (fib_entry_index);
 }
 
 static int
@@ -1229,8 +1227,25 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 	    fib_index =
 	      upf_ip46_fib_index_from_table_id (create->forward.table_id,
 						is_ip4);
+	    if (~0 == fib_index)
+	      {
+		gtp_debug
+		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
+		   far->far_id, is_ip4 ? 4 : 6);
+		failed_rule_id->id = far->far_id;
+		break;
+	      }
 	    create->forward.dst_sw_if_index =
 	      upf_ip46_get_resolving_interface (fib_index, &ohc->ip, is_ip4);
+	    if (~0 == create->forward.dst_sw_if_index)
+	      {
+		gtp_debug
+		  ("FAR: %d, No route to %U in VRF %d\n",
+		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
+		   create->forward.table_id);
+		failed_rule_id->id = far->far_id;
+		break;
+	      }
 
 	    ip_udp_gtpu_rewrite (&create->forward, is_ip4);
 	  }
@@ -1348,8 +1363,26 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 	    fib_index =
 	      upf_ip46_fib_index_from_table_id (update->forward.table_id,
 						is_ip4);
+	    if (~0 == fib_index)
+	      {
+		gtp_debug
+		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
+		   far->far_id, is_ip4 ? 4 : 6);
+		failed_rule_id->id = far->far_id;
+		break;
+	      }
+
 	    update->forward.dst_sw_if_index =
 	      upf_ip46_get_resolving_interface (fib_index, &ohc->ip, is_ip4);
+	    if (~0 == update->forward.dst_sw_if_index)
+	      {
+		gtp_debug
+		  ("FAR: %d, No route to %U in VRF %d\n",
+		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
+		   update->forward.table_id);
+		failed_rule_id->id = far->far_id;
+		break;
+	      }
 
 	    ip_udp_gtpu_rewrite (&update->forward, is_ip4);
 	  }
