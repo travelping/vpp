@@ -393,7 +393,15 @@ upf_nwi_add_del_command_fn (vlib_main_t * vm,
     }
 
   if (!name)
-    return clib_error_return (0, "name or label must be specified!");
+    {
+      error =clib_error_return (0, "name or label must be specified!");
+      goto done;
+    }
+
+  if (~0 == fib_table_find (FIB_PROTOCOL_IP4, vrf))
+      clib_warning ("vrf %d in not (yet) defined for IPv4", vrf);
+  if (~0 == fib_table_find (FIB_PROTOCOL_IP6, vrf))
+      clib_warning ("vrf %d in not (yet) defined for IPv6", vrf);
 
   rv = vnet_upf_nwi_add_del (name, vrf, add);
 
