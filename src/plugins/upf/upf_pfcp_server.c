@@ -653,8 +653,9 @@ upf_pfcp_session_usage_report (upf_session_t * sx, f64 now)
       }
   }
 
-  upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
-					&req.grp);
+  if (vec_len(req.usage_report) != 0)
+    upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
+					  &req.grp);
 
   pfcp_free_msg (PFCP_SESSION_REPORT_REQUEST, &req.grp);
 }
@@ -738,7 +739,6 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   pfcp_session_report_request_t req;
   upf_main_t *gtm = &upf_main;
   struct rules *active;
-  u8 send_report = 0;
   upf_urr_t *urr;
 
   active = sx_get_rules (sx, SX_ACTIVE);
@@ -809,7 +809,6 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
     if (trigger != 0)
       {
 	build_usage_report (sx, urr, trigger, now, &req.usage_report);
-	send_report = 1;
 
 	// clear reporting on the time based triggers, until rearmed by update
 	urr->triggers &= ~(REPORTING_TRIGGER_TIME_THRESHOLD |
@@ -837,7 +836,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
       }
   }
 
-  if (send_report)
+  if (vec_len(req.usage_report) != 0)
     upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
 					  &req.grp);
 
