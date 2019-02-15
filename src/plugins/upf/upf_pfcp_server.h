@@ -56,6 +56,7 @@ typedef struct
 
   u32 pfcp_endpoint;
   u32 node;
+  u32 session_index;
 
   u32 timer;
   u32 n1;

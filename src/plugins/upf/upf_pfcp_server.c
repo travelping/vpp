@@ -129,12 +129,14 @@ encode_sx_session_msg (upf_session_t * sx, u8 type,
 		       struct pfcp_group *grp, sx_msg_t * msg)
 {
   sx_server_main_t *sxs = &sx_server_main;
+  upf_main_t *gtm = &upf_main;
   int r = 0;
 
   init_sx_msg (msg);
 
   msg->seq_no = clib_atomic_add_fetch (&sxs->seq_no, 1) % 0x1000000;
   msg->node = sx->assoc.node;
+  msg->session_index = sx - gtm->sessions;
   msg->data = vec_new (u8, 2048);
 
   msg->hdr->version = 1;
@@ -298,7 +300,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 	  {
 	    sx_msg_t *resp = pool_elt_at_index (sxsm->msg_pool, p[0]);
 
-	    clib_warning ("resend...\n");
+	    clib_warning ("resend... %d\n", p[0]);
 	    upf_pfcp_send_data (resp);
 	    restart_response_timer (resp);
 	  }
@@ -500,7 +502,7 @@ response_expired (u32 id)
   clib_warning ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
   clib_warning ("release...\n");
 
-  hash_unset_mem (sxsm->request_q, msg->request_key);
+  hash_unset_mem (sxsm->response_q, msg->request_key);
   sx_msg_free (sxsm, msg);
 }
 
