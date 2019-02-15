@@ -270,7 +270,7 @@ sx_release_association (upf_node_assoc_t * n)
 
       idx = sx->assoc.next;
 
-      if (sx_disable_session (sx) != 0)
+      if (sx_disable_session (sx, false) != 0)
 	clib_error ("failed to remove UPF session 0x%016" PRIx64,
 		    sx->cp_seid);
       sx_free_session (sx);
@@ -290,6 +290,7 @@ sx_release_association (upf_node_assoc_t * n)
   {
     msg = pool_elt_at_index (sxsm->msg_pool, *m);
     hash_unset (sxsm->request_q, msg->seq_no);
+    hash_unset_mem (sxsm->response_q, msg->request_key);
     upf_pfcp_server_stop_timer (msg->timer);
     sx_msg_free (sxsm, msg);
   }
@@ -855,9 +856,10 @@ rcu_free_sx_session_info (struct rcu_head *head)
 }
 
 int
-sx_disable_session (upf_session_t * sx)
+sx_disable_session (upf_session_t * sx, int drop_msgs)
 {
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
+  sx_server_main_t *sxsm = &sx_server_main;
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
   ip46_address_fib_t *vrf_ip;
@@ -891,6 +893,31 @@ sx_disable_session (upf_session_t * sx)
     upf_pfcp_session_stop_urr_time (&urr->time_threshold);
     upf_pfcp_session_stop_urr_time (&urr->time_quota);
   }
+
+  if (drop_msgs)
+    {
+      u32 si = sx - gtm->sessions;
+      u32 *msgs = NULL;
+      sx_msg_t *msg;
+      u32 *m;
+
+      /* *INDENT-OFF* */
+      pool_foreach (msg, sxsm->msg_pool,
+      ({
+	if (msg->session_index == si)
+	  vec_add1(msgs, msg - sxsm->msg_pool);
+      }));
+      /* *INDENT-ON* */
+
+      vec_foreach (m, msgs)
+	{
+	  msg = pool_elt_at_index (sxsm->msg_pool, *m);
+	  hash_unset (sxsm->request_q, msg->seq_no);
+	  hash_unset_mem (sxsm->response_q, msg->request_key);
+	  upf_pfcp_server_stop_timer (msg->timer);
+	  sx_msg_free (sxsm, msg);
+	}
+    }
 
   return 0;
 }

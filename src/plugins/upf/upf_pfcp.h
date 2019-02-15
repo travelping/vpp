@@ -32,7 +32,7 @@ upf_session_t *sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
 				  uint64_t cp_seid,
 				  const ip46_address_t * cp_address);
 void sx_update_session (upf_session_t * sx);
-int sx_disable_session (upf_session_t * sx);
+int sx_disable_session (upf_session_t * sx, int drop_msgs);
 void sx_free_session (upf_session_t * sx);
 
 #define sx_rule_vector_fns(t)						\

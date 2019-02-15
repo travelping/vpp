@@ -2027,7 +2027,7 @@ out_send_resp:
 
   if (r != 0)
     {
-      if (sx_disable_session (sess) != 0)
+      if (sx_disable_session (sess, false) != 0)
 	clib_error ("failed to remove UPF session 0x%016" PRIx64,
 		    sess->cp_seid);
       sx_free_session (sess);
@@ -2247,7 +2247,7 @@ handle_session_deletion_request (sx_msg_t * req,
 
   cp_seid = sess->cp_seid;
 
-  if ((r = sx_disable_session (sess)) != 0)
+  if ((r = sx_disable_session (sess, true)) != 0)
     {
       gtp_debug ("Sx Session %" PRIu64 " could no be disabled.\n",
 		 be64toh (req->hdr->session_hdr.seid));
