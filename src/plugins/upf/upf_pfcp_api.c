@@ -399,11 +399,11 @@ static int
 handle_heartbeat_request (sx_msg_t * req, pfcp_heartbeat_request_t * msg)
 {
   sx_server_main_t *sx = &sx_server_main;
-  pfcp_heartbeat_response_t resp;
+  pfcp_simple_response_t resp;
 
   memset (&resp, 0, sizeof (resp));
-  SET_BIT (resp.grp.fields, HEARTBEAT_RESPONSE_RECOVERY_TIME_STAMP);
-  resp.recovery_time_stamp = sx->start_time;
+  SET_BIT (resp.grp.fields, PFCP_RESPONSE_RECOVERY_TIME_STAMP);
+  resp.response.recovery_time_stamp = sx->start_time;
 
   gtp_debug ("PFCP: start_time: %p, %d, %x.",
 	     &sx, sx->start_time, sx->start_time);
@@ -414,7 +414,7 @@ handle_heartbeat_request (sx_msg_t * req, pfcp_heartbeat_request_t * msg)
 }
 
 static int
-handle_heartbeat_response (sx_msg_t * req, pfcp_heartbeat_response_t * msg)
+handle_heartbeat_response (sx_msg_t * req, pfcp_simple_response_t * msg)
 {
   upf_main_t *gtm = &upf_main;
   upf_node_assoc_t *n;
@@ -424,9 +424,9 @@ handle_heartbeat_response (sx_msg_t * req, pfcp_heartbeat_response_t * msg)
 
   n = pool_elt_at_index (gtm->nodes, req->node);
 
-  if (msg->recovery_time_stamp > n->recovery_time_stamp)
+  if (msg->response.recovery_time_stamp > n->recovery_time_stamp)
     sx_release_association (n);
-  else if (msg->recovery_time_stamp < n->recovery_time_stamp)
+  else if (msg->response.recovery_time_stamp < n->recovery_time_stamp)
     {
       /* 3GPP TS 23.007, Sect. 19A:
        *
@@ -458,7 +458,7 @@ handle_pfd_management_request (sx_msg_t * req,
 
 static int
 handle_pfd_management_response (sx_msg_t * req,
-				pfcp_pfd_management_response_t * msg)
+				pfcp_simple_response_t * msg)
 {
   return -1;
 }
@@ -567,7 +567,7 @@ handle_association_release_request (sx_msg_t * req,
 
 static int
 handle_association_release_response (sx_msg_t * req,
-				     pfcp_association_release_response_t *
+				     pfcp_simple_response_t *
 				     msg)
 {
   return -1;
@@ -591,9 +591,53 @@ handle_node_report_request (sx_msg_t * req, pfcp_node_report_request_t * msg)
 
 static int
 handle_node_report_response (sx_msg_t * req,
-			     pfcp_node_report_response_t * msg)
+			     pfcp_simple_response_t * msg)
 {
   return -1;
+}
+
+static void
+send_simple_repsonse(sx_msg_t * req, u64 seid, u8 type,
+		     pfcp_cause_t cause, pfcp_offending_ie_t * err)
+{
+  sx_server_main_t *sx = &sx_server_main;
+  pfcp_simple_response_t resp;
+
+  memset (&resp, 0, sizeof (resp));
+  SET_BIT (resp.grp.fields, PFCP_RESPONSE_CAUSE);
+  resp.response.cause = cause;
+
+  switch (type) {
+  case PFCP_HEARTBEAT_RESPONSE:
+  case PFCP_PFD_MANAGEMENT_RESPONSE:
+  case PFCP_SESSION_MODIFICATION_RESPONSE:
+  case PFCP_SESSION_DELETION_RESPONSE:
+  case PFCP_SESSION_REPORT_RESPONSE:
+    break;
+
+  default:
+    init_response_node_id (&resp.response);
+    break;
+  }
+
+ switch (type) {
+ case PFCP_HEARTBEAT_RESPONSE:
+ case PFCP_ASSOCIATION_SETUP_RESPONSE:
+   SET_BIT (resp.grp.fields, PFCP_RESPONSE_RECOVERY_TIME_STAMP);
+   resp.response.recovery_time_stamp = sx->start_time;
+   break;
+
+ default:
+   break;
+ }
+
+ if (vec_len(err) != 0)
+   {
+     SET_BIT (resp.grp.fields, PFCP_RESPONSE_OFFENDING_IE);
+     resp.response.offending_ie = err[0];
+   }
+
+ upf_pfcp_send_response (req, seid, type, &resp.grp);
 }
 
 static int
@@ -602,20 +646,18 @@ node_msg (sx_msg_t * msg)
   union
   {
     struct pfcp_group grp;
+    pfcp_simple_response_t simple_response;
     pfcp_heartbeat_request_t heartbeat_request;
-    pfcp_heartbeat_response_t heartbeat_response;
     pfcp_pfd_management_request_t pfd_management_request;
-    pfcp_pfd_management_response_t pfd_management_response;
     pfcp_association_setup_request_t association_setup_request;
     pfcp_association_setup_response_t association_setup_response;
     pfcp_association_update_request_t association_update_request;
     pfcp_association_update_response_t association_update_response;
     pfcp_association_release_request_t association_release_request;
-    pfcp_association_release_response_t association_release_response;
     /* pfcp_version_not_supported_response_t version_not_supported_response; */
     pfcp_node_report_request_t node_report_request;
-    pfcp_node_report_response_t node_report_response;
   } m;
+  pfcp_offending_ie_t * err = NULL;
   int r = 0;
 
   if (msg->hdr->s_flag)
@@ -627,11 +669,25 @@ node_msg (sx_msg_t * msg)
   memset (&m, 0, sizeof (m));
   r = pfcp_decode_msg (msg->hdr->type, &msg->hdr->msg_hdr.ies[0],
 		       clib_net_to_host_u16 (msg->hdr->length) -
-		       sizeof (msg->hdr->msg_hdr), &m.grp);
+		       sizeof (msg->hdr->msg_hdr), &m.grp, &err);
   if (r != 0)
     {
-      //TODO: error reply
+      switch (msg->hdr->type)
+	{
+	case PFCP_HEARTBEAT_REQUEST:
+	case PFCP_PFD_MANAGEMENT_REQUEST:
+	case PFCP_ASSOCIATION_SETUP_REQUEST:
+	case PFCP_ASSOCIATION_UPDATE_REQUEST:
+	case PFCP_ASSOCIATION_RELEASE_REQUEST:
+	  send_simple_repsonse(msg, 0, msg->hdr->type + 1, r, err);
+	  break;
+
+	default:
+	  break;
+	}
+
       pfcp_free_msg (msg->hdr->type, &m.grp);
+      vec_free(err);
       return r;
     }
 
@@ -642,7 +698,7 @@ node_msg (sx_msg_t * msg)
       break;
 
     case PFCP_HEARTBEAT_RESPONSE:
-      r = handle_heartbeat_response (msg, &m.heartbeat_response);
+      r = handle_heartbeat_response (msg, &m.simple_response);
       break;
 
     case PFCP_PFD_MANAGEMENT_REQUEST:
@@ -650,7 +706,7 @@ node_msg (sx_msg_t * msg)
       break;
 
     case PFCP_PFD_MANAGEMENT_RESPONSE:
-      r = handle_pfd_management_response (msg, &m.pfd_management_response);
+      r = handle_pfd_management_response (msg, &m.simple_response);
       break;
 
     case PFCP_ASSOCIATION_SETUP_REQUEST:
@@ -685,7 +741,7 @@ node_msg (sx_msg_t * msg)
     case PFCP_ASSOCIATION_RELEASE_RESPONSE:
       r =
 	handle_association_release_response (msg,
-					     &m.association_release_response);
+					     &m.simple_response);
       break;
 
       /* case PFCP_VERSION_NOT_SUPPORTED_RESPONSE: */
@@ -697,7 +753,7 @@ node_msg (sx_msg_t * msg)
       break;
 
     case PFCP_NODE_REPORT_RESPONSE:
-      r = handle_node_report_response (msg, &m.node_report_response);
+      r = handle_node_report_response (msg, &m.simple_response);
       break;
 
     default:
@@ -1934,7 +1990,7 @@ handle_session_set_deletion_request (sx_msg_t * req,
 
 static int
 handle_session_set_deletion_response (sx_msg_t * req,
-				      pfcp_session_set_deletion_response_t *
+				      pfcp_simple_response_t *
 				      msg)
 {
   return -1;
@@ -2307,8 +2363,8 @@ session_msg (sx_msg_t * msg)
   union
   {
     struct pfcp_group grp;
+    pfcp_simple_response_t simple_response;
     pfcp_session_set_deletion_request_t session_set_deletion_request;
-    pfcp_session_set_deletion_response_t session_set_deletion_response;
     pfcp_session_establishment_request_t session_establishment_request;
     pfcp_session_establishment_response_t session_establishment_response;
     pfcp_session_modification_request_t session_modification_request;
@@ -2318,6 +2374,7 @@ session_msg (sx_msg_t * msg)
     pfcp_session_report_request_t session_report_request;
     pfcp_session_report_response_t session_report_response;
   } m;
+  pfcp_offending_ie_t * err = NULL;
   int r = 0;
 
   if (!msg->hdr->s_flag)
@@ -2329,11 +2386,25 @@ session_msg (sx_msg_t * msg)
   memset (&m, 0, sizeof (m));
   r = pfcp_decode_msg (msg->hdr->type, &msg->hdr->session_hdr.ies[0],
 		       clib_net_to_host_u16 (msg->hdr->length) -
-		       sizeof (msg->hdr->session_hdr), &m.grp);
+		       sizeof (msg->hdr->session_hdr), &m.grp, &err);
   if (r != 0)
     {
-      //TODO: error reply
+      switch (msg->hdr->type)
+	{
+	case PFCP_SESSION_SET_DELETION_REQUEST:
+	case PFCP_SESSION_ESTABLISHMENT_REQUEST:
+	case PFCP_SESSION_MODIFICATION_REQUEST:
+	case PFCP_SESSION_DELETION_REQUEST:
+	case PFCP_SESSION_REPORT_REQUEST:
+	  send_simple_repsonse(msg, 0, msg->hdr->type + 1, r, err);
+	  break;
+
+	default:
+	  break;
+	}
+
       pfcp_free_msg (msg->hdr->type, &m.grp);
+      vec_free(err);
       return r;
     }
 
@@ -2349,7 +2420,7 @@ session_msg (sx_msg_t * msg)
       r =
 	handle_session_set_deletion_response (msg,
 					      &m.
-					      session_set_deletion_response);
+					      simple_response);
       break;
 
     case PFCP_SESSION_ESTABLISHMENT_REQUEST:

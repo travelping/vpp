@@ -1751,6 +1751,7 @@ enum
   PFCP_RESPONSE_NODE_ID,
   PFCP_RESPONSE_CAUSE,
   PFCP_RESPONSE_OFFENDING_IE,
+  PFCP_RESPONSE_RECOVERY_TIME_STAMP,
 };
 
 struct pfcp_response
@@ -1758,6 +1759,7 @@ struct pfcp_response
   pfcp_node_id_t node_id;
   pfcp_cause_t cause;
   pfcp_offending_ie_t offending_ie;
+  pfcp_recovery_time_stamp_t recovery_time_stamp;
 };
 
 enum
@@ -1769,6 +1771,12 @@ struct pfcp_request
 {
   pfcp_node_id_t node_id;
 };
+
+typedef struct
+{
+  struct pfcp_group grp;
+  struct pfcp_response response;
+} pfcp_simple_response_t;
 
 enum
 {
@@ -1783,18 +1791,6 @@ typedef struct
   pfcp_recovery_time_stamp_t recovery_time_stamp;
 } pfcp_heartbeat_request_t;
 
-enum
-{
-  HEARTBEAT_RESPONSE_RECOVERY_TIME_STAMP,
-  HEARTBEAT_RESPONSE_LAST = HEARTBEAT_RESPONSE_RECOVERY_TIME_STAMP
-};
-
-typedef struct
-{
-  struct pfcp_group grp;
-
-  pfcp_recovery_time_stamp_t recovery_time_stamp;
-} pfcp_heartbeat_response_t;
 
 enum
 {
@@ -1808,19 +1804,6 @@ typedef struct
 
   pfcp_application_id_pfds_t *application_id_pfds;
 } pfcp_pfd_management_request_t;
-
-enum
-{
-  PFD_MANAGEMENT_RESPONSE_CAUSE = PFCP_RESPONSE_CAUSE,
-  PFD_MANAGEMENT_RESPONSE_OFFENDING_IE = PFCP_RESPONSE_OFFENDING_IE,
-  PFD_MANAGEMENT_RESPONSE_LAST = PFD_MANAGEMENT_RESPONSE_OFFENDING_IE
-};
-
-typedef struct
-{
-  struct pfcp_group grp;
-  struct pfcp_response response;
-} pfcp_pfd_management_response_t;
 
 enum
 {
@@ -1849,7 +1832,7 @@ enum
 {
   ASSOCIATION_SETUP_RESPONSE_NODE_ID = PFCP_RESPONSE_NODE_ID,
   ASSOCIATION_SETUP_RESPONSE_CAUSE = PFCP_RESPONSE_CAUSE,
-  ASSOCIATION_SETUP_RESPONSE_RECOVERY_TIME_STAMP,
+  ASSOCIATION_SETUP_RESPONSE_RECOVERY_TIME_STAMP = PFCP_RESPONSE_RECOVERY_TIME_STAMP,
   ASSOCIATION_SETUP_RESPONSE_UP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_RESPONSE_CP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_RESPONSE_USER_PLANE_IP_RESOURCE_INFORMATION,
@@ -1928,19 +1911,6 @@ typedef struct
 
 enum
 {
-  ASSOCIATION_RELEASE_RESPONSE_NODE_ID = PFCP_RESPONSE_NODE_ID,
-  ASSOCIATION_RELEASE_RESPONSE_CAUSE = PFCP_RESPONSE_CAUSE,
-  ASSOCIATION_RELEASE_RESPONSE_LAST = ASSOCIATION_RELEASE_RESPONSE_CAUSE
-};
-
-typedef struct
-{
-  struct pfcp_group grp;
-  struct pfcp_response response;
-} pfcp_association_release_response_t;
-
-enum
-{
   NODE_REPORT_REQUEST_NODE_ID = PFCP_REQUEST_NODE_ID,
   NODE_REPORT_REQUEST_NODE_REPORT_TYPE,
   NODE_REPORT_REQUEST_USER_PLANE_PATH_FAILURE_REPORT,
@@ -1959,20 +1929,6 @@ typedef struct
 
 enum
 {
-  NODE_REPORT_RESPONSE_NODE_ID = PFCP_RESPONSE_NODE_ID,
-  NODE_REPORT_RESPONSE_CAUSE = PFCP_RESPONSE_CAUSE,
-  NODE_REPORT_RESPONSE_OFFENDING_IE = PFCP_RESPONSE_OFFENDING_IE,
-  NODE_REPORT_RESPONSE_LAST = NODE_REPORT_RESPONSE_OFFENDING_IE
-};
-
-typedef struct
-{
-  struct pfcp_group grp;
-  struct pfcp_response response;
-} pfcp_node_report_response_t;
-
-enum
-{
   SESSION_SET_DELETION_REQUEST_NODE_ID = PFCP_REQUEST_NODE_ID,
   SESSION_SET_DELETION_REQUEST_FQ_CSID,
   SESSION_SET_DELETION_REQUEST_LAST = SESSION_SET_DELETION_REQUEST_FQ_CSID
@@ -1985,21 +1941,6 @@ typedef struct
 
   pfcp_fq_csid_t *fq_csid;
 } pfcp_session_set_deletion_request_t;
-
-enum
-{
-  SESSION_SET_DELETION_RESPONSE_NODE_ID = PFCP_RESPONSE_NODE_ID,
-  SESSION_SET_DELETION_RESPONSE_CAUSE = PFCP_RESPONSE_CAUSE,
-  SESSION_SET_DELETION_RESPONSE_OFFENDING_IE = PFCP_RESPONSE_OFFENDING_IE,
-  SESSION_SET_DELETION_RESPONSE_LAST =
-    SESSION_SET_DELETION_RESPONSE_OFFENDING_IE
-};
-
-typedef struct
-{
-  struct pfcp_group grp;
-  struct pfcp_response response;
-} pfcp_session_set_deletion_response_t;
 
 enum
 {
@@ -2239,7 +2180,8 @@ void cpy_redirect_information (pfcp_redirect_information_t * dst,
 			       pfcp_redirect_information_t * src);
 void free_redirect_information (void *p);
 
-int pfcp_decode_msg (u16 type, u8 * p, int len, struct pfcp_group *grp);
+int pfcp_decode_msg (u16 type, u8 * p, int len, struct pfcp_group *grp,
+		     pfcp_offending_ie_t ** err);
 int pfcp_encode_msg (u16 type, struct pfcp_group *grp, u8 ** vec);
 void pfcp_free_msg (u16 type, struct pfcp_group *grp);
 

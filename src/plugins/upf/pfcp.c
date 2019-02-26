@@ -5230,19 +5230,27 @@ static struct pfcp_ie_def group_specs[] =
 
 /* PFCP Methods */
 
+static struct pfcp_group_ie_def pfcp_simple_response_group[] =
+  {
+    [PFCP_RESPONSE_CAUSE] = {
+      .type = PFCP_IE_CAUSE,
+      .offset = offsetof(pfcp_simple_response_t, response.cause)
+    },
+    [PFCP_RESPONSE_OFFENDING_IE] = {
+      .type = PFCP_IE_OFFENDING_IE,
+      .offset = offsetof(pfcp_simple_response_t, response.offending_ie)
+    },
+    [PFCP_RESPONSE_RECOVERY_TIME_STAMP] = {
+      .type = PFCP_IE_RECOVERY_TIME_STAMP,
+      .offset = offsetof(pfcp_simple_response_t, response.recovery_time_stamp)
+    },
+  };
+
 static struct pfcp_group_ie_def pfcp_heartbeat_request_group[] =
   {
     [HEARTBEAT_REQUEST_RECOVERY_TIME_STAMP] = {
       .type = PFCP_IE_RECOVERY_TIME_STAMP,
       .offset = offsetof(pfcp_heartbeat_request_t, recovery_time_stamp)
-    },
-  };
-
-static struct pfcp_group_ie_def pfcp_heartbeat_response_group[] =
-  {
-    [HEARTBEAT_RESPONSE_RECOVERY_TIME_STAMP] = {
-      .type = PFCP_IE_RECOVERY_TIME_STAMP,
-      .offset = offsetof(pfcp_heartbeat_response_t, recovery_time_stamp)
     },
   };
 
@@ -5252,18 +5260,6 @@ static struct pfcp_group_ie_def pfcp_pfd_management_request_group[] =
       .type = PFCP_IE_APPLICATION_ID_PFDS,
       .is_array = true,
       .offset = offsetof(pfcp_pfd_management_request_t, application_id_pfds)
-    },
-  };
-
-static struct pfcp_group_ie_def pfcp_pfd_management_response_group[] =
-  {
-    [PFD_MANAGEMENT_RESPONSE_CAUSE] = {
-      .type = PFCP_IE_CAUSE,
-      .offset = offsetof(pfcp_pfd_management_response_t, response.cause)
-    },
-    [PFD_MANAGEMENT_RESPONSE_OFFENDING_IE] = {
-      .type = PFCP_IE_OFFENDING_IE,
-      .offset = offsetof(pfcp_pfd_management_response_t, response.offending_ie)
     },
   };
 
@@ -5378,18 +5374,6 @@ static struct pfcp_group_ie_def pfcp_association_release_request_group[] =
     },
   };
 
-static struct pfcp_group_ie_def pfcp_association_release_response_group[] =
-  {
-    [ASSOCIATION_RELEASE_RESPONSE_NODE_ID] = {
-      .type = PFCP_IE_NODE_ID,
-      .offset = offsetof(pfcp_association_release_response_t, response.node_id)
-    },
-    [ASSOCIATION_RELEASE_RESPONSE_CAUSE] = {
-      .type = PFCP_IE_CAUSE,
-      .offset = offsetof(pfcp_association_release_response_t, response.cause)
-    },
-  };
-
 static struct pfcp_group_ie_def pfcp_node_report_request_group[] =
   {
     [NODE_REPORT_REQUEST_NODE_ID] = {
@@ -5406,22 +5390,6 @@ static struct pfcp_group_ie_def pfcp_node_report_request_group[] =
     },
   };
 
-static struct pfcp_group_ie_def pfcp_node_report_response_group[] =
-  {
-    [NODE_REPORT_RESPONSE_NODE_ID] = {
-      .type = PFCP_IE_NODE_ID,
-      .offset = offsetof(pfcp_node_report_response_t, response.node_id)
-    },
-    [NODE_REPORT_RESPONSE_CAUSE] = {
-      .type = PFCP_IE_CAUSE,
-      .offset = offsetof(pfcp_node_report_response_t, response.cause)
-    },
-    [NODE_REPORT_RESPONSE_OFFENDING_IE] = {
-      .type = PFCP_IE_OFFENDING_IE,
-      .offset = offsetof(pfcp_node_report_response_t, response.offending_ie)
-    },
-  };
-
 static struct pfcp_group_ie_def pfcp_session_set_deletion_request_group[] =
   {
     [SESSION_SET_DELETION_REQUEST_NODE_ID] = {
@@ -5432,22 +5400,6 @@ static struct pfcp_group_ie_def pfcp_session_set_deletion_request_group[] =
       .type = PFCP_IE_FQ_CSID,
       .is_array = true,
       .offset = offsetof(pfcp_session_set_deletion_request_t, fq_csid)
-    },
-  };
-
-static struct pfcp_group_ie_def pfcp_session_set_deletion_response_group[] =
-  {
-    [SESSION_SET_DELETION_RESPONSE_NODE_ID] = {
-      .type = PFCP_IE_NODE_ID,
-      .offset = offsetof(pfcp_session_set_deletion_response_t, response.node_id)
-    },
-    [SESSION_SET_DELETION_RESPONSE_CAUSE] = {
-      .type = PFCP_IE_CAUSE,
-      .offset = offsetof(pfcp_session_set_deletion_response_t, response.cause)
-    },
-    [SESSION_SET_DELETION_RESPONSE_OFFENDING_IE] = {
-      .type = PFCP_IE_OFFENDING_IE,
-      .offset = offsetof(pfcp_session_set_deletion_response_t, response.offending_ie)
     },
   };
 
@@ -5813,10 +5765,10 @@ static struct pfcp_ie_def msg_specs[] =
 
     [PFCP_HEARTBEAT_RESPONSE] =
     {
-      .length = sizeof(pfcp_heartbeat_response_t),
-      .mandatory = BIT(HEARTBEAT_RESPONSE_RECOVERY_TIME_STAMP),
-      .size = ARRAY_LEN(pfcp_heartbeat_response_group),
-      .group = pfcp_heartbeat_response_group,
+      .length = sizeof(pfcp_simple_response_t),
+      .mandatory = BIT(PFCP_RESPONSE_RECOVERY_TIME_STAMP),
+      .size = ARRAY_LEN(pfcp_simple_response_group),
+      .group = pfcp_simple_response_group,
     },
 
     [PFCP_PFD_MANAGEMENT_REQUEST] =
@@ -5824,14 +5776,6 @@ static struct pfcp_ie_def msg_specs[] =
       .length = sizeof(pfcp_pfd_management_request_t),
       .size = ARRAY_LEN(pfcp_pfd_management_request_group),
       .group = pfcp_pfd_management_request_group,
-    },
-
-    [PFCP_PFD_MANAGEMENT_RESPONSE] =
-    {
-      .length = sizeof(pfcp_pfd_management_response_t),
-      .mandatory = BIT(PFD_MANAGEMENT_RESPONSE_CAUSE),
-      .size = ARRAY_LEN(pfcp_pfd_management_response_group),
-      .group = pfcp_pfd_management_response_group,
     },
 
     [PFCP_ASSOCIATION_SETUP_REQUEST] =
@@ -5880,11 +5824,11 @@ static struct pfcp_ie_def msg_specs[] =
 
     [PFCP_ASSOCIATION_RELEASE_RESPONSE] =
     {
-      .length = sizeof(pfcp_association_release_response_t),
-      .mandatory = (BIT(ASSOCIATION_RELEASE_RESPONSE_NODE_ID) |
-		    BIT(ASSOCIATION_RELEASE_RESPONSE_CAUSE)),
-      .size = ARRAY_LEN(pfcp_association_release_response_group),
-      .group = pfcp_association_release_response_group,
+      .length = sizeof(pfcp_simple_response_t),
+      .mandatory = (BIT(PFCP_RESPONSE_NODE_ID) |
+		    BIT(PFCP_RESPONSE_CAUSE)),
+      .size = ARRAY_LEN(pfcp_simple_response_group),
+      .group = pfcp_simple_response_group,
     },
 
     [PFCP_NODE_REPORT_REQUEST] =
@@ -5898,11 +5842,11 @@ static struct pfcp_ie_def msg_specs[] =
 
     [PFCP_NODE_REPORT_RESPONSE] =
     {
-      .length = sizeof(pfcp_node_report_response_t),
-      .mandatory = (BIT(NODE_REPORT_RESPONSE_NODE_ID) |
-		    BIT(NODE_REPORT_RESPONSE_CAUSE)),
-      .size = ARRAY_LEN(pfcp_node_report_response_group),
-      .group = pfcp_node_report_response_group,
+      .length = sizeof(pfcp_simple_response_t),
+      .mandatory = (BIT(PFCP_RESPONSE_NODE_ID) |
+		    BIT(PFCP_RESPONSE_CAUSE)),
+      .size = ARRAY_LEN(pfcp_simple_response_group),
+      .group = pfcp_simple_response_group,
     },
 
     [PFCP_SESSION_SET_DELETION_REQUEST] =
@@ -5915,13 +5859,12 @@ static struct pfcp_ie_def msg_specs[] =
 
     [PFCP_SESSION_SET_DELETION_RESPONSE] =
     {
-      .length = sizeof(pfcp_session_set_deletion_response_t),
-      .mandatory = (BIT(SESSION_SET_DELETION_RESPONSE_NODE_ID) |
-		    BIT(SESSION_SET_DELETION_RESPONSE_CAUSE)),
-      .size = ARRAY_LEN(pfcp_session_set_deletion_response_group),
-      .group = pfcp_session_set_deletion_response_group,
+      .length = sizeof(pfcp_simple_response_t),
+      .mandatory = (BIT(PFCP_RESPONSE_NODE_ID) |
+		    BIT(PFCP_RESPONSE_CAUSE)),
+      .size = ARRAY_LEN(pfcp_simple_response_group),
+      .group = pfcp_simple_response_group,
     },
-
 
     [PFCP_SESSION_ESTABLISHMENT_REQUEST] =
     {
@@ -6004,10 +5947,11 @@ get_ie_spec (const pfcp_ie_t * ie, const struct pfcp_ie_def *def)
 }
 
 static int decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
-			 struct pfcp_group *grp);
+			 struct pfcp_group *grp, pfcp_offending_ie_t ** err);
 
 static int
-decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
+decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p,
+	   pfcp_offending_ie_t ** err)
 {
 #if CLIB_DEBUG > 0
   uword id = def - group_specs;
@@ -6015,7 +5959,7 @@ decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
   int r;
 
   if (def->size != 0)
-    return decode_group (ie, length, def, (struct pfcp_group *) p);
+    return decode_group (ie, length, def, (struct pfcp_group *) p, err);
   else
     {
       if ((r = def->decode (ie, length, p)) == 0)
@@ -6026,7 +5970,8 @@ decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
 }
 
 static int
-decode_vector_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
+decode_vector_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p,
+		  pfcp_offending_ie_t ** err)
 {
   u8 **v = (u8 **) p;
   uword vl;
@@ -6040,7 +5985,7 @@ decode_vector_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
   memset (*v + (vl * def->length), 0, def->length);
   _vec_len (*v) = vl;
 
-  if ((r = decode_ie (def, ie, length, *v + (vl * def->length))) == 0)
+  if ((r = decode_ie (def, ie, length, *v + (vl * def->length), err)) == 0)
     _vec_len (*v)++;
 
   return r;
@@ -6048,7 +5993,7 @@ decode_vector_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p)
 
 static int
 decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
-	      struct pfcp_group *grp)
+	      struct pfcp_group *grp, pfcp_offending_ie_t ** err)
 {
   int r = 0, pos = 0;
 
@@ -6077,14 +6022,14 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
       u8 *v = ((u8 *) grp) + item->offset;
 
       if (item->is_array)
-	r = decode_vector_ie (ie_def, (u8 *) (ie + 1), length, v);
+	r = decode_vector_ie (ie_def, (u8 *) (ie + 1), length, v, err);
       else
 	{
 	  if (ISSET_BIT (grp->fields, id))
 	    /* duplicate IE */
 	    vec_add1 (grp->ies, ie);
 	  else
-	    r = decode_ie (ie_def, (u8 *) (ie + 1), length, v);
+	    r = decode_ie (ie_def, (u8 *) (ie + 1), length, v, err);
 	}
 
       if (r == 0)
@@ -6110,6 +6055,7 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 	  pfcp_debug ("Missing IE Type: %s, %u",
 		      ie_desc[grp_def->group[i].type],
 		      grp_def->group[i].type);
+	  vec_add1(*err, grp_def->group[i].type);
 	}
 
       return PFCP_CAUSE_MANDATORY_IE_MISSING;
@@ -6119,12 +6065,13 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 }
 
 int
-pfcp_decode_msg (u16 type, u8 * p, int len, struct pfcp_group *grp)
+pfcp_decode_msg (u16 type, u8 * p, int len, struct pfcp_group *grp,
+		 pfcp_offending_ie_t ** err)
 {
   assert (type < ARRAY_LEN (msg_specs));
   assert (msg_specs[type].size == 0 || msg_specs[type].group != NULL);
 
-  return decode_group (p, len, &msg_specs[type], grp);
+  return decode_group (p, len, &msg_specs[type], grp, err);
 }
 
 static int encode_group (const struct pfcp_ie_def *def,
