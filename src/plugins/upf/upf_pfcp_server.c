@@ -610,9 +610,11 @@ urr_check_counter (u64 bytes, u64 consumed, u64 threshold, u64 quota)
 }
 
 static void
-upf_pfcp_session_usage_report (upf_session_t * sx, f64 now)
+upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
+			       upf_event_urr_data_t * uev, f64 now)
 {
   pfcp_session_report_request_t req;
+  upf_event_urr_data_t * ev;
   struct rules *active;
   upf_urr_t *urr;
 
@@ -629,6 +631,17 @@ upf_pfcp_session_usage_report (upf_session_t * sx, f64 now)
   req.report_type = REPORT_TYPE_USAR;
 
   SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_USAGE_REPORT);
+
+  vec_foreach (ev, uev)
+  {
+    urr = sx_get_urr_by_id (active, ev->urr_id);
+    if (!urr)
+      continue;
+
+    if (ev->trigger & URR_START_OF_TRAFFIC)
+      build_usage_report (sx, ue, urr, USAGE_REPORT_TRIGGER_START_OF_TRAFFIC,
+			  now, &req.usage_report);
+  }
 
   vec_foreach (urr, active->urr)
   {
@@ -651,7 +664,7 @@ upf_pfcp_session_usage_report (upf_session_t * sx, f64 now)
 
     if (trigger != 0)
       {
-	build_usage_report (sx, urr, trigger, now, &req.usage_report);
+	build_usage_report (sx, ue, urr, trigger, now, &req.usage_report);
       }
   }
 
@@ -810,7 +823,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
     if (trigger != 0)
       {
-	build_usage_report (sx, urr, trigger, now, &req.usage_report);
+	build_usage_report (sx, NULL, urr, trigger, now, &req.usage_report);
 
 	// clear reporting on the time based triggers, until rearmed by update
 	urr->triggers &= ~(REPORTING_TRIGGER_TIME_THRESHOLD |
@@ -961,12 +974,20 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	  {
 	    for (int i = 0; i < vec_len (event_data); i++)
 	      {
-		uword si = (uword) event_data[i];
+		upf_event_urr_data_t * uev =
+		  (upf_event_urr_data_t *) event_data[i];
+		upf_event_urr_hdr_t * ueh =
+		  (upf_event_urr_hdr_t *) vec_header (uev, sizeof (upf_event_urr_hdr_t));
 		upf_session_t *sx;
 
-		sx = pool_elt_at_index (gtm->sessions, si);
-		clib_warning ("URR Event on Session Idx: %wd, %p\n", si, sx);
-		upf_pfcp_session_usage_report (sx, sxsm->now);
+		sx = pool_elt_at_index (gtm->sessions, ueh->session_idx);
+		clib_warning ("URR Event on Session Idx: %wd, %p, UE: %U, Events: %u\n",
+			      ueh->session_idx, sx,
+			      format_ip46_address, &ueh->ue, IP46_TYPE_ANY,
+			      vec_len(uev));
+		upf_pfcp_session_usage_report (sx, &ueh->ue, uev, sxsm->now);
+
+		vec_free_h (uev, sizeof (upf_event_urr_hdr_t));
 	      }
 	    break;
 	  }
@@ -1105,15 +1126,12 @@ upf_pfcp_handle_input (vlib_main_t * vm, vlib_buffer_t * b, int is_ip4)
 }
 
 void
-upf_pfcp_server_session_usage_report (upf_session_t * sess)
+upf_pfcp_server_session_usage_report (upf_event_urr_data_t * uev)
 {
   sx_server_main_t *sx = &sx_server_main;
   vlib_main_t *vm = sx->vlib_main;
-  upf_main_t *gtm = &upf_main;
 
-  clib_warning ("sending URR event on %wd\n", (uword) (sess - gtm->sessions));
-  vlib_process_signal_event_mt (vm, sx_api_process_node.index, EVENT_URR,
-				(uword) (sess - gtm->sessions));
+  vlib_process_signal_event_mt (vm, sx_api_process_node.index, EVENT_URR, (uword) uev);
 }
 
 /*********************************************************/

@@ -1875,7 +1875,7 @@ init_usage_report (upf_urr_t * urr, u32 trigger,
 }
 
 pfcp_usage_report_t *
-build_usage_report (upf_session_t * sess, upf_urr_t * urr,
+build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 		    u32 trigger, f64 now, pfcp_usage_report_t ** report)
 {
   pfcp_usage_report_t *r;
@@ -1953,18 +1953,38 @@ build_usage_report (upf_session_t * sess, upf_urr_t * urr,
       r->end_time = end;
     }
 
-  SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
-  r->volume_measurement.fields = 7;
+  if (((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
+		   USAGE_REPORT_TRIGGER_STOP_OF_TRAFFIC)) != 0)
+      && (ue != NULL))
+    {
 
-  r->volume_measurement.ul = volume.measure.bytes.ul;
-  r->volume_measurement.dl = volume.measure.bytes.dl;
-  r->volume_measurement.total = volume.measure.bytes.total;
+      SET_BIT (r->grp.fields,  USAGE_REPORT_UE_IP_ADDRESS);
+      if (ip46_address_is_ip4(ue))
+	{
+	  r->ue_ip_address.flags = IE_UE_IP_ADDRESS_V4;
+	  r->ue_ip_address.ip4 = ue->ip4;
+	}
+      else
+	{
+	  r->ue_ip_address.flags = IE_UE_IP_ADDRESS_V6;
+	  r->ue_ip_address.ip6 = ue->ip6;
+	}
+    }
 
-  SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
-  r->duration_measurement = end - start;
+  if ((trigger & USAGE_REPORT_TRIGGER_START_OF_TRAFFIC) == 0)
+    {
+      SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
+      r->volume_measurement.fields = 7;
+
+      r->volume_measurement.ul = volume.measure.bytes.ul;
+      r->volume_measurement.dl = volume.measure.bytes.dl;
+      r->volume_measurement.total = volume.measure.bytes.total;
+
+      SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
+      r->duration_measurement = end - start;
+    }
 
   /* SET_BIT(r->grp.fields, USAGE_REPORT_APPLICATION_DETECTION_INFORMATION); */
-  /* SET_BIT(r->grp.fields, USAGE_REPORT_UE_IP_ADDRESS); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_NETWORK_INSTANCE); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_FIRST_PACKET); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_LAST_PACKET); */
@@ -2221,8 +2241,9 @@ handle_session_modification_request (sx_msg_t * req,
 	if (!(urr = sx_get_urr (sess, SX_ACTIVE, qry->urr_id)))
 	  continue;
 
-	build_usage_report (sess, urr, USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT,
-			    now, &resp.usage_report);
+	build_usage_report (sess, NULL, urr,
+			    USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT, now,
+			    &resp.usage_report);
       }
     }
   else
@@ -2242,7 +2263,7 @@ handle_session_modification_request (sx_msg_t * req,
 
 	  vec_foreach (urr, active->urr)
 	  {
-	    build_usage_report (sess, urr,
+	    build_usage_report (sess, NULL, urr,
 				USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT, now,
 				&resp.usage_report);
 	  }
@@ -2316,7 +2337,7 @@ handle_session_deletion_request (sx_msg_t * req,
 
       vec_foreach (urr, active->urr)
       {
-	build_usage_report (sess, urr,
+	build_usage_report (sess, NULL, urr,
 			    USAGE_REPORT_TRIGGER_TERMINATION_REPORT, now,
 			    &resp.usage_report);
       }

@@ -693,6 +693,8 @@ make_pending_urr (upf_session_t * sx)
       vec_foreach (urr, pending->urr)
       {
 	urr->update_flags = 0;
+	urr->traffic = NULL;
+	urr->traffic_by_ue = NULL;
 	memset (&urr->volume.measure, 0, sizeof (urr->volume.measure));
       }
 
@@ -796,6 +798,7 @@ sx_free_rules (upf_session_t * sx, int rule)
   struct rules *rules = sx_get_rules (sx, rule);
   upf_pdr_t *pdr;
   upf_far_t *far;
+  upf_urr_t *urr;
   upf_qer_t *qer;
 
   vec_foreach (pdr, rules->pdr)
@@ -814,6 +817,11 @@ sx_free_rules (upf_session_t * sx, int rule)
     vec_free (far->forward.rewrite);
   }
   vec_free (rules->far);
+  vec_foreach (urr, rules->urr)
+    {
+      pool_free (urr->traffic);
+      hash_free (urr->traffic_by_ue);
+    }
   vec_free (rules->urr);
   vec_foreach (qer, rules->qer)
   {
@@ -1724,6 +1732,11 @@ sx_update_apply (upf_session_t * sx)
 	    continue;
 	  }
 
+	new_urr->traffic = urr->traffic;
+	new_urr->traffic_by_ue = urr->traffic_by_ue;
+	urr->traffic = NULL;
+	urr->traffic_by_ue = NULL;
+
 	if ((new_urr->methods & SX_URR_VOLUME))
 	  {
 	    urr_volume_t *old_volume = &urr->volume;
@@ -1813,6 +1826,10 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	      upf_pdr_t * pdr, vlib_buffer_t * b,
 	      u8 is_dl, u8 is_ul, u32 next)
 {
+  upf_urr_traffic_t tt = {.ip = ip46_address_initializer};
+  upf_event_urr_data_t * uev = NULL;
+  upf_main_t *gtm = &upf_main;
+  upf_event_urr_hdr_t * ueh;
   int status = URR_OK;
   u16 *urr_id;
 
@@ -1830,6 +1847,8 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
     if ((urr->methods & SX_URR_VOLUME))
       {
+	uword len = vlib_buffer_length_in_chain (vm, b);
+
 #define urr_incr_and_check(V, D, L)					\
 	  urr_increment_and_check_counter(&V.measure.packets.D,		\
 					  &V.measure.bytes.D,		\
@@ -1839,20 +1858,82 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 					  (L))
 
 	if (is_ul)
-	  r |=
-	    urr_incr_and_check (urr->volume, ul,
-				vlib_buffer_length_in_chain (vm, b));
+	  r |= urr_incr_and_check (urr->volume, ul, len);
 	if (is_dl)
-	  r |=
-	    urr_incr_and_check (urr->volume, dl,
-				vlib_buffer_length_in_chain (vm, b));
+	  r |= urr_incr_and_check (urr->volume, dl, len);
 
-	r |=
-	  urr_incr_and_check (urr->volume, total,
-			      vlib_buffer_length_in_chain (vm, b));
+	r |= urr_incr_and_check (urr->volume, total, len);
 
 	if (PREDICT_FALSE (r & URR_QUOTA_EXHAUSTED))
 	  urr->status |= URR_OVER_QUOTA;
+      }
+
+    if ((urr->methods & SX_URR_EVENT) &&
+	(urr->triggers & REPORTING_TRIGGER_START_OF_TRAFFIC))
+      {
+	ip4_header_t * iph = (ip4_header_t *) (b->data + vnet_buffer (b)->l3_hdr_offset);
+	upf_urr_traffic_t *t = NULL;
+
+	if (ip46_address_is_zero(&tt.ip))
+	  {
+	    // calculate session key based on PDI and check session table....
+	    if ((iph->ip_version_and_header_length & 0xF0) == 0x40)
+	      {
+		if (is_dl)
+		  ip46_address_set_ip4 (&tt.ip, &iph->dst_address);
+		if (is_ul)
+		  ip46_address_set_ip4 (&tt.ip, &iph->src_address);
+	      }
+	    else
+	      {
+		ip6_header_t * ip6 =
+		  (ip6_header_t *) (b->data + vnet_buffer (b)->l3_hdr_offset);
+
+		ASSERT ((iph->ip_version_and_header_length & 0xF0) == 0x60);
+
+		if (is_dl)
+		  ip46_address_set_ip6 (&tt.ip, &ip6->dst_address);
+		if (is_ul)
+		  ip46_address_set_ip6 (&tt.ip, &ip6->src_address);
+	      }
+	  }
+
+	clib_warning ("Start Of Traffic UE IP: %U, Pool: %p, Hash: %p\n",
+		      format_ip46_address, &tt.ip, IP46_TYPE_ANY,
+		      urr->traffic, urr->traffic_by_ue);
+
+	if (urr->traffic_by_ue)
+	  {
+	    uword *p;
+
+	    ASSERT (urr->traffic != NULL);
+
+	    p = hash_get_mem (urr->traffic_by_ue, &tt.ip);
+	    if (p)
+	      t = pool_elt_at_index (urr->traffic, p[0]);
+	  }
+
+	if (!t)
+	  {
+	    upf_event_urr_data_t ev =
+	      {
+		.urr_id = urr->id,
+		.trigger = URR_START_OF_TRAFFIC
+	      };
+
+	    /* no traffic for this UE */
+	    if (!urr->traffic_by_ue)
+	      urr->traffic_by_ue =
+		hash_create_mem (0, sizeof (ip46_address_t), sizeof (uword));
+
+	    pool_get (urr->traffic, t);
+	    *t = tt;
+	    hash_set_mem (urr->traffic_by_ue, &t->ip, t - urr->traffic);
+
+	    vec_add1_ha(uev, ev, sizeof (upf_event_urr_hdr_t), 0);
+	    status |= URR_START_OF_TRAFFIC;
+	  }
+	// TODO: trafic was expired, rearm and send report
       }
 
     if (PREDICT_FALSE (urr->status & URR_OVER_QUOTA))
@@ -1864,7 +1945,15 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
   clib_spinlock_unlock (&sess->lock);
 
   if (PREDICT_FALSE (status != URR_OK))
-    upf_pfcp_server_session_usage_report (sess);
+    {
+      vec_validate_ha(uev, 0, sizeof (upf_event_urr_hdr_t), 0);
+      ueh = (upf_event_urr_hdr_t *) vec_header (uev, sizeof (upf_event_urr_hdr_t));
+      ueh->session_idx = (uword) (sess - gtm->sessions);
+      ueh->ue = tt.ip;
+
+      clib_warning ("sending URR event on %wd\n", (uword) ueh->session_idx);
+      upf_pfcp_server_session_usage_report (uev);
+    }
 
   return next;
 }
