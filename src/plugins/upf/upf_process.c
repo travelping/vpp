@@ -82,6 +82,13 @@ format_upf_process_trace (u8 * s, va_list * args)
   return s;
 }
 
+static_always_inline void
+upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
+{
+  vnet_buffer (b)->l3_hdr_offset = b->current_data;
+  b->flags |= VNET_BUFFER_F_L3_HDR_OFFSET_VALID;
+}
+
 static uword
 upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	     vlib_frame_t * from_frame, int is_ip4)
@@ -159,6 +166,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  goto trace;
 		}
 	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 
 	    case 1:	/* GTP-U/UDP/IPv6 */
@@ -171,6 +179,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  goto trace;
 		}
 	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 
 	    case 2:	/* UDP/IPv4 */
@@ -182,6 +191,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
+	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      vlib_buffer_advance (b,
 				   sizeof (ip4_header_t) +
 				   sizeof (udp_header_t));
@@ -196,9 +206,14 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
+	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      vlib_buffer_advance (b,
 				   sizeof (ip6_header_t) +
 				   sizeof (udp_header_t));
+	      break;
+
+	    default:
+	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 	    }
 

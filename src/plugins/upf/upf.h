@@ -379,6 +379,7 @@ typedef struct
 #define URR_OK                  0
 #define URR_QUOTA_EXHAUSTED     BIT(0)
 #define URR_THRESHOLD_REACHED   BIT(1)
+#define URR_START_OF_TRAFFIC    BIT(2)
 
 /* TODO: measure if more optimize cache line aware layout
  *       of the counters and quotas has any performance impcat */
@@ -409,6 +410,13 @@ typedef struct
   u32 period;			/* relative duration in seconds */
   u32 handle;
 } urr_time_t;
+
+typedef struct {
+  CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
+
+  ip46_address_t ip;
+  //TODO: timeout
+} upf_urr_traffic_t;
 
 /* Usage Reporting Rules */
 typedef struct
@@ -448,6 +456,10 @@ typedef struct
     f64 start_time;
     urr_measure_t volume;
   } usage_before_monitoring_time;
+
+  /* pool of urr traffic info */
+  upf_urr_traffic_t *traffic;
+  uword * traffic_by_ue;
 } upf_urr_t;
 
 /* QoS Enforcement Rules */

@@ -26,6 +26,7 @@
 
 int upf_pfcp_handle_msg (sx_msg_t * msg);
 pfcp_usage_report_t *build_usage_report (upf_session_t * sess,
+					 ip46_address_t * ue,
 					 upf_urr_t * urr, u32 trigger,
 					 f64 now,
 					 pfcp_usage_report_t ** report);

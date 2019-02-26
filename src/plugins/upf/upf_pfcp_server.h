@@ -90,6 +90,18 @@ typedef struct
   vlib_main_t *vlib_main;
 } sx_server_main_t;
 
+typedef struct
+{
+  uword session_idx;
+  ip46_address_t ue;
+} upf_event_urr_hdr_t;
+
+typedef struct
+{
+  u32 urr_id;
+  u32 trigger;
+} upf_event_urr_data_t;
+
 extern sx_server_main_t sx_server_main;
 
 extern vlib_node_registration_t sx4_input_node;
@@ -110,7 +122,7 @@ int upf_pfcp_send_request (upf_session_t * sx, u8 type,
 int upf_pfcp_send_response (sx_msg_t * req, u64 cp_seid, u8 type,
 			    struct pfcp_group *grp);
 
-void upf_pfcp_server_session_usage_report (upf_session_t * sx);
+void upf_pfcp_server_session_usage_report (upf_event_urr_data_t * uev);
 
 void upf_pfcp_handle_input (vlib_main_t * vm, vlib_buffer_t * b, int is_ip4);
 
