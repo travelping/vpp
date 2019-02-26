@@ -143,163 +143,164 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = sx_get_far_by_id (active, pdr->far_id);
 	    }
 
-	  if (PREDICT_TRUE (pdr != 0))
+	  if (PREDICT_FALSE (!pdr))
+	    goto stats;
+
+	  /* Outer Header Removal */
+	  switch (pdr->outer_header_removal)
 	    {
-	      /* Outer Header Removal */
-	      switch (pdr->outer_header_removal)
-		{
-		case 0:	/* GTP-U/UDP/IPv4 */
-		  if (PREDICT_FALSE
-		      ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
-		       BUFFER_GTP_UDP_IP4))
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
-		      goto trace;
-		    }
-		  vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
-		  break;
-
-		case 1:	/* GTP-U/UDP/IPv6 */
-		  if (PREDICT_FALSE
-		      ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
-		       BUFFER_GTP_UDP_IP6))
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
-		      goto trace;
-		    }
-		  vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
-		  break;
-
-		case 2:	/* UDP/IPv4 */
-		  if (PREDICT_FALSE
-		      ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
-		       BUFFER_UDP_IP4))
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
-		      goto trace;
-		    }
-		  vlib_buffer_advance (b,
-				       sizeof (ip4_header_t) +
-				       sizeof (udp_header_t));
-		  break;
-
-		case 3:	/* UDP/IPv6 */
-		  if (PREDICT_FALSE
-		      ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
-		       BUFFER_UDP_IP6))
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
-		      goto trace;
-		    }
-		  vlib_buffer_advance (b,
-				       sizeof (ip6_header_t) +
-				       sizeof (udp_header_t));
-		  break;
-		}
-
-	      if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
-		{
-		  if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
-		    {
-		      if (far->forward.outer_header_creation.description
-			  & OUTER_HEADER_CREATION_GTP_IP4)
-			{
-			  next = UPF_PROCESS_NEXT_GTP_IP4_ENCAP;
-			}
-		      else if (far->forward.outer_header_creation.description
-			       & OUTER_HEADER_CREATION_GTP_IP6)
-			{
-			  next = UPF_PROCESS_NEXT_GTP_IP6_ENCAP;
-			}
-		      else if (far->forward.outer_header_creation.description
-			       & OUTER_HEADER_CREATION_UDP_IP4)
-			{
-			  next = UPF_PROCESS_NEXT_DROP;
-			  // error = UPF_PROCESS_ERROR_NOT_YET;
-			  goto trace;
-			}
-		      else if (far->forward.outer_header_creation.description
-			       & OUTER_HEADER_CREATION_UDP_IP6)
-			{
-			  next = UPF_PROCESS_NEXT_DROP;
-			  // error = UPF_PROCESS_ERROR_NOT_YET;
-			  goto trace;
-			}
-		    }
-		  else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
-		    {
-		      u32 fib_index = is_ip4 ?
-			ip4_fib_table_get_index_for_sw_if_index (far->forward.
-								 dst_sw_if_index)
-			: ip6_fib_table_get_index_for_sw_if_index (far->
-								   forward.
-								   dst_sw_if_index);
-
-		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			far->forward.dst_sw_if_index;
-		      vnet_buffer2 (b)->gtpu.session_index = sidx;
-		      vnet_buffer2 (b)->gtpu.far_index =
-			(far - active->far) | 0x80000000;
-		      vnet_buffer2 (b)->connection_index =
-			upf_http_redirect_session (fib_index, is_ip4);
-		      next = UPF_PROCESS_NEXT_IP_LOCAL;
-
-		      if (PREDICT_FALSE
-			  (vnet_buffer2 (b)->connection_index == ~0))
-			{
-			  error = UPF_PROCESS_ERROR_NO_LISTENER;
-			  next = UPF_PROCESS_NEXT_DROP;
-			}
-		    }
-		  else
-		    {
-		      if (is_ip4)
-			{
-			  b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
-					VNET_BUFFER_F_OFFLOAD_UDP_CKSUM |
-					VNET_BUFFER_F_OFFLOAD_IP_CKSUM);
-			  vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			    far->forward.table_id;
-			}
-		      else
-			{
-			  b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
-					VNET_BUFFER_F_OFFLOAD_UDP_CKSUM);
-			  vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			    far->forward.table_id;
-			}
-		      next = UPF_PROCESS_NEXT_IP_INPUT;
-		    }
-		}
-	      else if (far->apply_action & FAR_BUFFER)
+	    case 0:	/* GTP-U/UDP/IPv4 */
+	      if (PREDICT_FALSE
+		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		   BUFFER_GTP_UDP_IP4))
 		{
 		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_NOT_YET;
+		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  goto trace;
+		}
+	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      break;
+
+	    case 1:	/* GTP-U/UDP/IPv6 */
+	      if (PREDICT_FALSE
+		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		   BUFFER_GTP_UDP_IP6))
+		{
+		  next = UPF_PROCESS_NEXT_DROP;
+		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  goto trace;
+		}
+	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      break;
+
+	    case 2:	/* UDP/IPv4 */
+	      if (PREDICT_FALSE
+		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		   BUFFER_UDP_IP4))
+		{
+		  next = UPF_PROCESS_NEXT_DROP;
+		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  goto trace;
+		}
+	      vlib_buffer_advance (b,
+				   sizeof (ip4_header_t) +
+				   sizeof (udp_header_t));
+	      break;
+
+	    case 3:	/* UDP/IPv6 */
+	      if (PREDICT_FALSE
+		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		   BUFFER_UDP_IP6))
+		{
+		  next = UPF_PROCESS_NEXT_DROP;
+		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  goto trace;
+		}
+	      vlib_buffer_advance (b,
+				   sizeof (ip6_header_t) +
+				   sizeof (udp_header_t));
+	      break;
+	    }
+
+	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
+	    {
+	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
+		{
+		  if (far->forward.outer_header_creation.description
+		      & OUTER_HEADER_CREATION_GTP_IP4)
+		    {
+		      next = UPF_PROCESS_NEXT_GTP_IP4_ENCAP;
+		    }
+		  else if (far->forward.outer_header_creation.description
+			   & OUTER_HEADER_CREATION_GTP_IP6)
+		    {
+		      next = UPF_PROCESS_NEXT_GTP_IP6_ENCAP;
+		    }
+		  else if (far->forward.outer_header_creation.description
+			   & OUTER_HEADER_CREATION_UDP_IP4)
+		    {
+		      next = UPF_PROCESS_NEXT_DROP;
+		      // error = UPF_PROCESS_ERROR_NOT_YET;
+		      goto trace;
+		    }
+		  else if (far->forward.outer_header_creation.description
+			   & OUTER_HEADER_CREATION_UDP_IP6)
+		    {
+		      next = UPF_PROCESS_NEXT_DROP;
+		      // error = UPF_PROCESS_ERROR_NOT_YET;
+		      goto trace;
+		    }
+		}
+	      else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
+		{
+		  u32 fib_index = is_ip4 ?
+		    ip4_fib_table_get_index_for_sw_if_index (far->forward.
+							     dst_sw_if_index)
+		    : ip6_fib_table_get_index_for_sw_if_index (far->
+							       forward.
+							       dst_sw_if_index);
+
+		  vnet_buffer (b)->sw_if_index[VLIB_TX] =
+		    far->forward.dst_sw_if_index;
+		  vnet_buffer2 (b)->gtpu.session_index = sidx;
+		  vnet_buffer2 (b)->gtpu.far_index =
+		    (far - active->far) | 0x80000000;
+		  vnet_buffer2 (b)->connection_index =
+		    upf_http_redirect_session (fib_index, is_ip4);
+		  next = UPF_PROCESS_NEXT_IP_LOCAL;
+
+		  if (PREDICT_FALSE
+		      (vnet_buffer2 (b)->connection_index == ~0))
+		    {
+		      error = UPF_PROCESS_ERROR_NO_LISTENER;
+		      next = UPF_PROCESS_NEXT_DROP;
+		    }
 		}
 	      else
 		{
-		  next = UPF_PROCESS_NEXT_DROP;
+		  if (is_ip4)
+		    {
+		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
+				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM |
+				    VNET_BUFFER_F_OFFLOAD_IP_CKSUM);
+		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
+			far->forward.table_id;
+		    }
+		  else
+		    {
+		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
+				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM);
+		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
+			far->forward.table_id;
+		    }
+		  next = UPF_PROCESS_NEXT_IP_INPUT;
 		}
+	    }
+	  else if (far->apply_action & FAR_BUFFER)
+	    {
+	      next = UPF_PROCESS_NEXT_DROP;
+	      // error = UPF_PROCESS_ERROR_NOT_YET;
+	    }
+	  else
+	    {
+	      next = UPF_PROCESS_NEXT_DROP;
+	    }
 
 #define IS_DL(_pdr, _far)						\
-	      ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)
+	  ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)
 #define IS_UL(_pdr, _far)						\
-	      ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
+	  ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
 
-	      gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
-	      next = process_qers (vm, sess, active, pdr, b,
-				   IS_DL (pdr, far), IS_UL (pdr, far), next);
-	      next = process_urrs (vm, sess, active, pdr, b,
-				   IS_DL (pdr, far), IS_UL (pdr, far), next);
+	  gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
+	  next = process_qers (vm, sess, active, pdr, b,
+			       IS_DL (pdr, far), IS_UL (pdr, far), next);
+	  next = process_urrs (vm, sess, active, pdr, b,
+			       IS_DL (pdr, far), IS_UL (pdr, far), next);
 
 #undef IS_DL
 #undef IS_UL
-	    }
 
+	stats:
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;
 	  stats_n_bytes += len;
