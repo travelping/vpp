@@ -2182,7 +2182,8 @@ format_sx_session (u8 * s, va_list * args)
       }
     if (pdr->pdi.fields & F_PDI_UE_IP_ADDR)
       {
-	s = format (s, "    UE IP address:\n");
+	s = format (s, "    UE IP address (%s):\n",
+		    pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD ? "destination" : "source");
 	if (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V4)
 	  s = format (s, "      IPv4 address: %U\n",
 		      format_ip4_address, &pdr->pdi.ue_addr.ip4);
