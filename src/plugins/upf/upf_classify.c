@@ -404,6 +404,31 @@ acl_ip6_is_equal_masked (const ip6_address_t * ip, upf_acl_t * acl, int field)
 				      &acl->mask.address[field].ip6);
 }
 
+always_inline uword
+ip46_address_is_equal_masked (const ip46_address_t * a,
+			      const ip46_address_t * b,
+			      const ip46_address_t * mask)
+{
+  int i;
+  for (i = 0; i < ARRAY_LEN (a->as_u64); i++)
+    {
+      u64 a_masked, b_masked;
+      a_masked = a->as_u64[i] & mask->as_u64[i];
+      b_masked = b->as_u64[i] & mask->as_u64[i];
+
+      if (a_masked != b_masked)
+	return 0;
+    }
+  return 1;
+}
+
+always_inline int
+acl_ip46_is_equal_masked (const ip46_address_t * ip, upf_acl_t * acl, int field)
+{
+  return ip46_address_is_equal_masked (ip, &acl->match.address[field],
+				       &acl->mask.address[field]);
+}
+
 always_inline int
 acl_port_in_range (const u16 port, upf_acl_t * acl, int field)
 {
@@ -411,11 +436,10 @@ acl_port_in_range (const u16 port, upf_acl_t * acl, int field)
 }
 
 always_inline int
-upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
-		      upf_acl_t * acl)
+upf_acl_classify_one (vlib_main_t * vm, u32 teid,
+		      flow_entry_t * flow, int is_reverse,
+		      u8 is_ip4, upf_acl_t * acl)
 {
-  udp_header_t *proto_hdr;
-
   if (! !is_ip4 != ! !acl->is_ip4)
     return 0;
 
@@ -424,73 +448,42 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid, u8 * data, u8 is_ip4,
   if (acl->match_teid && teid != acl->teid)
     return 0;
 
-  if (is_ip4)
+  switch (acl->match_ue_ip)
     {
-      ip4_header_t *ip4h = (ip4_header_t *) data;
-
-      switch (acl->match_ue_ip)
-	{
-	case UPF_ACL_UL:
-	  gtp_debug ("UL: UE %U, Src: %U\n",
-		     format_ip4_address, &acl->ue_ip.ip4,
-		     format_ip4_address, &ip4h->src_address);
-	  if (!ip4_address_is_equal (&acl->ue_ip.ip4, &ip4h->src_address))
-	    return 0;
-	  break;
-	case UPF_ACL_DL:
-	  gtp_debug ("DL: UE %U, Dst: %U\n",
-		     format_ip4_address, &acl->ue_ip.ip4,
-		     format_ip4_address, &ip4h->dst_address);
-	  if (!ip4_address_is_equal (&acl->ue_ip.ip4, &ip4h->dst_address))
-	    return 0;
-	  break;
-	default:
-	  break;
-	}
-
-      gtp_debug ("Protocol: 0x%04x/0x%04x, 0x%04x\n",
-		 acl->match.protocol, acl->mask.protocol, ip4h->protocol);
-
-      if ((ip4h->protocol & acl->mask.protocol) !=
-	  (acl->match.protocol & acl->mask.protocol))
+    case UPF_ACL_UL:
+      gtp_debug ("UL: UE %U, Src: %U\n",
+		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
+		 format_ip46_address, &flow->key.ip[FT_ORIGIN ^ is_reverse], IP46_TYPE_ANY);
+      if (!ip46_address_is_equal (&acl->ue_ip, &flow->key.ip[FT_ORIGIN ^ is_reverse]))
 	return 0;
-
-      if (!acl_ip4_is_equal_masked (&ip4h->src_address, acl, UPF_ACL_FIELD_SRC)
-	  || !acl_ip4_is_equal_masked (&ip4h->dst_address, acl, UPF_ACL_FIELD_DST))
+      break;
+    case UPF_ACL_DL:
+      gtp_debug ("DL: UE %U, Dst: %U\n",
+		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
+		 format_ip46_address, &flow->key.ip[FT_REVERSE ^ is_reverse], IP46_TYPE_ANY);
+      if (!ip46_address_is_equal (&acl->ue_ip, &flow->key.ip[FT_REVERSE ^ is_reverse]))
 	return 0;
-
-      proto_hdr = (udp_header_t *) ip4_next_header (ip4h);
-    }
-  else
-    {
-      ip6_header_t *ip6h = (ip6_header_t *) data;
-
-      switch (acl->match_ue_ip)
-	{
-	case UPF_ACL_UL:
-	  if (!ip6_address_is_equal (&acl->ue_ip.ip6, &ip6h->src_address))
-	    return 0;
-	  break;
-	case UPF_ACL_DL:
-	  if (!ip6_address_is_equal (&acl->ue_ip.ip6, &ip6h->dst_address))
-	    return 0;
-	  break;
-	}
-
-      if ((ip6h->protocol & acl->mask.protocol) !=
-	  (acl->match.protocol & acl->mask.protocol))
-	return 0;
-
-      if (!acl_ip6_is_equal_masked (&ip6h->src_address, acl, UPF_ACL_FIELD_SRC)
-	  || !acl_ip6_is_equal_masked (&ip6h->dst_address, acl, UPF_ACL_FIELD_DST))
-	return 0;
-
-      proto_hdr = (udp_header_t *) ip6_next_header (ip6h);
+      break;
+    default:
+      break;
     }
 
-  if (!acl_port_in_range(clib_net_to_host_u16 (proto_hdr->src_port),
+  gtp_debug ("Protocol: 0x%04x/0x%04x, 0x%04x\n",
+	     acl->match.protocol, acl->mask.protocol, flow->key.proto);
+
+  if ((flow->key.proto & acl->mask.protocol) !=
+      (acl->match.protocol & acl->mask.protocol))
+    return 0;
+
+  if (!acl_ip46_is_equal_masked (&flow->key.ip[FT_ORIGIN ^ is_reverse],
+				 acl, UPF_ACL_FIELD_SRC)
+      || !acl_ip46_is_equal_masked (&flow->key.ip[FT_REVERSE ^ is_reverse],
+				    acl, UPF_ACL_FIELD_DST))
+    return 0;
+
+  if (!acl_port_in_range(clib_net_to_host_u16 (flow->key.port[FT_ORIGIN ^ is_reverse]),
 			 acl, UPF_ACL_FIELD_SRC)
-      ||  !acl_port_in_range(clib_net_to_host_u16 (proto_hdr->dst_port),
+      ||  !acl_port_in_range(clib_net_to_host_u16 (flow->key.port[FT_REVERSE ^ is_reverse]),
 			     acl, UPF_ACL_FIELD_DST))
     return 0;
 
@@ -505,7 +498,6 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
   u16 precedence = ~0;
   upf_acl_t *acl, *acl_vec;
   u32 teid;
-  u8 *pl;
 
   teid = vnet_buffer (b)->gtpu.teid;
   pl = vlib_buffer_get_current (b) + vnet_buffer (b)->gtpu.data_offset;
@@ -517,7 +509,7 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
   vec_foreach (acl, acl_vec)
   {
     if (acl->precedence < precedence &&
-	upf_acl_classify_one (vm, teid, pl, is_ip4, acl))
+	upf_acl_classify_one (vm, teid, flow, vnet_buffer (b)->gtpu.is_reverse, is_ip4, acl))
       {
 	precedence = acl->precedence;
 	vnet_buffer (b)->gtpu.pdr_idx = acl->pdr_idx;
