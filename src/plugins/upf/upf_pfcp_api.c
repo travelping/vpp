@@ -864,6 +864,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_APPLICATION_ID))
       {
+	upf_adf_app_t *app;
 	uword *p = NULL;
 	create->pdi.fields |= F_PDI_APPLICATION_ID;
 
@@ -879,16 +880,13 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	  }
 
 	ASSERT (!pool_is_free_index (gtm->upf_apps, p[0]));
+	app = pool_elt_at_index (gtm->upf_apps, p[0]);
 	create->pdi.adr.application_id = p[0];
 	create->pdi.adr.db_id = upf_adf_get_adr_db (p[0]);
+	create->pdi.adr.flags = app->flags;
 
-#if CLIB_DEBUG > 0
-	{
-	  upf_adf_app_t *app = pool_elt_at_index (gtm->upf_apps, p[0]);
-	  gtp_debug ("app: %v, ADR DB id %u", app->name,
-		     create->pdi.adr.db_id);
-	}
-#endif
+	gtp_debug ("app: %v, ADR DB id %u", app->name,
+		   create->pdi.adr.db_id);
       }
 
     create->outer_header_removal = OPT (pdr, CREATE_PDR_OUTER_HEADER_REMOVAL,
@@ -1009,6 +1007,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
 
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_APPLICATION_ID))
       {
+	upf_adf_app_t *app;
 	uword *p = NULL;
 
 	update->pdi.fields |= F_PDI_APPLICATION_ID;
@@ -1025,16 +1024,13 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
 	  }
 
 	ASSERT (!pool_is_free_index (gtm->upf_apps, p[0]));
+	app = pool_elt_at_index (gtm->upf_apps, p[0]);
 	update->pdi.adr.application_id = p[0];
 	update->pdi.adr.db_id = upf_adf_get_adr_db (p[0]);
+	update->pdi.adr.flags = app->flags;
 
-#if CLIB_DEBUG > 0
-	{
-	  upf_adf_app_t *app = pool_elt_at_index (gtm->upf_apps, p[0]);
-	  gtp_debug ("app: %v, ADR DB id %u", app->name,
-		     update->pdi.adr.db_id);
-	}
-#endif
+	gtp_debug ("app: %v, ADR DB id %u", app->name,
+		   update->pdi.adr.db_id);
       }
 
     update->outer_header_removal = OPT (pdr, UPDATE_PDR_OUTER_HEADER_REMOVAL,

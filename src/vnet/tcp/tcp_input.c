@@ -3577,7 +3577,9 @@ tcp_input_lookup_buffer (vlib_buffer_t * b, u8 thread_index, u32 * error,
   *error = result ? TCP_ERROR_NONE + result : *error;
 
   /* no Session, UPF TCP redirect socket hack */
-  if (PREDICT_FALSE (0 == tc && (vnet_buffer2 (b)->connection_index != ~0)))
+  if (PREDICT_FALSE (0 == tc &&
+		     (vnet_buffer2 (b)->connection_index != ~0 &&
+		      (vnet_buffer2 (b)->connection_index & 0x80000000) != 0)))
     tc = tp_vfts[TRANSPORT_PROTO_TCP].get_listener
       (vnet_buffer2 (b)->connection_index);
 

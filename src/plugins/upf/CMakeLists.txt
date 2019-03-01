@@ -45,7 +45,7 @@ if(URCU_FOUND AND HS_FOUND)
     upf_pfcp_api.c
     upf_pfcp_input.c
     upf_pfcp_server.c
-    upf_http_redirect_server.c
+    upf_proxy.c
     upf_adf.c
     flowtable_init.c
     flowtable.c
@@ -61,7 +61,7 @@ if(URCU_FOUND AND HS_FOUND)
     upf_pfcp.h
     upf_pfcp_api.h
     upf_pfcp_server.h
-    upf_http_redirect_server.h
+    upf_proxy.h
     upf_adf.h
     flowtable.h
     flowtable_tcp.h

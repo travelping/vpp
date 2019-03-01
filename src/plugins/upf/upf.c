@@ -1375,7 +1375,7 @@ upf_init (vlib_main_t * vm)
   sm->vlib_main = vm;
 
   if ((error =
-       vlib_call_init_function (vm, upf_http_redirect_server_main_init)))
+       vlib_call_init_function (vm, upf_proxy_main_init)))
     return error;
 
   sm->pfcp_endpoint_index =

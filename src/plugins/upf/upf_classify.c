@@ -30,7 +30,7 @@
 #include <upf/upf.h>
 #include <upf/upf_adf.h>
 #include <upf/upf_pfcp.h>
-#include <upf/upf_http_redirect_server.h>
+#include <upf/upf_proxy.h>
 
 #undef CLIB_DEBUG
 #define CLIB_DEBUG 1
@@ -495,13 +495,17 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
 		  struct rules * active, u8 is_ip4)
 {
   u32 next = UPF_CLASSIFY_NEXT_DROP;
-  u16 precedence = ~0;
+  u16 precedence;
   upf_acl_t *acl, *acl_vec;
   u32 teid;
 
   teid = vnet_buffer (b)->gtpu.teid;
-  pl = vlib_buffer_get_current (b) + vnet_buffer (b)->gtpu.data_offset;
-  vnet_buffer (b)->gtpu.pdr_idx = ~0;
+
+  precedence = active->proxy_precedence;
+  vnet_buffer (b)->gtpu.pdr_idx = active->proxy_pdr_idx;
+  flow->is_l3_proxy = (~0 != active->proxy_pdr_idx);
+  flow->is_decided = 0;
+  next = flow->is_l3_proxy ? UPF_CLASSIFY_NEXT_PROCESS : UPF_CLASSIFY_NEXT_DROP;
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
   gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
@@ -514,6 +518,8 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
 	precedence = acl->precedence;
 	vnet_buffer (b)->gtpu.pdr_idx = acl->pdr_idx;
 	next = UPF_CLASSIFY_NEXT_PROCESS;
+	flow->is_l3_proxy = 0;
+	flow->is_decided = 1;
 
 	gtp_debug ("match PDR: %u\n", acl->pdr_idx);
       }
@@ -586,6 +592,18 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  gtp_debug ("is_rev %u, is_fwd %d, pdr_idx %x\n",
 		     is_reverse, is_forward, flow->pdr_id[is_reverse]);
 
+	  /* ADR + redirect + proxy
+
+	     - process ACLs, remember proxy PDRs with the highest precedence
+	     - if proxy PDR has precedence higher that ACL pdr or no ACL matches,
+	       mark flow as proxy and goto processing
+	     - in processing:
+	       - send to proxy socket
+	     - in proxy socket
+	       - collect data till we have a decission
+	       - if no match, continue with following PDRs
+	       - if match, mark flow as decided and apply FAR
+	   */
 	  if (vnet_buffer (b)->gtpu.pdr_idx == ~0)
 	    next = upf_acl_classify (vm, b, flow, active, is_ip4);
 	  else if (is_forward)
@@ -603,7 +621,13 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    }
 
 	  if (vnet_buffer (b)->gtpu.pdr_idx != ~0)
-	    flow->pdr_id[is_reverse] = vnet_buffer (b)->gtpu.pdr_idx;
+	    {
+	      flow->pdr_id[is_reverse] = vnet_buffer (b)->gtpu.pdr_idx;
+
+	      if (flow->is_l3_proxy)
+		/* bypass flow classification if we decided to proxy */
+		flow->next[0] = flow->next[1] = FT_NEXT_PROCESS;
+	    }
 
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;

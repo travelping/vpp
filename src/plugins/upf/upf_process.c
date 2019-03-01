@@ -29,7 +29,7 @@
 
 #include <upf/upf.h>
 #include <upf/upf_pfcp.h>
-#include <upf/upf_http_redirect_server.h>
+#include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 0
 #define gtp_debug clib_warning
@@ -82,6 +82,34 @@ format_upf_process_trace (u8 * s, va_list * args)
   return s;
 }
 
+static_always_inline u32
+upf_to_proxy (vlib_buffer_t * b, int is_ip4, u32 sidx,
+	      u32 far_idx, u32 * error)
+{
+  u32 next;
+  u32 sw_if_index = vnet_buffer (b)->sw_if_index[VLIB_RX];
+  u32 fib_index = is_ip4 ?
+    ip4_fib_table_get_index_for_sw_if_index (sw_if_index)
+    : ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
+
+  clib_warning("SwIfIdx: %u, FIB: %u", sw_if_index, fib_index);
+  vnet_buffer (b)->sw_if_index[VLIB_TX] = sw_if_index;
+  vnet_buffer2 (b)->gtpu.session_index = sidx;
+  vnet_buffer2 (b)->gtpu.far_index = far_idx | 0x80000000;
+  vnet_buffer2 (b)->connection_index =
+    upf_proxy_session (fib_index, is_ip4) | 0x80000000;
+  next = UPF_PROCESS_NEXT_IP_LOCAL;
+
+  if (PREDICT_FALSE
+      (vnet_buffer2 (b)->connection_index == ~0))
+    {
+      *error = UPF_PROCESS_ERROR_NO_LISTENER;
+      next = UPF_PROCESS_NEXT_DROP;
+    }
+
+  return next;
+}
+
 static_always_inline void
 upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 {
@@ -97,6 +125,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
   upf_main_t *gtm = &upf_main;
   vnet_main_t *vnm = gtm->vnet_main;
   vnet_interface_main_t *im = &vnm->interface_main;
+  flowtable_main_t *fm = &flowtable_main;
 
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
@@ -118,6 +147,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
     {
       upf_pdr_t *pdr = NULL;
       upf_far_t *far = NULL;
+      flow_entry_t *flow;
       u32 n_left_to_next;
       vlib_buffer_t *b;
       u32 error;
@@ -148,6 +178,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      pdr = active->pdr + vnet_buffer (b)->gtpu.pdr_idx;
 	      far = sx_get_far_by_id (active, pdr->far_id);
+	      flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
 	    }
 
 	  if (PREDICT_FALSE (!pdr))
@@ -217,7 +248,10 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
+	  if (flow->is_l3_proxy)
+	    next = upf_to_proxy (b, is_ip4, sidx, ~0, &error);
+
+	  else if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
 	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
 		{
@@ -248,28 +282,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		}
 	      else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
 		{
-		  u32 fib_index = is_ip4 ?
-		    ip4_fib_table_get_index_for_sw_if_index (far->forward.
-							     dst_sw_if_index)
-		    : ip6_fib_table_get_index_for_sw_if_index (far->
-							       forward.
-							       dst_sw_if_index);
-
-		  vnet_buffer (b)->sw_if_index[VLIB_TX] =
-		    far->forward.dst_sw_if_index;
-		  vnet_buffer2 (b)->gtpu.session_index = sidx;
-		  vnet_buffer2 (b)->gtpu.far_index =
-		    (far - active->far) | 0x80000000;
-		  vnet_buffer2 (b)->connection_index =
-		    upf_http_redirect_session (fib_index, is_ip4);
-		  next = UPF_PROCESS_NEXT_IP_LOCAL;
-
-		  if (PREDICT_FALSE
-		      (vnet_buffer2 (b)->connection_index == ~0))
-		    {
-		      error = UPF_PROCESS_ERROR_NO_LISTENER;
-		      next = UPF_PROCESS_NEXT_DROP;
-		    }
+		  next = upf_to_proxy (b, is_ip4, sidx, far - active->far, &error);
 		}
 	      else
 		{
