@@ -108,7 +108,9 @@ typedef struct flow_entry
 
   /* flow signature */
   flow_key_t key;
-  u8 is_reverse;
+  u8 is_reverse:1;
+  u8 is_decided:1;
+  u8 is_l3_proxy:1;
   u16 tcp_state;
 
   /* stats */

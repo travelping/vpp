@@ -261,6 +261,7 @@ typedef struct
 {
   u32 application_id;
   u32 db_id;
+  u32 flags;
 } adr_rule_t;
 
 typedef struct
@@ -518,9 +519,12 @@ typedef struct
     upf_urr_t *urr;
     upf_qer_t *qer;
     uint32_t flags;
-#define SX_SDF_IPV4    BIT(0)
-#define SX_SDF_IPV6    BIT(1)
-#define SX_ADR         BIT(2)
+#define SX_SDF_IPV4	BIT(0)
+#define SX_SDF_IPV6	BIT(1)
+#define SX_ADR		BIT(2)
+
+    u16 proxy_precedence;
+    u32 proxy_pdr_idx;
 
     upf_acl_t *v4_acls;
     upf_acl_t *v6_acls;

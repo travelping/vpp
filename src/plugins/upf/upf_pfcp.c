@@ -1430,6 +1430,9 @@ build_sx_rules (upf_session_t * sx)
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   upf_pdr_t *pdr;
 
+  pending->proxy_precedence = ~0;
+  pending->proxy_pdr_idx = ~0;
+
   vec_foreach (pdr, pending->pdr)
   {
     u32 table_id = 0;
@@ -1517,6 +1520,14 @@ build_sx_rules (upf_session_t * sx)
       }
     else if ((pdr->pdi.fields & F_PDI_APPLICATION_ID))
       {
+
+	if ((pdr->pdi.adr.flags & UPF_ADR_PROXY) &&
+	    pdr->precedence < pending->proxy_precedence)
+	  {
+	    pending->proxy_precedence = pdr->precedence;
+	    pending->proxy_pdr_idx = pdr - pending->pdr;
+	  }
+
 	pending->flags |= SX_ADR;
       }
   }
@@ -1552,6 +1563,9 @@ sx_update_apply (upf_session_t * sx)
   else
     {
       pending->pdr = active->pdr;
+
+      pending->proxy_precedence = active->proxy_precedence;
+      pending->proxy_pdr_idx = active->proxy_pdr_idx;
 
       pending->ue_src_ip = active->ue_src_ip;
       active->ue_src_ip = NULL;
