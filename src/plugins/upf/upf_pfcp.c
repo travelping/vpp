@@ -873,8 +873,8 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
   ip46_address_fib_t *ue_dst_ip;
-  gtpu4_tunnel_key_t *v4_teid;
-  gtpu6_tunnel_key_t *v6_teid;
+  gtpu4_endp_rule_t *v4_teid;
+  gtpu6_endp_rule_t *v6_teid;
   upf_urr_t *urr;
 
   hash_unset (gtm->session_by_id, sx->cp_seid);
@@ -1026,15 +1026,19 @@ ip46_address_fib_cmp (const void *a0, const void *b0)
 }
 
 static int
-v4_teid_cmp (const void *a, const void *b)
+v4_teid_cmp (const void *a0, const void *b0)
 {
-  return memcmp (a, b, sizeof (gtpu4_tunnel_key_t));
+  const gtpu4_endp_rule_t *a = a0;
+  const gtpu4_endp_rule_t *b = b0;
+  return memcmp (&a->key, &b->key, sizeof (a->key));
 }
 
 static int
-v6_teid_cmp (const void *a, const void *b)
+v6_teid_cmp (const void *a0, const void *b0)
 {
-  return memcmp (a, b, sizeof (gtpu6_tunnel_key_t));
+  const gtpu6_endp_rule_t *a = a0;
+  const gtpu6_endp_rule_t *b = b0;
+  return memcmp (&a->key, &b->key, sizeof (a->key));
 }
 
 static int
@@ -1092,11 +1096,11 @@ sx_add_del_v4_teid (const void *teid, void *si, int is_add)
 {
   upf_main_t *gtm = &upf_main;
   upf_session_t *sess = si;
-  const gtpu4_tunnel_key_t *v4_teid = teid;
+  const gtpu4_endp_rule_t *v4_teid = teid;
   clib_bihash_kv_8_8_t kv;
 
-  kv.key = v4_teid->as_u64;
-  kv.value = sess - gtm->sessions;
+  kv.key = v4_teid->key.as_u64;
+  kv.value = ((u64)v4_teid->rule_index << 32) | (sess - gtm->sessions);
 
   gtp_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
@@ -1111,13 +1115,13 @@ sx_add_del_v6_teid (const void *teid, void *si, int is_add)
 {
   upf_main_t *gtm = &upf_main;
   upf_session_t *sess = si;
-  const gtpu6_tunnel_key_t *v6_teid = teid;
+  const gtpu6_endp_rule_t *v6_teid = teid;
   clib_bihash_kv_24_8_t kv;
 
-  kv.key[0] = v6_teid->dst.as_u64[0];
-  kv.key[1] = v6_teid->dst.as_u64[1];
-  kv.key[2] = v6_teid->teid;
-  kv.value = sess - gtm->sessions;
+  kv.key[0] = v6_teid->key.dst.as_u64[0];
+  kv.key[1] = v6_teid->key.dst.as_u64[1];
+  kv.key[2] = v6_teid->key.teid;
+  kv.value = ((u64)v6_teid->rule_index << 32) | (sess - gtm->sessions);
 
   gtp_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
@@ -1379,25 +1383,45 @@ compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
 }
 
 static void
-rules_add_v4_teid (struct rules *r, const ip4_address_t * addr, u32 teid)
+rules_add_v4_teid (struct rules *r, const ip4_address_t * addr, u32 teid, u32 rule_index)
 {
-  gtpu4_tunnel_key_t key;
+  gtpu4_endp_rule_t endp, *e;
 
-  key.teid = teid;
-  key.dst = addr->as_u32;
+  endp.key.teid = teid;
+  endp.key.dst = addr->as_u32;
+  endp.rule_index = rule_index;
 
-  vec_add1 (r->v4_teid, key);
+  vec_foreach (e, r->v4_teid)
+    {
+      if (e->key.as_u64 == endp.key.as_u64)
+	break;
+    }
+  if (e == vec_end(r->v4_teid))
+    vec_add1 (r->v4_teid, endp);
+  else
+    /* mark duplicate TEID */
+    e->rule_index = ~0;
 }
 
 static void
-rules_add_v6_teid (struct rules *r, const ip6_address_t * addr, u32 teid)
+rules_add_v6_teid (struct rules *r, const ip6_address_t * addr, u32 teid, u32 rule_index)
 {
-  gtpu6_tunnel_key_t key;
+  gtpu6_endp_rule_t endp, *e;
 
-  key.teid = teid;
-  key.dst = *addr;
+  endp.key.teid = teid;
+  endp.key.dst = *addr;
+  endp.rule_index = rule_index;
 
-  vec_add1 (r->v6_teid, key);
+  vec_foreach (e, r->v6_teid)
+    {
+      if (memcmp(&e->key, &endp.key, sizeof (endp.key)) == 0)
+	break;
+    }
+  if (e == vec_end(r->v6_teid))
+    vec_add1 (r->v6_teid, endp);
+  else
+    /* mark duplicate TEID */
+    e->rule_index = ~0;
 }
 
 static void
@@ -1428,13 +1452,14 @@ build_sx_rules (upf_session_t * sx)
 {
   upf_main_t *gtm = &upf_main;
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
-  upf_pdr_t *pdr;
+  u32 idx;
 
   pending->proxy_precedence = ~0;
   pending->proxy_pdr_idx = ~0;
 
-  vec_foreach (pdr, pending->pdr)
+  vec_foreach_index (idx, pending->pdr)
   {
+    upf_pdr_t *pdr = vec_elt_at_index(pending->pdr, idx);
     u32 table_id = 0;
 
     if (pdr->pdi.nwi != ~0)
@@ -1480,10 +1505,12 @@ build_sx_rules (upf_session_t * sx)
     if (pdr->pdi.fields & F_PDI_LOCAL_F_TEID)
       {
 	if (pdr->pdi.teid.flags & F_TEID_V4)
-	  rules_add_v4_teid (pending, &pdr->pdi.teid.ip4, pdr->pdi.teid.teid);
+	  rules_add_v4_teid (pending, &pdr->pdi.teid.ip4,
+			     pdr->pdi.teid.teid, idx);
 
 	if (pdr->pdi.teid.flags & F_TEID_V6)
-	  rules_add_v6_teid (pending, &pdr->pdi.teid.ip6, pdr->pdi.teid.teid);
+	  rules_add_v6_teid (pending, &pdr->pdi.teid.ip6,
+			     pdr->pdi.teid.teid, idx);
       }
 
     if (pdr->pdi.fields & F_PDI_SDF_FILTER)
@@ -1497,8 +1524,7 @@ build_sx_rules (upf_session_t * sx)
 	    acl = vec_end (pending->v4_acls);
 
 	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (1 /* is_ip4 */, pdr, pdr - pending->pdr,
-				   table_id, acl);
+	    compile_ipfilter_rule (1 /* is_ip4 */, pdr, idx, table_id, acl);
 
 	    _vec_len (pending->v4_acls)++;
 	  }
@@ -1512,8 +1538,7 @@ build_sx_rules (upf_session_t * sx)
 	    acl = vec_end (pending->v6_acls);
 
 	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (0 /* is_ip4 */, pdr, pdr - pending->pdr,
-				   table_id, acl);
+	    compile_ipfilter_rule (0 /* is_ip4 */, pdr, idx, table_id, acl);
 
 	    _vec_len (pending->v6_acls)++;
 	  }
@@ -1525,12 +1550,16 @@ build_sx_rules (upf_session_t * sx)
 	    pdr->precedence < pending->proxy_precedence)
 	  {
 	    pending->proxy_precedence = pdr->precedence;
-	    pending->proxy_pdr_idx = pdr - pending->pdr;
+	    pending->proxy_pdr_idx = idx;
 	  }
 
 	pending->flags |= SX_ADR;
       }
   }
+
+  if (vec_len(pending->ue_src_ip) != 0 || vec_len(pending->ue_dst_ip) != 0 ||
+      vec_len(pending->v4_acls) != 0 || vec_len(pending->v6_acls) != 0)
+    pending->flags |= SX_CLASSIFY;
 
   return 0;
 }
@@ -1600,14 +1629,16 @@ sx_update_apply (upf_session_t * sx)
 	    {
 	      rules_add_v4_teid (pending,
 				 &far->forward.outer_header_creation.ip.ip4,
-				 far->forward.outer_header_creation.teid);
+				 far->forward.outer_header_creation.teid,
+				 far->id);
 	    }
 	  else if (far->forward.outer_header_creation.description
 		   & OUTER_HEADER_CREATION_GTP_IP6)
 	    {
 	      rules_add_v6_teid (pending,
 				 &far->forward.outer_header_creation.ip.ip6,
-				 far->forward.outer_header_creation.teid);
+				 far->forward.outer_header_creation.teid,
+				 far->id);
 	    }
 	}
     }

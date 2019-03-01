@@ -164,6 +164,12 @@ typedef CLIB_PACKED
 }) gtpu4_tunnel_key_t;
 /* *INDENT-ON* */
 
+typedef struct
+{
+  gtpu4_tunnel_key_t key;
+  u32 rule_index;
+} gtpu4_endp_rule_t;
+
 /* *INDENT-OFF* */
 typedef CLIB_PACKED
 (struct {
@@ -175,6 +181,12 @@ typedef CLIB_PACKED
   u32 teid;
 }) gtpu6_tunnel_key_t;
 /* *INDENT-ON* */
+
+typedef struct
+{
+  gtpu6_tunnel_key_t key;
+  u32 rule_index;
+} gtpu6_endp_rule_t;
 
 typedef struct
 {
@@ -522,6 +534,7 @@ typedef struct
 #define SX_SDF_IPV4	BIT(0)
 #define SX_SDF_IPV6	BIT(1)
 #define SX_ADR		BIT(2)
+#define SX_CLASSIFY	BIT(3)
 
     u16 proxy_precedence;
     u32 proxy_pdr_idx;
@@ -531,8 +544,8 @@ typedef struct
 
     ip46_address_fib_t *ue_src_ip;
     ip46_address_fib_t *ue_dst_ip;
-    gtpu4_tunnel_key_t *v4_teid;
-    gtpu6_tunnel_key_t *v6_teid;
+    gtpu4_endp_rule_t *v4_teid;
+    gtpu6_endp_rule_t *v6_teid;
 
     u16 *send_end_marker;
   } rules[2];
