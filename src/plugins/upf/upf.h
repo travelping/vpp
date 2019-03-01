@@ -636,10 +636,13 @@ typedef struct
 typedef struct
 {
   u8 *name;
+  u32 flags;
   uword *rules_by_id;		/* hash over rules id */
   upf_adr_t *rules;		/* vector of rules definition */
   u32 db_index;			/* index in ADR pool */
 } upf_adf_app_t;
+
+#define UPF_ADR_PROXY   BIT(0)
 
 typedef struct
 {
