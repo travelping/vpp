@@ -30,7 +30,7 @@
 #endif
 
 int upf_adf_lookup (u32 db_index, u8 * str, uint16_t length);
-int upf_app_add_del (upf_main_t * sm, u8 * name, int add);
+int upf_app_add_del (upf_main_t * sm, u8 * name, u32 flags, int add);
 int upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
 		      int add, upf_rule_args_t * args);
 

@@ -100,7 +100,7 @@ vl_api_upf_app_add_del_t_handler (vl_api_upf_app_add_del_t * mp)
   upf_main_t *sm = &upf_main;
   int rv = 0;
 
-  rv = upf_app_add_del (sm, mp->name, (int) (mp->is_add));
+  rv = upf_app_add_del (sm, mp->name, (u32) (mp->flags), (int) (mp->is_add));
 
   REPLY_MACRO (VL_API_UPF_APP_ADD_DEL_REPLY);
 }

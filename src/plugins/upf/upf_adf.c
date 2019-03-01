@@ -441,14 +441,14 @@ static int
 vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
 		       upf_rule_args_t * args);
 
-static int vnet_upf_app_add_del (u8 * name, u8 add);
+static int vnet_upf_app_add_del (u8 * name, u32 flags, u8 add);
 
 int
-upf_app_add_del (upf_main_t * sm, u8 * name, int add)
+upf_app_add_del (upf_main_t * sm, u8 * name, u32 flags, int add)
 {
   int rv = 0;
 
-  rv = vnet_upf_app_add_del (name, add);
+  rv = vnet_upf_app_add_del (name, flags, add);
 
   return rv;
 }
@@ -465,7 +465,7 @@ upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
 }
 
 static int
-vnet_upf_app_add_del (u8 * name, u8 add)
+vnet_upf_app_add_del (u8 * name, u32 flags, u8 add)
 {
   upf_main_t *sm = &upf_main;
   upf_adf_app_t *app = NULL;
@@ -484,6 +484,7 @@ vnet_upf_app_add_del (u8 * name, u8 add)
       memset (app, 0, sizeof (*app));
 
       app->name = vec_dup (name);
+      app->flags = flags;
       app->rules_by_id = hash_create_mem (0, sizeof (u32), sizeof (uword));
       app->db_index = ~0;
 
@@ -520,12 +521,14 @@ vnet_upf_app_add_del (u8 * name, u8 add)
 }
 
 static clib_error_t *
-upf_create_app_command_fn (vlib_main_t * vm,
-			   unformat_input_t * input, vlib_cli_command_t * cmd)
+upf_app_add_del_command_fn (vlib_main_t * vm,
+			    unformat_input_t * input, vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   u8 *name = NULL;
   clib_error_t *error = NULL;
+  u32 flags = 0;
+  u8 add = 1;
   int rv = 0;
 
   /* Get a line of input. */
@@ -534,7 +537,13 @@ upf_create_app_command_fn (vlib_main_t * vm,
 
   while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
     {
-      if (unformat (line_input, "%_%v%_", &name))
+      if (unformat (line_input, "del"))
+	add = 0;
+      else if (unformat (line_input, "add"))
+	add = 1;
+      else if (unformat (line_input, "proxy"))
+	flags |= UPF_ADR_PROXY;
+      if (unformat (line_input, "name %_%v%_", &name))
 	break;
       else
 	{
@@ -543,67 +552,13 @@ upf_create_app_command_fn (vlib_main_t * vm,
 	}
     }
 
-  rv = vnet_upf_app_add_del (name, 1);
-
-  switch (rv)
+  if (!name)
     {
-    case 0:
-      break;
-
-    case VNET_API_ERROR_VALUE_EXIST:
-      error = clib_error_return (0, "application already exists...");
-      break;
-
-    case VNET_API_ERROR_NO_SUCH_ENTRY:
-      error = clib_error_return (0, "application does not exist...");
-      break;
-
-    default:
-      error = clib_error_return (0, "%s returned %d", __FUNCTION__, rv);
-      break;
+      error = clib_error_return (0, "id needs to be set");
+      goto done;
     }
 
-done:
-  vec_free (name);
-  unformat_free (line_input);
-
-  return error;
-}
-
-/* *INDENT-OFF* */
-VLIB_CLI_COMMAND (upf_create_app_command, static) =
-{
-  .path = "create upf application",
-  .short_help = "create upf application <name>",
-  .function = upf_create_app_command_fn,
-};
-/* *INDENT-ON* */
-
-static clib_error_t *
-upf_delete_app_command_fn (vlib_main_t * vm,
-			   unformat_input_t * input, vlib_cli_command_t * cmd)
-{
-  unformat_input_t _line_input, *line_input = &_line_input;
-  u8 *name = NULL;
-  clib_error_t *error = NULL;
-  int rv = 0;
-
-  /* Get a line of input. */
-  if (!unformat_user (input, unformat_line_input, line_input))
-    return error;
-
-  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
-    {
-      if (unformat (line_input, "%_%v%_", &name))
-	break;
-      else
-	{
-	  error = unformat_parse_error (line_input);
-	  goto done;
-	}
-    }
-
-  rv = vnet_upf_app_add_del (name, 0);
+  rv = vnet_upf_app_add_del (name, flags, add);
 
   switch (rv)
     {
@@ -635,11 +590,11 @@ done:
 }
 
 /* *INDENT-OFF* */
-VLIB_CLI_COMMAND (upf_delete_app_command, static) =
+VLIB_CLI_COMMAND (upf_app_add_del_command, static) =
 {
-  .path = "delete upf application",
-  .short_help = "delete upf application <name>",
-  .function = upf_delete_app_command_fn,
+ .path = "create upf application",
+ .short_help = "create upf application name <name> [proxy] [add|del]",
+ .function = upf_app_add_del_command_fn,
 };
 /* *INDENT-ON* */
 
