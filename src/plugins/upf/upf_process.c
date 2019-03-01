@@ -147,7 +147,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
     {
       upf_pdr_t *pdr = NULL;
       upf_far_t *far = NULL;
-      flow_entry_t *flow;
       u32 n_left_to_next;
       vlib_buffer_t *b;
       u32 error;
@@ -178,7 +177,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      pdr = active->pdr + vnet_buffer (b)->gtpu.pdr_idx;
 	      far = sx_get_far_by_id (active, pdr->far_id);
-	      flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
 	    }
 
 	  if (PREDICT_FALSE (!pdr))
@@ -248,10 +246,19 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  if (flow->is_l3_proxy)
-	    next = upf_to_proxy (b, is_ip4, sidx, ~0, &error);
+	  if (~0 != vnet_buffer (b)->gtpu.flow_id)
+	    {
+	      flow_entry_t *flow =
+		pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
 
-	  else if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
+	      if (flow->is_l3_proxy)
+		{
+		  next = upf_to_proxy (b, is_ip4, sidx, ~0, &error);
+		  goto process;
+		}
+	    }
+
+	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
 	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
 		{
@@ -313,6 +320,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      next = UPF_PROCESS_NEXT_DROP;
 	    }
+
+	process:
 
 #define IS_DL(_pdr, _far)						\
 	  ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)

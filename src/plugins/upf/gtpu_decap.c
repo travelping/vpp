@@ -36,8 +36,10 @@ vlib_node_registration_t gtpu6_input_node;
 typedef enum
 {
   GTPU_INPUT_NEXT_DROP,
-  GTPU_INPUT_NEXT_IP4_CLASSIFY,
-  GTPU_INPUT_NEXT_IP6_CLASSIFY,
+  GTPU_INPUT_NEXT_IP4_FLOW_PROCESS,
+  GTPU_INPUT_NEXT_IP6_FLOW_PROCESS,
+  GTPU_INPUT_NEXT_IP4_PROCESS,
+  GTPU_INPUT_NEXT_IP6_PROCESS,
   GTPU_INPUT_NEXT_ERROR_INDICATION,
   GTPU_INPUT_NEXT_ECHO_REQUEST,
   GTPU_INPUT_N_NEXT,
@@ -84,6 +86,7 @@ gtpu_input (vlib_main_t * vm,
   vnet_main_t *vnm = gtm->vnet_main;
   vnet_interface_main_t *im = &vnm->interface_main;
   u32 last_session_index = ~0;
+  u32 last_rule_index = ~0;
   gtpu4_tunnel_key_t last_key4;
   clib_bihash_kv_24_8_t last_key6;
   u32 pkts_decapsulated = 0;
@@ -117,6 +120,7 @@ gtpu_input (vlib_main_t * vm,
 	  gtpu_header_t *gtpu0, *gtpu1;
 	  u32 gtpu_hdr_len0 = 0, gtpu_hdr_len1 = 0;
 	  u32 session_index0, session_index1;
+	  u32 rule_index0, rule_index1;
 	  upf_session_t *t0, *t1;
 	  gtpu4_tunnel_key_t key4_0, key4_1;
 	  u32 error0, error1;
@@ -239,10 +243,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace0;
 		    }
 		  last_key4.as_u64 = key4_0.as_u64;
-		  session_index0 = last_session_index = value.value;
+		  session_index0 = last_session_index = (value.value & 0xffffffff);
+		  rule_index0 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index0 = last_session_index;
+		{
+		  session_index0 = last_session_index;
+		  rule_index0 = last_rule_index;
+		}
 	      t0 = pool_elt_at_index (gtm->sessions, session_index0);
 
 	      goto next0;	/* valid packet */
@@ -272,10 +280,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace0;
 		    }
 		  clib_memcpy (&last_key6.key, &kv.key, sizeof (kv.key));
-		  session_index0 = last_session_index = value.value;
+		  session_index0 = last_session_index = (value.value & 0xffffffff);
+		  rule_index0 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index0 = last_session_index;
+		{
+		  session_index0 = last_session_index;
+		  rule_index0 = last_rule_index;
+		}
 	      t0 = pool_elt_at_index (gtm->sessions, session_index0);
 
 	      goto next0;	/* valid packet */
@@ -302,13 +314,19 @@ gtpu_input (vlib_main_t * vm,
 	  vnet_buffer (b0)->gtpu.data_offset = hdr_len0;
 	  vnet_buffer (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
 	  vnet_buffer (b0)->gtpu.session_index = session_index0;
+	  vnet_buffer (b0)->gtpu.pdr_idx =
+	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
 	  vnet_buffer (b0)->gtpu.flags =
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
-	  next0 = ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40) ?
-	    GTPU_INPUT_NEXT_IP4_CLASSIFY : GTPU_INPUT_NEXT_IP6_CLASSIFY;
+	  if ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40)
+	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
+	  else
+	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index0 = t0->sw_if_index;
 	  len0 = vlib_buffer_length_in_chain (vm, b0) - hdr_len0;
@@ -406,10 +424,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace1;
 		    }
 		  last_key4.as_u64 = key4_1.as_u64;
-		  session_index1 = last_session_index = value.value;
+		  session_index1 = last_session_index = (value.value & 0xffffffff);
+		  rule_index1 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index1 = last_session_index;
+		{
+		  session_index1 = last_session_index;
+		  rule_index1 = last_rule_index;
+		}
 	      t1 = pool_elt_at_index (gtm->sessions, session_index1);
 
 	      goto next1;	/* valid packet */
@@ -439,10 +461,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace1;
 		    }
 		  clib_memcpy (&last_key6.key, &kv.key, sizeof (kv.key));
-		  session_index1 = last_session_index = value.value;
+		  session_index1 = last_session_index = (value.value & 0xffffffff);
+		  rule_index1 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index1 = last_session_index;
+		{
+		  session_index1 = last_session_index;
+		  rule_index1 = last_rule_index;
+		}
 	      t1 = pool_elt_at_index (gtm->sessions, session_index1);
 
 	      goto next1;	/* valid packet */
@@ -469,13 +495,19 @@ gtpu_input (vlib_main_t * vm,
 	  vnet_buffer (b1)->gtpu.data_offset = hdr_len1;
 	  vnet_buffer (b1)->gtpu.teid = clib_net_to_host_u32 (gtpu1->teid);
 	  vnet_buffer (b1)->gtpu.session_index = session_index1;
+	  vnet_buffer (b1)->gtpu.pdr_idx =
+	    !(sx_get_rules (t1, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index1 : ~0;
 	  vnet_buffer (b1)->gtpu.flags =
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 
 	  /* inner IP header */
 	  ip4_1 = vlib_buffer_get_current (b1) + hdr_len1;
-	  next1 = ((ip4_1->ip_version_and_header_length & 0xF0) == 0x40) ?
-	    GTPU_INPUT_NEXT_IP4_CLASSIFY : GTPU_INPUT_NEXT_IP6_CLASSIFY;
+	  if ((ip4_1->ip_version_and_header_length & 0xF0) == 0x40)
+	    next1 = (~0 == vnet_buffer (b1)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
+	  else
+	    next1 = (~0 == vnet_buffer (b1)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index1 = t1->sw_if_index;
 	  len1 = vlib_buffer_length_in_chain (vm, b1) - hdr_len1;
@@ -531,6 +563,7 @@ gtpu_input (vlib_main_t * vm,
 	  gtpu_header_t *gtpu0;
 	  u32 gtpu_hdr_len0 = 0;
 	  u32 session_index0;
+	  u32 rule_index0;
 	  upf_session_t *t0;
 	  gtpu4_tunnel_key_t key4_0;
 	  u32 error0;
@@ -623,10 +656,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace00;
 		    }
 		  last_key4.as_u64 = key4_0.as_u64;
-		  session_index0 = last_session_index = value.value;
+		  session_index0 = last_session_index = (value.value & 0xffffffff);
+		  rule_index0 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index0 = last_session_index;
+		{
+		  session_index0 = last_session_index;
+		  rule_index0 = last_rule_index;
+		}
 	      t0 = pool_elt_at_index (gtm->sessions, session_index0);
 
 	      goto next00;	/* valid packet */
@@ -656,10 +693,14 @@ gtpu_input (vlib_main_t * vm,
 		      goto trace00;
 		    }
 		  clib_memcpy (&last_key6.key, &kv.key, sizeof (kv.key));
-		  session_index0 = last_session_index = value.value;
+		  session_index0 = last_session_index = (value.value & 0xffffffff);
+		  rule_index0 = last_rule_index = value.value >> 32;
 		}
 	      else
-		session_index0 = last_session_index;
+		{
+		  session_index0 = last_session_index;
+		  rule_index0 = last_rule_index;
+		}
 	      t0 = pool_elt_at_index (gtm->sessions, session_index0);
 
 	      goto next00;	/* valid packet */
@@ -686,13 +727,19 @@ gtpu_input (vlib_main_t * vm,
 	  vnet_buffer (b0)->gtpu.data_offset = hdr_len0;
 	  vnet_buffer (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
 	  vnet_buffer (b0)->gtpu.session_index = session_index0;
+	  vnet_buffer (b0)->gtpu.pdr_idx =
+	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
 	  vnet_buffer (b0)->gtpu.flags =
 	    (is_ip4) ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
-	  next0 = ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40) ?
-	    GTPU_INPUT_NEXT_IP4_CLASSIFY : GTPU_INPUT_NEXT_IP6_CLASSIFY;
+	  if ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40)
+	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
+	  else
+	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index0 = t0->sw_if_index;
 	  len0 = vlib_buffer_length_in_chain (vm, b0) - hdr_len0;
@@ -792,8 +839,10 @@ VLIB_REGISTER_NODE (gtpu4_input_node) = {
   .n_next_nodes = GTPU_INPUT_N_NEXT,
   .next_nodes = {
     [GTPU_INPUT_NEXT_DROP]             = "error-drop",
-    [GTPU_INPUT_NEXT_IP4_CLASSIFY]     = "upf-ip4-flow-process",
-    [GTPU_INPUT_NEXT_IP6_CLASSIFY]     = "upf-ip6-flow-process",
+    [GTPU_INPUT_NEXT_IP4_FLOW_PROCESS] = "upf-ip4-flow-process",
+    [GTPU_INPUT_NEXT_IP6_FLOW_PROCESS] = "upf-ip6-flow-process",
+    [GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-process",
+    [GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-process",
     [GTPU_INPUT_NEXT_ERROR_INDICATION] = "gtp-error-indication",
     [GTPU_INPUT_NEXT_ECHO_REQUEST]     = "upf-ip4-echo-request",
   },
@@ -819,8 +868,10 @@ VLIB_REGISTER_NODE (gtpu6_input_node) = {
   .n_next_nodes = GTPU_INPUT_N_NEXT,
   .next_nodes = {
     [GTPU_INPUT_NEXT_DROP]             = "error-drop",
-    [GTPU_INPUT_NEXT_IP4_CLASSIFY]     = "upf-ip4-classify",
-    [GTPU_INPUT_NEXT_IP6_CLASSIFY]     = "upf-ip6-classify",
+    [GTPU_INPUT_NEXT_IP4_FLOW_PROCESS] = "upf-ip4-flow-process",
+    [GTPU_INPUT_NEXT_IP6_FLOW_PROCESS] = "upf-ip6-flow-process",
+    [GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-process",
+    [GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-process",
     [GTPU_INPUT_NEXT_ERROR_INDICATION] = "gtp-error-indication",
     [GTPU_INPUT_NEXT_ECHO_REQUEST]     = "upf-ip6-echo-request",
   },
@@ -1024,7 +1075,7 @@ process_error_indication (vlib_main_t * vm,
 	      err = GTPU_ERROR_NO_SUCH_TUNNEL;
 	      goto trace;
 	    }
-	  session_index = value.value;
+	  session_index = (value.value & 0xffffffff);
 	}
       else
 	{
@@ -1040,7 +1091,7 @@ process_error_indication (vlib_main_t * vm,
 	      err = GTPU_ERROR_NO_SUCH_TUNNEL;
 	      goto trace;
 	    }
-	  session_index = value.value;
+	  session_index = (value.value & 0xffffffff);
 	}
 
       t = pool_elt_at_index (gtm->sessions, session_index);
