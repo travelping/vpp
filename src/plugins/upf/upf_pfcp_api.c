@@ -363,7 +363,7 @@ static void
 	r->network_instance = vec_dup(nwi->name);
       }
 
-    if (res->intf != (u8)~0)
+    if (INTF_INVALID != res->intf)
       {
 
 	r->flags |= USER_PLANE_IP_RESOURCE_INFORMATION_ASSOSI;
@@ -1101,8 +1101,60 @@ handle_remove_pdr (upf_session_t * sess, pfcp_remove_pdr_t * remove_pdr,
   return r;
 }
 
+/* find source IP based on outgoing route and UpIP */
+static void *
+upip_ip_interface_ip (upf_far_forward_t * ff, u32 fib_index, int is_ip4)
+{
+  ip_lookup_main_t *lm = is_ip4 ? &ip4_main.lookup_main : &ip6_main.lookup_main;
+  upf_main_t *gtm = &upf_main;
+  ip_interface_address_t *a;
+  upf_upip_res_t *res;
+
+  /* *INDENT-OFF* */
+  pool_foreach (res, gtm->upip_res,
+  ({
+    uword *p;
+
+    if (is_ip4 && is_zero_ip4_address (&res->ip4))
+      continue;
+    if (!is_ip4 && is_zero_ip6_address (&res->ip6))
+      continue;
+
+    if (INTF_INVALID != res->intf && ff->dst_intf != res->intf)
+      continue;
+
+    if (~0 != res->nwi && ~0 != ff->nwi && ff->nwi != res->nwi)
+      continue;
+
+    if (is_ip4)
+      {
+	ip4_address_fib_t ip4_af;
+
+	ip4_addr_fib_init (&ip4_af, &res->ip4, fib_index);
+	p = mhash_get (&lm->address_to_if_address_index, &ip4_af);
+      }
+    else
+      {
+	ip6_address_fib_t ip6_af;
+
+	ip6_addr_fib_init (&ip6_af, &res->ip6, fib_index);
+	p = mhash_get (&lm->address_to_if_address_index, &ip6_af);
+      }
+    if (!p)
+      continue;
+
+    a = pool_elt_at_index (lm->if_address_pool, p[0]);
+    if (a->sw_if_index == ff->dst_sw_if_index)
+      return (is_ip4) ? (void *)&res->ip4 : (void *)&res->ip6;
+  }));
+  /* *INDENT-ON* */
+
+  clib_warning("No NWI IP found, using first interface IP");
+  return ip_interface_get_first_ip (ff->dst_sw_if_index, is_ip4);
+}
+
 static void
-ip_udp_gtpu_rewrite (upf_far_forward_t * ff, int is_ip4)
+ip_udp_gtpu_rewrite (upf_far_forward_t * ff, u32 fib_index, int is_ip4)
 {
   union
   {
@@ -1113,7 +1165,6 @@ ip_udp_gtpu_rewrite (upf_far_forward_t * ff, int is_ip4)
   {
   .rw = 0};
   int len = is_ip4 ? sizeof *r.h4 : sizeof *r.h6;
-  u32 sw_if_index = ff->dst_sw_if_index;
 
   vec_validate_aligned (r.rw, len - 1, CLIB_CACHE_LINE_BYTES);
 
@@ -1130,7 +1181,7 @@ ip_udp_gtpu_rewrite (upf_far_forward_t * ff, int is_ip4)
       ip->protocol = IP_PROTOCOL_UDP;
 
       ip->src_address =
-	*(ip4_address_t *) ip_interface_get_first_ip (sw_if_index, 1);
+	*(ip4_address_t *) upip_ip_interface_ip (ff, fib_index, 1);
       ip->dst_address = ff->outer_header_creation.ip.ip4;
 
       /* we fix up the ip4 header length and checksum after-the-fact */
@@ -1147,7 +1198,7 @@ ip_udp_gtpu_rewrite (upf_far_forward_t * ff, int is_ip4)
       ip->protocol = IP_PROTOCOL_UDP;
 
       ip->src_address =
-	*(ip6_address_t *) ip_interface_get_first_ip (sw_if_index, 0);
+	*(ip6_address_t *) upip_ip_interface_ip (ff, fib_index, 0);
       ip->dst_address = ff->outer_header_creation.ip.ip6;
     }
 
@@ -1296,7 +1347,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 		break;
 	      }
 
-	    ip_udp_gtpu_rewrite (&create->forward, is_ip4);
+	    ip_udp_gtpu_rewrite (&create->forward, fib_index, is_ip4);
 	  }
 	//TODO: transport_level_marking
 	//TODO: forwarding_policy
@@ -1433,7 +1484,7 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 		break;
 	      }
 
-	    ip_udp_gtpu_rewrite (&update->forward, is_ip4);
+	    ip_udp_gtpu_rewrite (&update->forward, fib_index, is_ip4);
 	  }
 	//TODO: transport_level_marking
 	//TODO: forwarding_policy
@@ -2080,7 +2131,7 @@ handle_session_establishment_request (sx_msg_t * req,
 			      &resp.failed_rule_id)) != 0)
     goto out_send_resp;
 
-  gtp_debug ("%U", format_sx_session, sess, SX_PENDING);
+  gtp_debug ("%U", format_sx_session, sess, SX_PENDING, /*debug*/ 1);
 
   r = sx_update_apply (sess);
   gtp_debug ("Appy: %d\n", r);
@@ -2269,7 +2320,7 @@ handle_session_modification_request (sx_msg_t * req,
 out_update_finish:
   sx_update_finish (sess);
 
-  gtp_debug ("%U", format_sx_session, sess, SX_ACTIVE);
+  gtp_debug ("%U", format_sx_session, sess, SX_ACTIVE, /*debug*/ 1);
 
 out_send_resp:
   if (r == 0)

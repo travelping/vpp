@@ -255,12 +255,7 @@ typedef struct
    (~0 == (ip)->address.as_u64[1]) &&		\
    ((u8)~0 == (ip)->mask))
 
-#define INTF_ACCESS	0
-#define INTF_CORE	1
-#define INTF_SGI_LAN	2
-#define INTF_CP		3
-#define INTF_LI		4
-#define INTF_NUM	(INTF_LI + 1)
+#define INTF_INVALID	((u8)~0)
 
 typedef enum
 {
@@ -312,12 +307,7 @@ typedef struct
 /* Packet Detection Information */
 typedef struct
 {
-  u8 src_intf;
-#define SRC_INTF_ACCESS		0
-#define SRC_INTF_CORE		1
-#define SRC_INTF_SGI_LAN	2
-#define SRC_INTF_CP		3
-#define SRC_INTF_NUM		(SRC_INTF_CP + 1)
+  pfcp_source_interface_t src_intf;
   uword nwi;
 
   u32 fields;
@@ -352,12 +342,7 @@ typedef struct
 #define FAR_F_REDIRECT_INFORMATION	BIT(0)
 #define FAR_F_OUTER_HEADER_CREATION	BIT(1)
 
-  int dst_intf;
-#define DST_INTF_ACCESS		0
-#define DST_INTF_CORE		1
-#define DST_INTF_SGI_LAN	2
-#define DST_INTF_CP		3
-#define DST_INTF_LI		4
+  pfcp_destination_interface_t dst_intf;
   u32 table_id;
   u32 dst_sw_if_index;
   uword nwi;

@@ -310,6 +310,13 @@ typedef struct
 #define PFCP_IE_DESTINATION_INTERFACE			42
 typedef u8 pfcp_destination_interface_t;
 
+#define DST_INTF_ACCESS		0
+#define DST_INTF_CORE		1
+#define DST_INTF_SGI_LAN	2
+#define DST_INTF_CP		3
+#define DST_INTF_LI		4
+#define DST_INTF_NUM		(DST_INTF_CP + 1)
+
 #define PFCP_IE_UP_FUNCTION_FEATURES			43
 typedef u16 pfcp_up_function_features_t;
 #define F_UPFF_BUCP					BIT(0)
