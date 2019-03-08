@@ -26,6 +26,7 @@
 #include <vppinfra/pool.h>
 #include <vnet/ip/ip.h>
 #include <vnet/ip/format.h>
+#include <vnet/ip/ip6_hop_by_hop.h>
 #include <vnet/fib/fib_entry.h>
 #include <vnet/fib/fib_table.h>
 #include <vnet/fib/ip4_fib.h>
@@ -2170,6 +2171,7 @@ format_sx_session (u8 * s, va_list * args)
 {
   upf_session_t *sx = va_arg (*args, upf_session_t *);
   int rule = va_arg (*args, int);
+  int debug = va_arg (*args, int);
   struct rules *rules = sx_get_rules (sx, rule);
   upf_main_t *gtm = &upf_main;
   upf_pdr_t *pdr;
@@ -2184,11 +2186,15 @@ format_sx_session (u8 * s, va_list * args)
 	      IP46_TYPE_ANY, sx->cp_seid, sx->cp_seid, format_ip46_address,
 	      &sx->up_address, IP46_TYPE_ANY, sx);
 
-  s = format (s, "  Pointer: %p\n  PDR: %p\n  FAR: %p\n",
-	      sx, rules->pdr, rules->far);
+  if (debug)
+    s = format (s, "  Pointer: %p\n  PDR: %p\n  FAR: %p\n",
+		sx, rules->pdr, rules->far);
 
-  s = format (s, "  Sx Association: %u (prev:%u,next:%u)\n",
-	      sx->assoc.node, sx->assoc.prev, sx->assoc.next);
+  s = format (s, "  Sx Association: %u\n",
+	      sx->assoc.node);
+  if (debug)
+    s = format (s, "                  (prev:%u,next:%u)\n",
+		sx->assoc.prev, sx->assoc.next);
 
   vec_foreach (pdr, rules->pdr)
   {
@@ -2278,19 +2284,28 @@ format_sx_session (u8 * s, va_list * args)
 
     if (far->apply_action & FAR_FORWARD)
       {
+	upf_far_forward_t * ff = &far->forward;
+
 	s = format (s, "  Forward:\n"
 		    "    Network Instance: %U\n"
 		    "    Destination Interface: %u\n",
 		    format_network_instance, nwi ? nwi->name : NULL,
-		    far->forward.dst_intf);
-	if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
+		    ff->dst_intf);
+	if (ff->flags & FAR_F_REDIRECT_INFORMATION)
 	  s = format (s, "    Redirect Information: %U\n",
 		      format_redirect_information,
-		      &far->forward.redirect_information);
-	if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
-	  s = format (s, "    Outer Header Creation: %U\n",
-		      format_outer_header_creation,
-		      &far->forward.outer_header_creation);
+		      &ff->redirect_information);
+	if (ff->flags & FAR_F_OUTER_HEADER_CREATION)
+	  {
+	    s = format (s, "    Outer Header Creation: %U\n",
+			format_outer_header_creation,
+			&ff->outer_header_creation);
+	    if (debug && ff->rewrite)
+	      s = format (s, "    Rewrite Header: %U\n",
+			  (ff->outer_header_creation.description &
+			   OUTER_HEADER_CREATION_IP4) ? format_ip4_header : format_ip6_header,
+			  ff->rewrite, vec_len (ff->rewrite));
+	  }
       }
   }
 
@@ -2442,6 +2457,42 @@ format_pfcp_endpoint (u8 * s, va_list * args)
   s = format (s, "%U [@%u]",
 	      format_ip46_address, &ep->key.addr, IP46_TYPE_ANY,
 	      ep->key.fib_index);
+
+  return s;
+}
+
+u8 *
+format_network_instance_index (u8 * s, va_list * args)
+{
+  u32 n = va_arg (*args, u32);
+  upf_main_t *gtm = &upf_main;
+
+  if (~0 == n)
+    return format (s, "(@~0)");
+
+  upf_nwi_t *nwi = pool_elt_at_index(gtm->nwis, n);
+  return format (s, "(@%u) %U", n, format_network_instance, nwi->name);
+}
+
+u8 *
+format_gtpu_endpoint (u8 * s, va_list * args)
+{
+  upf_upip_res_t *ep = va_arg (*args, upf_upip_res_t *);
+
+  if (!is_zero_ip4_address (&ep->ip4))
+   s = format (s, " IP4: %U", format_ip4_address, &ep->ip4);
+  if (!is_zero_ip6_address (&ep->ip6))
+    s = format (s, " IP6: %U", format_ip6_address, &ep->ip6);
+
+  if (~0 != ep->nwi)
+    s = format (s, ", nwi: %U", format_network_instance_index, ep->nwi);
+
+  if (INTF_INVALID != ep->intf)
+    s = format (s, ", Intf: %u", ep->intf);
+
+  s = format (s, ", 0x%08x/%d (0x%08x)",
+	      ep->teid, __builtin_popcount(ep->mask),
+	      ep->mask);
 
   return s;
 }

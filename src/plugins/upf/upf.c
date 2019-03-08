@@ -631,7 +631,7 @@ upf_gtpu_endpoint_add_del_command_fn (vlib_main_t * vm,
   ip4_address_t ip4 = ip4_address_initializer;
   u8 ip_set = 0;
   u8 *name = NULL;
-  u8 intf = ~0;
+  u8 intf = INTF_INVALID;
   u8 add = 1;
   int rv;
   u8 *s;
@@ -655,18 +655,18 @@ upf_gtpu_endpoint_add_del_command_fn (vlib_main_t * vm,
 	  vec_free (s);
 	}
       else if (unformat (line_input, "intf access"))
-	intf = INTF_ACCESS;
+	intf = SRC_INTF_ACCESS;
       else if (unformat (line_input, "intf core"))
-	intf = INTF_CORE;
+	intf = SRC_INTF_CORE;
       else if (unformat (line_input, "intf sgi"))
 	/*
 	 * WTF: the specification does permit that,
 	 *      but what does that mean in terms
 	 *      of the UPIP IE?
 	 */
-	intf = INTF_SGI_LAN;
+	intf = SRC_INTF_SGI_LAN;
       else if (unformat (line_input, "intf cp"))
-	intf = INTF_CP;
+	intf = SRC_INTF_CP;
       else if (unformat (line_input, "teid %u/%u", &teid, &teidri))
 	{
 	  if (teidri > 7)
@@ -1092,26 +1092,8 @@ upf_show_gtpu_endpoint_command_fn (vlib_main_t * vm,
   /* *INDENT-OFF* */
   pool_foreach (res, gtm->upip_res,
   ({
-    vlib_cli_output (vm, "[%d]:", res - gtm->upip_res);
-
-    if (!is_zero_ip4_address (&res->ip4))
-      vlib_cli_output (vm, " IP4: %U", format_ip4_address, &res->ip4);
-    if (!is_zero_ip6_address (&res->ip6))
-      vlib_cli_output (vm, " IP6: %U", format_ip6_address, &res->ip6);
-
-    if (res->nwi != ~0)
-      {
-	upf_nwi_t *nwi = pool_elt_at_index(gtm->nwis, res->nwi);
-
-	vlib_cli_output (vm, ", nwi: %U", format_network_instance, nwi->name);
-      }
-
-    if (res->intf != ~0)
-      vlib_cli_output (vm, ", Intf: %u", res->intf);
-
-    vlib_cli_output (vm, ", 0x%08x/%d (0x%08x)",
-		     res->teid, __builtin_popcount(res->mask),
-		     res->mask);
+    vlib_cli_output (vm, "[%d]: %U", res - gtm->upip_res,
+		     format_gtpu_endpoint, res);
   }));
   /* *INDENT-ON* */
 
@@ -1152,6 +1134,7 @@ upf_show_session_command_fn (vlib_main_t * vm,
   ip46_address_t cp_ip;
   u8 has_cp_f_seid = 0, has_up_seid = 0;
   upf_session_t *sess = NULL;
+  int debug = 0;
 #if FLOWTABLE_TODO
   u8 has_flows = 0;
 #endif
@@ -1172,6 +1155,8 @@ upf_show_session_command_fn (vlib_main_t * vm,
 	    has_up_seid = 1;
 	  else if (unformat (line_input, "up seid 0x%lx", &up_seid))
 	    has_up_seid = 1;
+	  else if (unformat (line_input, "debug"))
+	    debug = 1;
 #if FLOWTABLE_TODO
 	  else if (unformat (line_input, "%lu flows", &up_seid))
 	    has_flows = 1;
@@ -1218,14 +1203,14 @@ upf_show_session_command_fn (vlib_main_t * vm,
 	  goto done;
 	}
 
-      vlib_cli_output (vm, "%U", format_sx_session, sess, SX_ACTIVE);
+      vlib_cli_output (vm, "%U", format_sx_session, sess, SX_ACTIVE, debug);
     }
   else
     {
       /* *INDENT-OFF* */
       pool_foreach (sess, gtm->sessions,
       ({
-	vlib_cli_output (vm, "%U", format_sx_session, sess, SX_ACTIVE);
+	vlib_cli_output (vm, "%U", format_sx_session, sess, SX_ACTIVE, debug);
       }));
       /* *INDENT-ON* */
     }
