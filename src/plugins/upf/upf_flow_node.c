@@ -33,8 +33,6 @@
   do { } while (0)
 #endif
 
-vlib_node_registration_t upf_flow_node;
-
 typedef struct
 {
   u32 session_index;
@@ -312,23 +310,23 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
   CPT_TIMER_EXPIRE += flowtable_timer_expire (fm, fmt, current_time);
 
 #define _(sym, str)							\
-  vlib_node_increment_counter(vm, upf_flow_node.index,			\
+  vlib_node_increment_counter(vm, node->node_index,			\
 			      FLOWTABLE_ERROR_ ## sym, CPT_ ## sym);
   foreach_flowtable_error
 #undef _
     return frame->n_vectors;
 }
 
-static uword
-upf_ip4_flow_process (vlib_main_t * vm,
-		      vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip4_flow_node) (vlib_main_t * vm,
+				  vlib_node_runtime_t * node,
+				  vlib_frame_t * from_frame)
 {
   return upf_flow_process (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-static uword
-upf_ip6_flow_process (vlib_main_t * vm,
-		      vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip6_flow_node) (vlib_main_t * vm,
+				  vlib_node_runtime_t * node,
+				  vlib_frame_t * from_frame)
 {
   return upf_flow_process (vm, node, from_frame, /* is_ip4 */ 0);
 }
@@ -341,7 +339,6 @@ static char *flowtable_error_strings[] = {
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE(upf_ip4_flow_node) = {
-  .function = upf_ip4_flow_process,
   .name = "upf-ip4-flow-process",
   .vector_size = sizeof(u32),
   .format_trace = format_get_flowinfo,
@@ -357,11 +354,8 @@ VLIB_REGISTER_NODE(upf_ip4_flow_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip4_flow_node, upf_ip4_flow_process);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE(upf_ip6_flow_node) = {
-  .function = upf_ip6_flow_process,
   .name = "upf-ip6-flow-process",
   .vector_size = sizeof(u32),
   .format_trace = format_get_flowinfo,
@@ -376,8 +370,6 @@ VLIB_REGISTER_NODE(upf_ip6_flow_node) = {
   }
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip6_flow_node, upf_ip6_flow_process);
 
 /*
  * fd.io coding-style-patch-verification: ON

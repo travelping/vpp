@@ -60,24 +60,7 @@ typedef enum
   UPF_ENCAP_N_NEXT,
 } upf_encap_next_t;
 
-typedef struct
-{
-  u32 session_index;
-  u32 teid;
-} upf_encap_trace_t;
-
-u8 *
-format_upf_encap_trace (u8 * s, va_list * args)
-{
-  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
-  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
-  upf_encap_trace_t *t = va_arg (*args, upf_encap_trace_t *);
-
-  s = format (s, "GTPU encap to upf_session%d teid 0x%08x",
-	      t->session_index, t->teid);
-  return s;
-}
-
+#ifndef CLIB_MARCH_VARIANT
 void
 gtpu_send_end_marker (upf_far_forward_t * forward)
 {
@@ -171,8 +154,8 @@ gtpu_send_end_marker (upf_far_forward_t * forward)
   to_next[0] = bi;
   f->n_vectors = 1;
   vlib_put_frame_to_node (vm, next_index, f);
-
 }
+#endif
 
 #define foreach_fixed_header4_offset            \
     _(0) _(1) _(2) _(3)
@@ -180,7 +163,7 @@ gtpu_send_end_marker (upf_far_forward_t * forward)
 #define foreach_fixed_header6_offset            \
     _(0) _(1) _(2) _(3) _(4) _(5) _(6)
 
-static uword
+always_inline uword
 upf_encap_inline (vlib_main_t * vm,
 		  vlib_node_runtime_t * node,
 		  vlib_frame_t * from_frame, u32 is_ip4)
@@ -837,23 +820,22 @@ upf_encap_inline (vlib_main_t * vm,
   return from_frame->n_vectors;
 }
 
-static uword
-upf4_encap (vlib_main_t * vm,
-	    vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf4_encap_node) (vlib_main_t * vm,
+				vlib_node_runtime_t * node,
+				vlib_frame_t * from_frame)
 {
   return upf_encap_inline (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-static uword
-upf6_encap (vlib_main_t * vm,
-	    vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf6_encap_node) (vlib_main_t * vm,
+				vlib_node_runtime_t * node,
+				vlib_frame_t * from_frame)
 {
   return upf_encap_inline (vm, node, from_frame, /* is_ip4 */ 0);
 }
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf4_encap_node) = {
-  .function = upf4_encap,
   .name = "upf4-encap",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_encap_trace,
@@ -869,11 +851,8 @@ VLIB_REGISTER_NODE (upf4_encap_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (upf4_encap_node, upf4_encap);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf6_encap_node) = {
-  .function = upf6_encap,
   .name = "upf6-encap",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_encap_trace,
@@ -888,5 +867,3 @@ VLIB_REGISTER_NODE (upf6_encap_node) = {
   },
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (upf6_encap_node, upf6_encap);
