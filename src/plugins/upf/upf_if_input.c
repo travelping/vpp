@@ -72,7 +72,7 @@ typedef struct
 }
 upf_if_input_trace_t;
 
-u8 *
+static u8 *
 format_upf_if_input_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
@@ -87,9 +87,9 @@ format_upf_if_input_trace (u8 * s, va_list * args)
   return s;
 }
 
-static uword
-upf_if_input (vlib_main_t * vm, vlib_node_runtime_t * node,
-	      vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_if_input_node) (vlib_main_t * vm,
+				  vlib_node_runtime_t * node,
+				  vlib_frame_t * from_frame)
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
@@ -198,7 +198,6 @@ upf_if_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf_if_input_node) = {
-  .function = upf_if_input,
   .name = "upf-if-input",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_if_input_trace,
@@ -213,8 +212,6 @@ VLIB_REGISTER_NODE (upf_if_input_node) = {
   },
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (upf_if_input_node, upf_if_input);
 
 /*
  * fd.io coding-style-patch-verification: ON

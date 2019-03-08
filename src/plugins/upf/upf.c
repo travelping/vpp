@@ -1439,6 +1439,18 @@ VNET_FEATURE_INIT (upf, static) =
 };
 /* *INDENT-ON */
 
+u8 *
+format_upf_encap_trace (u8 * s, va_list * args)
+{
+  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
+  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+  upf_encap_trace_t *t = va_arg (*args, upf_encap_trace_t *);
+
+  s = format (s, "GTPU encap to upf_session%d teid 0x%08x",
+	      t->session_index, t->teid);
+  return s;
+}
+
 /* *INDENT-OFF* */
 VLIB_PLUGIN_REGISTER () =
 {

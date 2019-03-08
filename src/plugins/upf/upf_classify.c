@@ -102,7 +102,7 @@ typedef struct
 }
 upf_classify_trace_t;
 
-u8 *
+static u8 *
 format_upf_classify_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
@@ -129,7 +129,7 @@ typedef struct
 }
 upf_tdf_trace_t;
 
-u8 *
+static u8 *
 format_upf_tdf_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
@@ -673,23 +673,22 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
   return from_frame->n_vectors;
 }
 
-static uword
-upf_ip4_classify (vlib_main_t * vm,
-		  vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip4_classify_node) (vlib_main_t * vm,
+				      vlib_node_runtime_t * node,
+				      vlib_frame_t * from_frame)
 {
   return upf_classify (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-static uword
-upf_ip6_classify (vlib_main_t * vm,
-		  vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip6_classify_node) (vlib_main_t * vm,
+				      vlib_node_runtime_t * node,
+				      vlib_frame_t * from_frame)
 {
   return upf_classify (vm, node, from_frame, /* is_ip4 */ 0);
 }
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf_ip4_classify_node) = {
-  .function = upf_ip4_classify,
   .name = "upf-ip4-classify",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_classify_trace,
@@ -704,11 +703,8 @@ VLIB_REGISTER_NODE (upf_ip4_classify_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip4_classify_node, upf_ip4_classify);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf_ip6_classify_node) = {
-  .function = upf_ip6_classify,
   .name = "upf-ip6-classify",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_classify_trace,
@@ -722,8 +718,6 @@ VLIB_REGISTER_NODE (upf_ip6_classify_node) = {
   },
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip6_classify_node, upf_ip6_classify);
 
 static uword
 upf_tdf (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame, int is_ip4)
@@ -796,17 +790,16 @@ upf_tdf (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame, int
   return frame->n_vectors;
 }
 
-
-static uword
-upf_ip4_tdf (vlib_main_t * vm,
-		  vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip4_tdf_node) (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
 {
   return upf_tdf (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-static uword
-upf_ip6_tdf (vlib_main_t * vm,
-		  vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (upf_ip6_tdf_node) (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
 {
   return upf_tdf (vm, node, from_frame, /* is_ip4 */ 0);
 }
@@ -814,7 +807,6 @@ upf_ip6_tdf (vlib_main_t * vm,
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf_ip4_tdf_node) =
 {
-  .function = upf_ip4_tdf,
   .name = "upf-ip4-tdf",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_tdf_trace,
@@ -830,12 +822,9 @@ VLIB_REGISTER_NODE (upf_ip4_tdf_node) =
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip4_tdf_node, upf_ip4_tdf);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (upf_ip6_tdf_node) =
 {
-  .function = upf_ip6_tdf,
   .name = "upf-ip6-tdf",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_tdf_trace,
@@ -850,8 +839,6 @@ VLIB_REGISTER_NODE (upf_ip6_tdf_node) =
   },
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (upf_ip6_tdf_node, upf_ip6_tdf);
 
 /*
  * fd.io coding-style-patch-verification: ON

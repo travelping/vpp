@@ -30,9 +30,6 @@
   do { } while (0)
 #endif
 
-vlib_node_registration_t gtpu4_input_node;
-vlib_node_registration_t gtpu6_input_node;
-
 typedef enum
 {
   GTPU_INPUT_NEXT_DROP,
@@ -805,16 +802,17 @@ gtpu_input (vlib_main_t * vm,
   return from_frame->n_vectors;
 }
 
-static uword
-gtpu4_input (vlib_main_t * vm,
-	     vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+
+VLIB_NODE_FN (gtpu4_input_node) (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
 {
   return gtpu_input (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-static uword
-gtpu6_input (vlib_main_t * vm,
-	     vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+VLIB_NODE_FN (gtpu6_input_node) (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
 {
   return gtpu_input (vm, node, from_frame, /* is_ip4 */ 0);
 }
@@ -828,7 +826,6 @@ static char *gtpu_error_strings[] = {
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtpu4_input_node) = {
-  .function = gtpu4_input,
   .name = "gtpu4-input",
   /* Takes a vector of packets. */
   .vector_size = sizeof (u32),
@@ -853,11 +850,8 @@ VLIB_REGISTER_NODE (gtpu4_input_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (gtpu4_input_node, gtpu4_input);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtpu6_input_node) = {
-  .function = gtpu6_input,
   .name = "gtpu6-input",
   /* Takes a vector of packets. */
   .vector_size = sizeof (u32),
@@ -881,8 +875,6 @@ VLIB_REGISTER_NODE (gtpu6_input_node) = {
   // $$$$ .unformat_buffer = unformat_gtpu_header,
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (gtpu6_input_node, gtpu6_input);
 
 typedef struct
 {
@@ -1008,9 +1000,9 @@ decode_error_indication (vlib_buffer_t * b, gtp_error_ind_t * error)
   return 0;
 }
 
-static uword
-process_error_indication (vlib_main_t * vm,
-			  vlib_node_runtime_t * node, vlib_frame_t * frame)
+VLIB_NODE_FN(gtp_error_ind_node) (vlib_main_t * vm,
+				  vlib_node_runtime_t * node,
+				  vlib_frame_t * frame)
 {
   upf_main_t *gtm = &upf_main;
   u32 *buffers, *first_buffer;
@@ -1117,15 +1109,12 @@ process_error_indication (vlib_main_t * vm,
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtp_error_ind_node) = {
-  .function = process_error_indication,
   .name = "gtp-error-indication",
   .vector_size = sizeof (u32),
   //  .format_buffer = format_ip4_header,
   .format_trace = format_gtpu_error_ind_trace,
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (gtp_error_ind_node, process_error_indication);
 
 /****************************************************************************/
 
@@ -1152,9 +1141,9 @@ format_gtpu_ip4_echo_req_trace (u8 * s, va_list * args)
 		 sizeof (t->packet_data));
 }
 
-static uword
-gtpu4_echo_request (vlib_main_t * vm,
-		    vlib_node_runtime_t * node, vlib_frame_t * frame)
+VLIB_NODE_FN (gtp_ip4_echo_req_node) (vlib_main_t * vm,
+				      vlib_node_runtime_t * node,
+				      vlib_frame_t * frame)
 {
   ip4_main_t *i4m = &ip4_main;
   uword n_packets = frame->n_vectors;
@@ -1270,9 +1259,9 @@ format_gtpu_ip6_echo_req_trace (u8 * s, va_list * args)
 		 sizeof (t->packet_data));
 }
 
-static uword
-gtpu6_echo_request (vlib_main_t * vm,
-		    vlib_node_runtime_t * node, vlib_frame_t * frame)
+VLIB_NODE_FN (gtp_ip6_echo_req_node) (vlib_main_t * vm,
+				      vlib_node_runtime_t * node,
+				      vlib_frame_t * frame)
 {
   ip6_main_t *i6m = &ip6_main;
   uword n_packets = frame->n_vectors;
@@ -1363,7 +1352,6 @@ gtpu6_echo_request (vlib_main_t * vm,
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtp_ip4_echo_req_node) = {
-  .function = gtpu4_echo_request,
   .name = "upf-ip4-echo-request",
   .vector_size = sizeof (u32),
   .format_trace = format_gtpu_ip4_echo_req_trace,
@@ -1379,11 +1367,8 @@ VLIB_REGISTER_NODE (gtp_ip4_echo_req_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (gtp_ip4_echo_req_node, gtpu4_echo_request);
-
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtp_ip6_echo_req_node) = {
-  .function = gtpu6_echo_request,
   .name = "upf-ip6-echo-request",
   .vector_size = sizeof (u32),
   .format_trace = format_gtpu_ip6_echo_req_trace,
@@ -1398,8 +1383,6 @@ VLIB_REGISTER_NODE (gtp_ip6_echo_req_node) = {
   },
 };
 /* *INDENT-ON* */
-
-VLIB_NODE_FUNCTION_MULTIARCH (gtp_ip6_echo_req_node, gtpu6_echo_request);
 
 /****************************************************************************/
 
@@ -1834,16 +1817,15 @@ ip_gtpu_bypass_inline (vlib_main_t * vm,
   return frame->n_vectors;
 }
 
-static uword
-ip4_gtpu_bypass (vlib_main_t * vm,
-		 vlib_node_runtime_t * node, vlib_frame_t * frame)
+VLIB_NODE_FN (ip4_gtpu_bypass_node) (vlib_main_t * vm,
+				     vlib_node_runtime_t * node,
+				     vlib_frame_t * frame)
 {
   return ip_gtpu_bypass_inline (vm, node, frame, /* is_ip4 */ 1);
 }
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (ip4_gtpu_bypass_node) = {
-  .function = ip4_gtpu_bypass,
   .name = "ip4-gtpu-bypass",
   .vector_size = sizeof (u32),
 
@@ -1858,27 +1840,23 @@ VLIB_REGISTER_NODE (ip4_gtpu_bypass_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (ip4_gtpu_bypass_node, ip4_gtpu_bypass);
-
+#ifndef CLIB_MARCH_VARIANT
 /* Dummy init function to get us linked in. */
-clib_error_t *
-ip4_gtpu_bypass_init (vlib_main_t * vm)
-{
-  return 0;
-}
+clib_error_t * ip4_gtpu_bypass_init (vlib_main_t * vm)
+{ return 0; }
 
 VLIB_INIT_FUNCTION (ip4_gtpu_bypass_init);
+#endif /* CLIB_MARCH_VARIANT */
 
-static uword
-ip6_gtpu_bypass (vlib_main_t * vm,
-		 vlib_node_runtime_t * node, vlib_frame_t * frame)
+VLIB_NODE_FN (ip6_gtpu_bypass_node) (vlib_main_t * vm,
+				     vlib_node_runtime_t * node,
+				     vlib_frame_t * frame)
 {
   return ip_gtpu_bypass_inline (vm, node, frame, /* is_ip4 */ 0);
 }
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (ip6_gtpu_bypass_node) = {
-  .function = ip6_gtpu_bypass,
   .name = "ip6-gtpu-bypass",
   .vector_size = sizeof (u32),
 
@@ -1893,13 +1871,10 @@ VLIB_REGISTER_NODE (ip6_gtpu_bypass_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (ip6_gtpu_bypass_node, ip6_gtpu_bypass);
-
+#ifndef CLIB_MARCH_VARIANT
 /* Dummy init function to get us linked in. */
-clib_error_t *
-ip6_gtpu_bypass_init (vlib_main_t * vm)
-{
-  return 0;
-}
+clib_error_t * ip6_gtpu_bypass_init (vlib_main_t * vm)
+{ return 0; }
 
 VLIB_INIT_FUNCTION (ip6_gtpu_bypass_init);
+#endif /* CLIB_MARCH_VARIANT */

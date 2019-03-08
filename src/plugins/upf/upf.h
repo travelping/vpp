@@ -262,7 +262,7 @@ typedef struct
 #define INTF_LI		4
 #define INTF_NUM	(INTF_LI + 1)
 
-enum
+typedef enum
 {
   UPF_UL = 0,
   UPF_DL,
@@ -762,6 +762,12 @@ typedef enum
   UPF_PROCESS_NEXT_IP_LOCAL,
   UPF_PROCESS_N_NEXT,
 } upf_process_next_t;
+
+typedef struct
+{
+  u32 session_index;
+  u32 teid;
+} upf_encap_trace_t;
 
 int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 u8 *format_upf_encap_trace (u8 * s, va_list * args);

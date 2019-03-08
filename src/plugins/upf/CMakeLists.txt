@@ -50,6 +50,14 @@ if(URCU_FOUND AND HS_FOUND)
     flowtable_init.c
     flowtable.c
 
+    MULTIARCH_SOURCES
+    gtpu_encap.c
+    gtpu_decap.c
+    upf_if_input.c
+    upf_flow_node.c
+    upf_classify.c
+    upf_process.c
+
     API_FILES
     upf.api
 
