@@ -321,7 +321,8 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
 	      &ip6->src_address : &ip6->dst_address;
 
-	    if (!ip6_address_is_equal(&pdr->pdi.ue_addr.ip6, addr))
+	    if (!ip6_address_is_equal_masked(&pdr->pdi.ue_addr.ip6, addr,
+					     &ip6_main.fib_masks[64]))
 	      {
 		adf_debug("skip PDR %u for UE IP mismatch\n", pdr->id);
 		continue;
@@ -440,10 +441,12 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
 		      flow_entry_t * flow, int is_reverse,
 		      u8 is_ip4, upf_acl_t * acl)
 {
+  u32 pf_len = is_ip4 ? 32 : 64;
+
   if (! !is_ip4 != ! !acl->is_ip4)
     return 0;
 
-  gtp_debug ("TEID %08x, Match %08x, ACL %08x\n",
+  gtp_debug ("TEID %08x, Match %u, ACL %08x\n",
 	     teid, acl->match_teid, acl->teid);
   if (acl->match_teid && teid != acl->teid)
     return 0;
@@ -454,14 +457,16 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
       gtp_debug ("UL: UE %U, Src: %U\n",
 		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
 		 format_ip46_address, &flow->key.ip[FT_ORIGIN ^ is_reverse], IP46_TYPE_ANY);
-      if (!ip46_address_is_equal (&acl->ue_ip, &flow->key.ip[FT_ORIGIN ^ is_reverse]))
+      if (!ip46_address_is_equal_masked (&acl->ue_ip, &flow->key.ip[FT_ORIGIN ^ is_reverse],
+					 (ip46_address_t *)&ip6_main.fib_masks[pf_len]))
 	return 0;
       break;
     case UPF_ACL_DL:
       gtp_debug ("DL: UE %U, Dst: %U\n",
 		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
 		 format_ip46_address, &flow->key.ip[FT_REVERSE ^ is_reverse], IP46_TYPE_ANY);
-      if (!ip46_address_is_equal (&acl->ue_ip, &flow->key.ip[FT_REVERSE ^ is_reverse]))
+      if (!ip46_address_is_equal_masked (&acl->ue_ip, &flow->key.ip[FT_REVERSE ^ is_reverse],
+					 (ip46_address_t *)&ip6_main.fib_masks[pf_len]))
 	return 0;
       break;
     default:
