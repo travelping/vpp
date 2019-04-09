@@ -588,6 +588,7 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  next = UPF_CLASSIFY_NEXT_PROCESS;
 
 	  flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
+	  gtp_debug ("flow: %p\n", flow);
 	  ASSERT (flow != NULL);
 
 	  is_reverse = vnet_buffer (b)->gtpu.is_reverse;
