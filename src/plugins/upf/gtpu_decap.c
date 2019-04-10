@@ -150,6 +150,9 @@ gtpu_input (vlib_main_t * vm,
 	  b0 = vlib_get_buffer (vm, bi0);
 	  b1 = vlib_get_buffer (vm, bi1);
 
+	  vnet_buffer (b0)->l4_hdr_offset = b0->current_data;
+	  vnet_buffer (b1)->l4_hdr_offset = b1->current_data;
+
 	  /* udp leaves current_data pointing at the gtpu header */
 	  gtpu0 = vlib_buffer_get_current (b0);
 	  gtpu1 = vlib_buffer_get_current (b1);
@@ -576,6 +579,8 @@ gtpu_input (vlib_main_t * vm,
 
 	  b0 = vlib_get_buffer (vm, bi0);
 
+	  vnet_buffer (b0)->l4_hdr_offset = b0->current_data;
+
 	  /* udp leaves current_data pointing at the gtpu header */
 	  gtpu0 = vlib_buffer_get_current (b0);
 	  hdr_len0 = is_ip4 ? sizeof (*ip4_0) : sizeof (*ip6_0);
@@ -926,11 +931,11 @@ decode_error_indication_ext_hdr (vlib_buffer_t * b, u8 next_ext_type,
 
       switch (next_ext_type)
 	{
-	case 0x40:		/* Recovery */
+	case 0x40:		/* UDP Port number */
 	  if (length < 2)
 	    break;
 
-	  error->port = clib_net_to_host_u16 (*(u16 *) p);
+	  error->port = clib_net_to_host_unaligned_mem_u16 ((u16 *) p);
 	  break;
 
 	default:
@@ -1027,6 +1032,8 @@ VLIB_NODE_FN(gtp_error_ind_node) (vlib_main_t * vm,
       n_errors_left -= 1;
 
       b = vlib_get_buffer (vm, bi);
+      vlib_buffer_reset (b);
+      vlib_buffer_advance (b, vnet_buffer (b)->l4_hdr_offset);
       gtpu = vlib_buffer_get_current (b);
 
       memset (&error, 0, sizeof (error));
