@@ -1099,10 +1099,9 @@ VLIB_NODE_FN(gtp_error_ind_node) (vlib_main_t * vm,
 	  tr->error = err;
 	  tr->indication = error;
 	}
-
-      vlib_buffer_free (vm, first_buffer, frame->n_vectors);
-      vlib_frame_free (vm, node, frame);
     }
+
+  vlib_buffer_free (vm, first_buffer, frame->n_vectors);
 
   return frame->n_vectors;
 }
@@ -1110,6 +1109,7 @@ VLIB_NODE_FN(gtp_error_ind_node) (vlib_main_t * vm,
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (gtp_error_ind_node) = {
   .name = "gtp-error-indication",
+  .flags = VLIB_NODE_FLAG_IS_DROP,
   .vector_size = sizeof (u32),
   //  .format_buffer = format_ip4_header,
   .format_trace = format_gtpu_error_ind_trace,
