@@ -29,6 +29,28 @@
   do { } while (0)
 #endif
 
+#define TLS_HANDSHAKE 22
+#define TLS_CLIENT_HELLO 1
+#define TLS_EXT_SNI 0
+
+CLIB_PACKED (struct tls_record_hdr {
+  u8 type;
+  u8 major;
+  u8 minor;
+  u16 length;
+});
+
+CLIB_PACKED (struct tls_handshake_hdr {
+  u8 type;
+  u8 length[3];
+});
+
+CLIB_PACKED (struct tls_client_hello_hdr {
+  u8 major;
+  u8 minor;
+  u8 random[32];  /* gmt_unix_time + random_bytes[28] */
+});
+
 int upf_adf_lookup (u32 db_index, u8 * str, uint16_t length);
 int upf_app_add_del (upf_main_t * sm, u8 * name, u32 flags, int add);
 int upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
