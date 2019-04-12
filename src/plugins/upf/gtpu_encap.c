@@ -184,6 +184,10 @@ upf_encap_inline (vlib_main_t * vm,
   upf_far_t *far0 = NULL, *far1 = NULL, *far2 = NULL, *far3 = NULL;
   upf_peer_t *peer0 = NULL, *peer1 = NULL, *peer2 = NULL, *peer3 = NULL;
 
+  u32 const csum_mask =
+	  ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM | VNET_BUFFER_F_OFFLOAD_UDP_CKSUM |
+	    (is_ip4 ? VNET_BUFFER_F_OFFLOAD_IP_CKSUM : 0));
+
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
 
@@ -551,6 +555,12 @@ upf_encap_inline (vlib_main_t * vm,
 		udp3->checksum = 0xffff;
 	    }
 
+	  /* clear the checksum offload flags */
+	  b0->flags &= csum_mask;
+	  b1->flags &= csum_mask;
+	  b2->flags &= csum_mask;
+	  b3->flags &= csum_mask;
+
 	  pkts_encapsulated += 4;
 	  len0 = vlib_buffer_length_in_chain (vm, b0);
 	  len1 = vlib_buffer_length_in_chain (vm, b1);
@@ -764,6 +774,9 @@ upf_encap_inline (vlib_main_t * vm,
 	      if (udp0->checksum == 0)
 		udp0->checksum = 0xffff;
 	    }
+
+	  /* clear the checksum offload flags */
+	  b0->flags &= csum_mask;
 
 	  pkts_encapsulated++;
 	  len0 = vlib_buffer_length_in_chain (vm, b0);
