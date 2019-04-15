@@ -113,6 +113,8 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
 {
   ASSERT (f->timer_index == (e - fmt->timers));
 
+  clib_warning ("expire: %p: %U\n", f, format_flow_key, &f->key);
+
   /* timers unlink */
   clib_dlist_remove (fmt->timers, e - fmt->timers);
   pool_put (fmt->timers, e);

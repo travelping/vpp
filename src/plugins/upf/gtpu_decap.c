@@ -1036,6 +1036,10 @@ VLIB_NODE_FN(gtp_error_ind_node) (vlib_main_t * vm,
       vlib_buffer_advance (b, vnet_buffer (b)->l4_hdr_offset);
       gtpu = vlib_buffer_get_current (b);
 
+      gtp_debug("P: %U", format_hex_bytes, gtpu, 16);
+      gtp_debug("%p, TEID: %u, Flags: %02x, Ext: %u", gtpu,
+		gtpu->teid, gtpu->ver_flags & GTPU_E_S_PN_BIT, gtpu->next_ext_type);
+
       memset (&error, 0, sizeof (error));
 
       if (PREDICT_FALSE ((gtpu->ver_flags & GTPU_E_S_PN_BIT) != 0))
