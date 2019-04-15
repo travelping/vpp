@@ -171,7 +171,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      CPT_UNHANDLED++;
 	    }
 
-	  flow_debug ("flow: %p, %p\n", flow0, flow1);
+	  flow_debug ("flow0: %p: %U\n", flow0, format_flow_key, &flow0->key);
+	  flow_debug ("flow1: %p: %U\n", flow1, format_flow_key, &flow1->key);
 
 	  /* timer management */
 	  if (flow_update_lifetime (flow0, b0, is_ip4))
@@ -258,7 +259,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      CPT_UNHANDLED++;
 	    }
 
-	  flow_debug ("flow: %p\n", flow);
+	  flow_debug ("flow: %p: %U\n", flow, format_flow_key, &flow->key);
 
 	  /* timer management */
 	  if (flow_update_lifetime (flow, b0, is_ip4))
