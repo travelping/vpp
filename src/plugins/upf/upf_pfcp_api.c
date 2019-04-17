@@ -1278,7 +1278,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
     create->apply_action = far->apply_action;
 
     if ((create->apply_action & FAR_FORWARD) &&
-	far->grp.fields & CREATE_FAR_FORWARDING_PARAMETERS)
+	ISSET_BIT (far->grp.fields, CREATE_FAR_FORWARDING_PARAMETERS))
       {
 
 	if (ISSET_BIT (far->forwarding_parameters.grp.fields,
@@ -1398,10 +1398,11 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 	break;
       }
 
-    update->apply_action = far->apply_action;
+    update->apply_action =
+      OPT (far, UPDATE_FAR_APPLY_ACTION, apply_action, update->apply_action);
 
     if ((update->apply_action & FAR_FORWARD) &&
-	far->grp.fields & UPDATE_FAR_UPDATE_FORWARDING_PARAMETERS)
+	ISSET_BIT (far->grp.fields, UPDATE_FAR_UPDATE_FORWARDING_PARAMETERS))
       {
 	if (ISSET_BIT (far->update_forwarding_parameters.grp.fields,
 		       UPDATE_FORWARDING_PARAMETERS_NETWORK_INSTANCE))
@@ -1768,11 +1769,9 @@ handle_create_qer (upf_session_t * sess, pfcp_create_qer_t * create_qer,
     memset (create, 0, sizeof (*create));
 
     create->id = qer->qer_id;
-
     create->policer.key =
-      (ISSET_BIT (qer->grp.fields, CREATE_QER_QER_CORRELATION_ID)) ?
-      qer->qer_correlation_id : (u64) (sess -
-				       gtm->sessions) << 32 | create->id;
+      OPT (qer, CREATE_QER_QER_CORRELATION_ID, qer_correlation_id,
+	   (u64) (sess - gtm->sessions) << 32 | create->id);
     create->policer.value = ~0;
 
     create->gate_status[UPF_UL] = qer->gate_status.ul;

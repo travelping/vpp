@@ -662,14 +662,17 @@ make_pending_far (upf_session_t * sx)
       pending->far = vec_dup (active->far);
       vec_foreach_index (i, active->far)
       {
-	upf_far_t *far = vec_elt_at_index (active->far, i);
+	upf_far_t *old = vec_elt_at_index (active->far, i);
+	upf_far_t *new = vec_elt_at_index (pending->far, i);
 
-	if (!(far->apply_action & FAR_FORWARD)
-	    || far->forward.rewrite == NULL)
-	  continue;
+	new->forward.rewrite = NULL;
+	if (!(old->apply_action & FAR_FORWARD)
+	    || old->forward.rewrite == NULL)
+	  {
+	    continue;
+	  }
 
-	vec_elt (pending->far, i).forward.rewrite =
-	  vec_dup (far->forward.rewrite);
+	new->forward.rewrite = vec_dup (old->forward.rewrite);
       }
     }
 
@@ -2167,6 +2170,64 @@ format_urr_time_abs (u8 * s, va_list * args)
 }
 
 u8 *
+format_upf_far (u8 * s, va_list * args)
+{
+  upf_main_t *gtm = &upf_main;
+  upf_far_t *far = va_arg (*args, upf_far_t *);
+  int debug = va_arg (*args, int);
+  upf_nwi_t *nwi = NULL;
+  u32 indent;
+
+  indent = format_get_indent (s);
+
+  if (!pool_is_free_index (gtm->nwis, far->forward.nwi))
+    nwi = pool_elt_at_index (gtm->nwis, far->forward.nwi);
+
+  if (!debug)
+    s = format (s, "FAR: %u\n", far->id);
+  else
+    s = format (s, "FAR: %u @ %p\n", far->id, far);
+
+  s = format (s, "%UApply Action: %08x == %U\n",
+	      format_white_space, indent + 2, far->apply_action,
+	      format_flags, far->apply_action, apply_action_flags);
+
+  if (far->apply_action & FAR_FORWARD)
+    {
+      upf_far_forward_t * ff = &far->forward;
+
+      s = format (s, "%UForward:\n"
+		  "%UNetwork Instance: %U\n"
+		  "%UDestination Interface: %u\n",
+		  format_white_space, indent + 2,
+		  format_white_space, indent + 4,
+		  format_network_instance, nwi ? nwi->name : NULL,
+		  format_white_space, indent + 4,
+		  ff->dst_intf);
+      if (ff->flags & FAR_F_REDIRECT_INFORMATION)
+	s = format (s, "%URedirect Information: %U\n",
+		    format_white_space, indent + 4,
+		    format_redirect_information,
+		    &ff->redirect_information);
+      if (ff->flags & FAR_F_OUTER_HEADER_CREATION)
+	{
+	  s = format (s, "%UOuter Header Creation: %U\n",
+		      format_white_space, indent + 4,
+		      format_outer_header_creation,
+		      &ff->outer_header_creation);
+	  if (debug && ff->rewrite)
+	    s = format (s, "%URewrite Header: %U\n",
+			format_white_space, indent + 4,
+			(ff->outer_header_creation.description &
+			 OUTER_HEADER_CREATION_IP4) ? format_ip4_header : format_ip6_header,
+			ff->rewrite, vec_len (ff->rewrite));
+	}
+    }
+
+  return s;
+}
+
+u8 *
 format_sx_session (u8 * s, va_list * args)
 {
   upf_session_t *sx = va_arg (*args, upf_session_t *);
@@ -2272,41 +2333,7 @@ format_sx_session (u8 * s, va_list * args)
 
   vec_foreach (far, rules->far)
   {
-    upf_nwi_t *nwi = NULL;
-
-    if (!pool_is_free_index (gtm->nwis, far->forward.nwi))
-      nwi = pool_elt_at_index (gtm->nwis, far->forward.nwi);
-
-    s = format (s, "FAR: %u\n"
-		"  Apply Action: %08x == %U\n",
-		far->id, far->apply_action,
-		format_flags, far->apply_action, apply_action_flags);
-
-    if (far->apply_action & FAR_FORWARD)
-      {
-	upf_far_forward_t * ff = &far->forward;
-
-	s = format (s, "  Forward:\n"
-		    "    Network Instance: %U\n"
-		    "    Destination Interface: %u\n",
-		    format_network_instance, nwi ? nwi->name : NULL,
-		    ff->dst_intf);
-	if (ff->flags & FAR_F_REDIRECT_INFORMATION)
-	  s = format (s, "    Redirect Information: %U\n",
-		      format_redirect_information,
-		      &ff->redirect_information);
-	if (ff->flags & FAR_F_OUTER_HEADER_CREATION)
-	  {
-	    s = format (s, "    Outer Header Creation: %U\n",
-			format_outer_header_creation,
-			&ff->outer_header_creation);
-	    if (debug && ff->rewrite)
-	      s = format (s, "    Rewrite Header: %U\n",
-			  (ff->outer_header_creation.description &
-			   OUTER_HEADER_CREATION_IP4) ? format_ip4_header : format_ip6_header,
-			  ff->rewrite, vec_len (ff->rewrite));
-	  }
-      }
+    s = format(s, "%U", format_upf_far, far, debug);
   }
 
   vec_foreach (urr, rules->urr)
