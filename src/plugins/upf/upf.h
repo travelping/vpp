@@ -631,6 +631,7 @@ typedef u8 *regex_t;
 typedef struct
 {
   u32 id;			/* bit 31 == 1 indicates PFD from CP */
+  u8 l7_proto;
   regex_t host;
   regex_t path;
 } upf_adr_t;
@@ -648,11 +649,15 @@ typedef struct
 
 typedef struct
 {
+  u8 l7_proto;
   regex_t host;
   regex_t path;
   ip46_address_t src_ip;
   ip46_address_t dst_ip;
 } upf_rule_args_t;
+
+#define UPF_ADR_PROTO_HTTP  1
+#define UPF_ADR_PROTO_HTTPS 2
 
 #define UPF_MAPPING_BUCKETS      1024
 #define UPF_MAPPING_MEMORY_SIZE  64 << 20
