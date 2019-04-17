@@ -128,6 +128,7 @@ static void vl_api_upf_app_l7_rule_add_del_t_handler
   upf_main_t *sm = &upf_main;
   int rv = 0;
 
+  args.l7_proto = mp->protocol;
   args.host = mp->host;
   args.path = mp->path;
   rv = upf_rule_add_del (sm, mp->app, mp->id, (int) (mp->is_add), &args);

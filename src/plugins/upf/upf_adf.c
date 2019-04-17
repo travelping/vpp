@@ -627,6 +627,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
       pool_get (app->rules, rule);
       memset (rule, 0, sizeof (*rule));
       rule->id = rule_index;
+      rule->l7_proto = args->l7_proto;
       rule->host = vec_dup (args->host);
       rule->path = vec_dup (args->path);
 
@@ -657,16 +658,15 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 					 vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
-  u8 *app_name = NULL;
-  ip46_address_t src_ip;
-  ip46_address_t dst_ip;
-  u8 *host = NULL;
-  u8 *path = NULL;
-  u32 rule_index = 0;
   clib_error_t *error = NULL;
+  u8 *app_name = NULL;
+  u32 rule_index = 0;
+  upf_rule_args_t r;
   int rv = 0;
   int add = 1;
-  upf_rule_args_t rule_args = { };
+
+  memset(&r, 0, sizeof(r));
+  r.l7_proto = ~0;
 
   /* Get a line of input. */
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -686,18 +686,24 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 	      add = 1;
 
 	      if (unformat
-		  (line_input, "ip dst %U", unformat_ip46_address, &dst_ip,
+		  (line_input, "ip dst %U", unformat_ip46_address, &r.dst_ip,
 		   IP46_TYPE_ANY))
 		break;
 	      else
 		if (unformat
-		    (line_input, "ip src %U", unformat_ip46_address, &src_ip,
+		    (line_input, "ip src %U", unformat_ip46_address, &r.src_ip,
 		     IP46_TYPE_ANY))
 		break;
-	      else if (unformat (line_input, "l7 http host %_%v%_", &host))
+	      else if (unformat (line_input, "l7 http host %_%v%_", &r.host))
 		{
-		  if (unformat (line_input, "path %_%v%_", &path))
+		  r.l7_proto = UPF_ADR_PROTO_HTTP;
+		  if (unformat (line_input, "path %_%v%_", &r.path))
 		    break;
+		}
+	      else if (unformat (line_input, "l7 https sni %_%v%_", &r.host))
+		{
+		  r.l7_proto = UPF_ADR_PROTO_HTTPS;
+		  break;
 		}
 	      else
 		{
@@ -721,12 +727,7 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 	}
     }
 
-  rule_args.host = host;
-  rule_args.path = path;
-  rule_args.src_ip = src_ip;
-  rule_args.dst_ip = dst_ip;
-
-  rv = vnet_upf_rule_add_del (app_name, rule_index, add, &rule_args);
+  rv = vnet_upf_rule_add_del (app_name, rule_index, add, &r);
   switch (rv)
     {
     case 0:
@@ -750,8 +751,8 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
     }
 
 done:
-  vec_free (host);
-  vec_free (path);
+  vec_free (r.host);
+  vec_free (r.path);
   vec_free (app_name);
   unformat_free (line_input);
 
@@ -762,10 +763,38 @@ done:
 VLIB_CLI_COMMAND (upf_application_rule_add_del_command, static) =
 {
   .path = "upf application",
-  .short_help = "upf application <name> rule <id> (add | del) [ip src <ip> | dst <ip>] [l7 http host <regex> path <path>] ",
+  .short_help = "upf application <name> rule <id> (add | del) [ip src <ip> | dst <ip>] "
+  "[l7 http host <regex> path <path> | [l7 https sni <regex>]",
   .function = upf_application_rule_add_del_command_fn,
 };
 /* *INDENT-ON* */
+
+u8 *
+format_upf_adr (u8 * s, va_list * args)
+{
+  upf_adr_t *rule = va_arg (*args, upf_adr_t *);
+
+  s = format (s, "rule %u", rule->id);
+
+  switch (rule->l7_proto) {
+  case UPF_ADR_PROTO_HTTP:
+    s = format (s, " l7 http");
+    break;
+  case UPF_ADR_PROTO_HTTPS:
+    s = format (s, " l7 https");
+    break;
+  default:
+    s = format (s, " unknown (%u)", rule->l7_proto);
+    break;
+  }
+
+  if (rule->host)
+    s = format (s, " host '%v'", rule->host);
+  if (rule->path)
+    s = format (s, " path '%v'", rule->path);
+
+  return s;
+}
 
 static void
 upf_show_rules (vlib_main_t * vm, upf_adf_app_t * app)
@@ -778,13 +807,7 @@ upf_show_rules (vlib_main_t * vm, upf_adf_app_t * app)
   hash_foreach(rule_index, index, app->rules_by_id,
   ({
      rule = pool_elt_at_index(app->rules, index);
-     vlib_cli_output (vm, "rule: %u", rule->id);
-
-     if (rule->host)
-       vlib_cli_output (vm, "host: %v", rule->host);
-
-     if (rule->path)
-       vlib_cli_output (vm, "path: %v", rule->path);
+     vlib_cli_output (vm, "%U", format_upf_adr, rule);
   }));
   /* *INDENT-ON* */
 }
