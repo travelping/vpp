@@ -417,11 +417,14 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 		continue;
 	      }
 	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
-	      &ip4->src_address : &ip4->dst_address;
+	      &ip4->dst_address : &ip4->src_address;
 
 	    if (!ip4_address_is_equal(&pdr->pdi.ue_addr.ip4, addr))
 	      {
-		adf_debug("skip PDR %u for UE IP mismatch\n", pdr->id);
+		adf_debug("skip PDR %u for UE IPv4 mismatch, S/D: %u, %U != %U\n",
+			  pdr->id, !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD),
+			  format_ip4_address, &pdr->pdi.ue_addr.ip4,
+			  format_ip4_address, addr);
 		continue;
 	      }
 	  }
@@ -435,12 +438,15 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 		continue;
 	      }
 	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
-	      &ip6->src_address : &ip6->dst_address;
+	      &ip6->dst_address : &ip6->src_address;
 
 	    if (!ip6_address_is_equal_masked(&pdr->pdi.ue_addr.ip6, addr,
 					     &ip6_main.fib_masks[64]))
 	      {
-		adf_debug("skip PDR %u for UE IP mismatch\n", pdr->id);
+		adf_debug("skip PDR %u for UE IPv6 mismatch, S/D: %u, %U != %U\n",
+			  pdr->id, !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD),
+			  format_ip6_address, &pdr->pdi.ue_addr.ip6,
+			  format_ip6_address, addr);
 		continue;
 	      }
 	  }
@@ -456,7 +462,8 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
     if (pdr->pdi.src_intf != src_intf)
       {
 	/* must have the same direction as the original SDF that permited the flow */
-	adf_debug("skip PDR %u for Src Intf mismatch\n", pdr->id);
+	adf_debug("skip PDR %u for Src Intf mismatch, %u != %u\n",
+		  pdr->id, pdr->pdi.src_intf, src_intf);
 	continue;
       }
 
