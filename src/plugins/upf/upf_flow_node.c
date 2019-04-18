@@ -110,6 +110,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  u32 bi0, bi1;
 	  vlib_buffer_t *b0, *b1;
+	  upf_session_t *sx0, *sx1;
 	  u32 next0, next1;
 	  BVT (clib_bihash_kv) kv0, kv1;
 	  int created0, created1;
@@ -147,10 +148,13 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  n_left_from -= 2;
 	  n_left_to_next -= 2;
 
-	  flow_mk_key (vnet_buffer (b0)->gtpu.session_index, b0,
+	  sx0 = pool_elt_at_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index);
+	  sx1 = pool_elt_at_index (gtm->sessions, vnet_buffer (b1)->gtpu.session_index);
+
+	  flow_mk_key (sx0->cp_seid, b0,
 		       vnet_buffer (b0)->gtpu.data_offset, is_ip4,
 		       &is_reverse0, &kv0);
-	  flow_mk_key (vnet_buffer (b1)->gtpu.session_index, b1,
+	  flow_mk_key (sx1->cp_seid, b1,
 		       vnet_buffer (b1)->gtpu.data_offset, is_ip4,
 		       &is_reverse1, &kv1);
 
@@ -238,6 +242,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  u32 bi0;
 	  u32 next0;
 	  vlib_buffer_t *b0;
+	  upf_session_t *sx0;
 	  int created = 0;
 	  flow_entry_t *flow = NULL;
 	  uword is_reverse = 0;
@@ -246,8 +251,10 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  bi0 = to_next[0] = from[0];
 	  b0 = vlib_get_buffer (vm, bi0);
 
+	  sx0 = pool_elt_at_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index);
+
 	  /* lookup/create flow */
-	  flow_mk_key (vnet_buffer (b0)->gtpu.session_index, b0,
+	  flow_mk_key (sx0->cp_seid, b0,
 		       vnet_buffer (b0)->gtpu.data_offset, is_ip4,
 		       &is_reverse, &kv);
 	  flow =

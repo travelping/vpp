@@ -68,8 +68,8 @@ typedef struct
   {
     struct
     {
+      u64 seid;
       ip46_address_t ip[FT_ORDER_MAX];
-      u32 session_id;
       u16 port[FT_ORDER_MAX];
       u8 proto;
     };
@@ -266,14 +266,14 @@ parse_ip6_packet (ip6_header_t * ip6, uword * is_reverse, flow_key_t * key)
 }
 
 static inline void
-flow_mk_key (u32 id, vlib_buffer_t * buffer, u16 offset, u8 is_ip4,
+flow_mk_key (u64 seid, vlib_buffer_t * buffer, u16 offset, u8 is_ip4,
 	     uword * is_reverse, BVT (clib_bihash_kv) * kv)
 {
   flow_key_t *key = (flow_key_t *) & kv->key;
 
   memset (key, 0, sizeof (*key));
 
-  key->session_id = id;
+  key->seid = seid;
 
   /* compute 5 tuple key so that 2 half connections
    * get into the same flow */

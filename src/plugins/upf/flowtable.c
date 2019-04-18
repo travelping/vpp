@@ -333,13 +333,13 @@ format_flow_key (u8 * s, va_list * args)
 {
   flow_key_t *key = va_arg (*args, flow_key_t *);
 
-  return format (s, "proto 0x%x, %U:%u <-> %U:%u, id %llx",
+  return format (s, "proto 0x%x, %U:%u <-> %U:%u, seid 0x%016llx",
 		 key->proto,
 		 format_ip46_address, &key->ip[FT_ORIGIN], IP46_TYPE_ANY,
 		 clib_net_to_host_u16 (key->port[FT_ORIGIN]),
 		 format_ip46_address, &key->ip[FT_REVERSE], IP46_TYPE_ANY,
 		 clib_net_to_host_u16 (key->port[FT_REVERSE]),
-		 key->session_id);
+		 key->seid);
 }
 
 u8 *
