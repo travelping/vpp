@@ -3581,7 +3581,7 @@ tcp_input_lookup_buffer (vlib_buffer_t * b, u8 thread_index, u32 * error,
 		     (vnet_buffer2 (b)->connection_index != ~0 &&
 		      (vnet_buffer2 (b)->connection_index & 0x80000000) != 0)))
     tc = tp_vfts[TRANSPORT_PROTO_TCP].get_listener
-      (vnet_buffer2 (b)->connection_index);
+      (vnet_buffer2 (b)->connection_index & ~0x80000000);
 
   return tcp_get_connection_from_transport (tc);
 }
