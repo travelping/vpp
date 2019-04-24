@@ -54,6 +54,9 @@ flowtable_max_timelife_update (u16 value)
 static clib_error_t *
 flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 {
+#if CLIB_DEBUG > 0
+  u32 cpu_index = os_get_thread_index ();
+#endif
   int i;
   flow_entry_t *f;
   clib_error_t *error = 0;
@@ -80,6 +83,9 @@ flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
       for (i = 0; i < FLOW_CACHE_SZ; i++)
 	{
 	  pool_get_aligned (fm->flows, f, CLIB_CACHE_LINE_BYTES);
+#if CLIB_DEBUG > 0
+	  f->cpu_index = cpu_index;
+#endif
 	  vec_add1 (fmt->flow_cache, f - fm->flows);
 	}
       fm->flows_cpt += FLOW_CACHE_SZ;

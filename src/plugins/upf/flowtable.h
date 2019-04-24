@@ -125,6 +125,10 @@ typedef struct flow_entry
   u32 application_id;		/* L7 app index */
   u32 pdr_id[FT_ORDER_MAX];	/* PDRs */
   u32 next[FT_ORDER_MAX];
+
+#if CLIB_DEBUG > 0
+  u32 cpu_index;
+#endif
 } flow_entry_t;
 
 /* Timers (in seconds) */

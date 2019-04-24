@@ -30,6 +30,9 @@ vlib_node_registration_t upf_flow_node;
 always_inline void
 flow_entry_cache_fill (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 {
+#if CLIB_DEBUG > 0
+  u32 cpu_index = os_get_thread_index ();
+#endif
   int i;
   flow_entry_t *f;
 
@@ -44,6 +47,9 @@ flow_entry_cache_fill (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
       for (i = 0; i < FLOW_CACHE_SZ; i++)
 	{
 	  pool_get_aligned (fm->flows, f, CLIB_CACHE_LINE_BYTES);
+#if CLIB_DEBUG > 0
+	  f->cpu_index = cpu_index;
+#endif
 	  vec_add1 (fmt->flow_cache, f - fm->flows);
 	}
       fm->flows_cpt += FLOW_CACHE_SZ;
@@ -55,6 +61,9 @@ flow_entry_cache_fill (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 always_inline void
 flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 {
+#if CLIB_DEBUG > 0
+  u32 cpu_index = os_get_thread_index ();
+#endif
   int i;
 
   if (pthread_spin_lock (&fm->flows_lock) == 0)
@@ -62,6 +71,12 @@ flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
       for (i = vec_len (fmt->flow_cache) - 1; i > FLOW_CACHE_SZ; i--)
 	{
 	  u32 f_index = vec_pop (fmt->flow_cache);
+
+#if CLIB_DEBUG > 0
+	  clib_warning("releasing flow %p, index %u",
+		       pool_elt_at_index (fm->flows, f_index), f_index);
+	  ASSERT (pool_elt_at_index (fm->flows, f_index)->cpu_index == cpu_index);
+#endif
 	  pool_put_index (fm->flows, f_index);
 	}
       fm->flows_cpt -= FLOW_CACHE_SZ;
@@ -84,6 +99,9 @@ flow_entry_alloc (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 
   f_index = vec_pop (fmt->flow_cache);
   f = pool_elt_at_index (fm->flows, f_index);
+#if CLIB_DEBUG > 0
+  ASSERT (f->cpu_index == os_get_thread_index ());
+#endif
 
   return f;
 }
@@ -92,6 +110,10 @@ always_inline void
 flow_entry_free (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
 		 flow_entry_t * f)
 {
+#if CLIB_DEBUG > 0
+  ASSERT (f->cpu_index == os_get_thread_index ());
+#endif
+
   vec_add1 (fmt->flow_cache, f - fm->flows);
 
   if (vec_len (fmt->flow_cache) > 2 * FLOW_CACHE_SZ)
@@ -359,15 +381,19 @@ format_flow (u8 * s, va_list * args)
   else
     app_name = format (0, "%s", "None");
 
-  return format (s, "%U, UL pkt %u, DL pkt %u, "
-		 "Forward PDR %u, Reverse PDR %u, "
-		 "app %v, lifetime %u",
-		 format_flow_key, &flow->key,
-		 flow->stats[is_reverse].pkts,
-		 flow->stats[is_reverse ^ FT_REVERSE].pkts,
-		 flow->pdr_id[is_reverse],
-		 flow->pdr_id[is_reverse ^ FT_REVERSE],
-		 app_name, flow->lifetime);
+  s = format (s, "%U, UL pkt %u, DL pkt %u, "
+	      "Forward PDR %u, Reverse PDR %u, "
+	      "app %v, lifetime %u",
+	      format_flow_key, &flow->key,
+	      flow->stats[is_reverse].pkts,
+	      flow->stats[is_reverse ^ FT_REVERSE].pkts,
+	      flow->pdr_id[is_reverse],
+	      flow->pdr_id[is_reverse ^ FT_REVERSE],
+	      app_name, flow->lifetime);
+#if CLIB_DEBUG > 0
+  s = format (s, ", cpu %u", flow->cpu_index);
+#endif
+  return s;
 }
 
 static clib_error_t *
