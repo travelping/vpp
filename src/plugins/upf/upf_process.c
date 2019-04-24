@@ -246,6 +246,12 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
+	  clib_warning ("flow: %p (%u): %U\n",
+			fm->flows + vnet_buffer (b)->gtpu.flow_id,
+			vnet_buffer (b)->gtpu.flow_id,
+			format_flow_key,
+			&(fm->flows + vnet_buffer (b)->gtpu.flow_id)->key);
+
 	  if (~0 != vnet_buffer (b)->gtpu.flow_id)
 	    {
 	      flow_entry_t *flow =

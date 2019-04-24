@@ -79,6 +79,11 @@ load_gtpu_flow_info (flowtable_main_t * fm, vlib_buffer_t * b,
   return flow->next[is_reverse];
 }
 
+#define FLOW_DEBUG(fm, flow)						\
+  flow_debug (#flow ": %p (%u): %U\n",					\
+	      (flow), (flow) - (fm)->flows,				\
+	      format_flow_key, &(flow)->key);
+
 static uword
 upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  vlib_frame_t * frame, u8 is_ip4)
@@ -175,8 +180,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      CPT_UNHANDLED++;
 	    }
 
-	  flow_debug ("flow0: %p: %U\n", flow0, format_flow_key, &flow0->key);
-	  flow_debug ("flow1: %p: %U\n", flow1, format_flow_key, &flow1->key);
+	  FLOW_DEBUG (fm, flow0);
+	  FLOW_DEBUG (fm, flow1);
 
 	  /* timer management */
 	  if (flow_update_lifetime (flow0, b0, is_ip4))
@@ -266,7 +271,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      CPT_UNHANDLED++;
 	    }
 
-	  flow_debug ("flow: %p: %U\n", flow, format_flow_key, &flow->key);
+	  FLOW_DEBUG (fm, flow);
 
 	  /* timer management */
 	  if (flow_update_lifetime (flow, b0, is_ip4))
