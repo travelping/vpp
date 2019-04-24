@@ -1216,7 +1216,7 @@ format_redirect_information (u8 * s, va_list * args)
 
     case REDIRECT_INFORMATION_HTTP:
     case REDIRECT_INFORMATION_SIP:
-      s = format (s, "%s to %s", redir_info_type[n->type], n->uri);
+      s = format (s, "%s to %v", redir_info_type[n->type], n->uri);
       break;
     }
   return s;
