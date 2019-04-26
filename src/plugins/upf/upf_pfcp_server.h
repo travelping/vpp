@@ -85,7 +85,7 @@ typedef struct
     TWT (tw_timer_wheel) timer;
   sx_msg_t *msg_pool;
   uword *request_q;
-  uword *response_q;
+  mhash_t response_q;
 
   vlib_main_t *vlib_main;
 } sx_server_main_t;

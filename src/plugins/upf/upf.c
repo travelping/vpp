@@ -127,7 +127,7 @@ vnet_upf_pfcp_endpoint_add_del (ip46_address_t * ip, u32 fib_index, u8 add)
   key.addr = *ip;
   key.fib_index = fib_index;
 
-  p = hash_get_mem (gtm->pfcp_endpoint_index, &key);
+  p = mhash_get (&gtm->pfcp_endpoint_index, &key);
 
   if (add)
     {
@@ -139,8 +139,7 @@ vnet_upf_pfcp_endpoint_add_del (ip46_address_t * ip, u32 fib_index, u8 add)
 
       ep->key = key;
 
-      hash_set_mem_alloc (&gtm->pfcp_endpoint_index, &ep->key,
-			  ep - gtm->pfcp_endpoints);
+      mhash_set (&gtm->pfcp_endpoint_index, &ep->key, ep - gtm->pfcp_endpoints, NULL);
     }
   else
     {
@@ -148,7 +147,7 @@ vnet_upf_pfcp_endpoint_add_del (ip46_address_t * ip, u32 fib_index, u8 add)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
       ep = pool_elt_at_index (gtm->pfcp_endpoints, p[0]);
-      hash_unset_mem_free (&gtm->pfcp_endpoint_index, &ep->key);
+      mhash_unset (&gtm->pfcp_endpoint_index, &ep->key, NULL);
       pool_put (gtm->pfcp_endpoints, ep);
     }
 
@@ -594,7 +593,7 @@ vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
       res.nwi = p[0];
     }
 
-  p = hash_get_mem (gtm->upip_res_index, &res);
+  p = mhash_get (&gtm->upip_res_index, &res);
 
   if (add)
     {
@@ -604,7 +603,7 @@ vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
       pool_get (gtm->upip_res, ip_res);
       memcpy (ip_res, &res, sizeof (res));
 
-      hash_set_mem (gtm->upip_res_index, ip_res, ip_res - gtm->upip_res);
+      mhash_set (&gtm->upip_res_index, ip_res, ip_res - gtm->upip_res, NULL);
     }
   else
     {
@@ -612,7 +611,7 @@ vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
       ip_res = pool_elt_at_index (gtm->upip_res, p[0]);
-      hash_unset_mem (gtm->upip_res_index, ip_res);
+      mhash_unset (&gtm->upip_res_index, ip_res, NULL);
       pool_put (gtm->upip_res, ip_res);
     }
 
@@ -1363,14 +1362,10 @@ upf_init (vlib_main_t * vm)
        vlib_call_init_function (vm, upf_proxy_main_init)))
     return error;
 
-  sm->pfcp_endpoint_index =
-    hash_create_mem (0, sizeof (ip46_address_t), sizeof (uword));
-
+  mhash_init (&sm->pfcp_endpoint_index, sizeof (uword), sizeof (ip46_address_t));
   sm->nwi_index_by_name =
     hash_create_vec ( /* initial length */ 32, sizeof (u8), sizeof (uword));
-
-  sm->upip_res_index =
-    hash_create_mem (0, sizeof (upf_upip_res_t), sizeof (uword));
+  mhash_init (&sm->upip_res_index, sizeof (uword), sizeof (upf_upip_res_t));
 
   /* initialize the IP/TEID hash's */
   clib_bihash_init_8_8 (&sm->v4_tunnel_by_key,
@@ -1380,13 +1375,13 @@ upf_init (vlib_main_t * vm)
 			 "upf_v6_tunnel_by_key", UPF_MAPPING_BUCKETS,
 			 UPF_MAPPING_MEMORY_SIZE);
 
-  sm->peer_index_by_ip =
-    hash_create_mem (0, sizeof (ip46_address_fib_t), sizeof (uword));
+  clib_bihash_init_24_8 (&sm->peer_index_by_ip,
+			 "upf_peer_index_by_ip", UPF_MAPPING_BUCKETS,
+			 UPF_MAPPING_MEMORY_SIZE);
 
   sm->node_index_by_fqdn =
     hash_create_vec ( /* initial length */ 32, sizeof (u8), sizeof (uword));
-  sm->node_index_by_ip =
-    hash_create_mem (0, sizeof (ip46_address_t), sizeof (uword));
+  mhash_init (&sm->node_index_by_ip, sizeof (uword), sizeof (ip46_address_t));
 
 #if 0
   sm->vtep6 = hash_create_mem (0, sizeof (ip6_address_t), sizeof (uword));
