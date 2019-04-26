@@ -67,7 +67,7 @@ sx_server_main_t sx_server_main;
 
 #define MAX_HDRS_LEN    100	/* Max number of bytes for headers */
 
-void
+static void
 upf_pfcp_send_data (sx_msg_t * msg)
 {
   vlib_main_t *vm = vlib_get_main ();
@@ -291,7 +291,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
       {
 	uword *p = NULL;
 
-	p = hash_get_mem (sxsm->response_q, msg->request_key);
+	p = mhash_get (&sxsm->response_q, msg->request_key);
 	if (!p)
 	  {
 	    upf_pfcp_handle_msg (msg);
@@ -502,7 +502,7 @@ response_expired (u32 id)
   clib_warning ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
   clib_warning ("release...\n");
 
-  hash_unset_mem (sxsm->response_q, msg->request_key);
+  mhash_unset (&sxsm->response_q, msg->request_key, NULL);
   sx_msg_free (sxsm, msg);
 }
 
@@ -528,7 +528,7 @@ enqueue_response (sx_msg_t * msg)
 
   clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
-  hash_set_mem (sxsm->response_q, msg->request_key, id);
+  mhash_set (&sxsm->response_q, msg->request_key, id, NULL);
   msg->timer =
     upf_pfcp_server_start_timer (PFCP_SERVER_RESPONSE, id, RESPONSE_TIMEOUT);
 }
@@ -1104,7 +1104,7 @@ upf_pfcp_handle_input (vlib_main_t * vm, vlib_buffer_t * b, int is_ip4)
   key.addr = msg->lcl.address;
   key.fib_index = msg->fib_index;
 
-  p = hash_get_mem (gtm->pfcp_endpoint_index, &key);
+  p = mhash_get (&gtm->pfcp_endpoint_index, &key);
   if (!p)
     {
       clib_mem_free (msg);
@@ -1147,7 +1147,7 @@ sx_server_main_init (vlib_main_t * vm)
 
   sx->vlib_main = vm;
   sx->start_time = time (NULL);
-  sx->response_q = hash_create_mem (0, sizeof (u64) * 4, sizeof (uword));
+  mhash_init (&sx->response_q, sizeof (uword), sizeof (u64) * 4);
 
   TW (tw_timer_wheel_init) (&sx->timer, NULL,
 			    10e-3 /* 10ms timer interval */ , ~0);

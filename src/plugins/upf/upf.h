@@ -665,7 +665,7 @@ typedef struct
 typedef struct
 {
   upf_pfcp_endpoint_t *pfcp_endpoints;
-  uword *pfcp_endpoint_index;
+  mhash_t pfcp_endpoint_index;
 
   /* vector of network instances */
   upf_nwi_t *nwis;
@@ -673,7 +673,7 @@ typedef struct
 
   /* pool of network instances */
   upf_upip_res_t *upip_res;
-  uword *upip_res_index;
+  mhash_t upip_res_index;
 
   /* vector of encap tunnel instances */
   upf_session_t *sessions;
@@ -701,12 +701,12 @@ typedef struct
 
   /* list of remote GTP-U peer ref count used to stack FIB DPO objects */
   upf_peer_t *peers;
-  uword *peer_index_by_ip;	/* remote GTP-U peer keyed on it's ip addr and vrf */
+  clib_bihash_24_8_t peer_index_by_ip;	/* remote GTP-U peer keyed on it's ip addr and vrf */
 
   /* vector of associated PFCP nodes */
   upf_node_assoc_t *nodes;
   /* lookup PFCP nodes */
-  uword *node_index_by_ip;
+  mhash_t node_index_by_ip;
   uword *node_index_by_fqdn;
 
 #if 0

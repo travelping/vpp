@@ -192,7 +192,7 @@ sx_get_association (pfcp_node_id_t * node_id)
     {
     case NID_IPv4:
     case NID_IPv6:
-      p = hash_get_mem (gtm->node_index_by_ip, &node_id->ip);
+      p = mhash_get (&gtm->node_index_by_ip, &node_id->ip);
       break;
 
     case NID_FQDN:
@@ -225,8 +225,7 @@ sx_new_association (u32 fib_index, ip46_address_t * lcl_addr,
     {
     case NID_IPv4:
     case NID_IPv6:
-      hash_set_mem_alloc (&gtm->node_index_by_ip, &node_id->ip,
-			  n - gtm->nodes);
+      mhash_set (&gtm->node_index_by_ip, &node_id->ip, n - gtm->nodes, NULL);
       break;
 
     case NID_FQDN:
@@ -253,7 +252,7 @@ sx_release_association (upf_node_assoc_t * n)
     {
     case NID_IPv4:
     case NID_IPv6:
-      hash_unset_mem_free (&gtm->node_index_by_ip, &n->node_id.ip);
+      mhash_unset (&gtm->node_index_by_ip, &n->node_id.ip, NULL);
       break;
 
     case NID_FQDN:
@@ -292,7 +291,7 @@ sx_release_association (upf_node_assoc_t * n)
   {
     msg = pool_elt_at_index (sxsm->msg_pool, *m);
     hash_unset (sxsm->request_q, msg->seq_no);
-    hash_unset_mem (sxsm->response_q, msg->request_key);
+    mhash_unset (&sxsm->response_q, msg->request_key, NULL);
     upf_pfcp_server_stop_timer (msg->timer);
     sx_msg_free (sxsm, msg);
   }
@@ -535,29 +534,29 @@ peer_addr_ref (const upf_far_forward_t * fwd)
   u8 is_ip4 =
     ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_IP4);
   upf_main_t *gtm = &upf_main;
-  ip46_address_fib_t key;
+  clib_bihash_kv_24_8_t kv, value;
+  u32 fib_index;
   upf_peer_t *p;
-  uword *peer;
 
-  memset (&key, 0, sizeof (key));
-
-  key.addr = fwd->outer_header_creation.ip;
-  key.fib_index = (is_ip4) ?
+  fib_index = (is_ip4) ?
     ip4_fib_table_get_index_for_sw_if_index (fwd->dst_sw_if_index) :
     ip6_fib_table_get_index_for_sw_if_index (fwd->dst_sw_if_index);
 
-  peer = hash_get_mem (gtm->peer_index_by_ip, &key);
-  if (peer)
+  kv.key[0] = fwd->outer_header_creation.ip.as_u64[0];
+  kv.key[1] = fwd->outer_header_creation.ip.as_u64[1];
+  kv.key[2] = fib_index;
+
+  if (!clib_bihash_search_24_8 (&gtm->peer_index_by_ip, &kv, &value))
     {
-      p = pool_elt_at_index (gtm->peers, peer[0]);
+      p = pool_elt_at_index (gtm->peers, value.value);
       p->ref_cnt++;
-      return peer[0];
+      return value.value;
     }
 
   pool_get_aligned (gtm->peers, p, CLIB_CACHE_LINE_BYTES);
   memset (p, 0, sizeof (*p));
   p->ref_cnt = 1;
-  p->encap_fib_index = key.fib_index;
+  p->encap_fib_index = fib_index;
 
   if (is_ip4)
     {
@@ -570,11 +569,12 @@ peer_addr_ref (const upf_far_forward_t * fwd)
       p->forw_type = FIB_FORW_CHAIN_TYPE_UNICAST_IP6;
     }
 
-  hash_set_mem_alloc (&gtm->peer_index_by_ip, &key, p - gtm->peers);
+  kv.value = p - gtm->peers;
+  clib_bihash_add_del_24_8 (&gtm->peer_index_by_ip, &kv, 1 /* is_add */);
 
   fib_node_init (&p->node, gtm->fib_node_type);
   fib_prefix_t tun_dst_pfx;
-  fib_prefix_from_ip46_addr (&key.addr, &tun_dst_pfx);
+  fib_prefix_from_ip46_addr (&fwd->outer_header_creation.ip, &tun_dst_pfx);
 
   p->fib_entry_index = fib_table_entry_special_add
     (p->encap_fib_index, &tun_dst_pfx, FIB_SOURCE_RR, FIB_ENTRY_FLAG_NONE);
@@ -591,25 +591,23 @@ peer_addr_unref (const upf_far_forward_t * fwd)
   u8 is_ip4 =
     ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_IP4);
   upf_main_t *gtm = &upf_main;
-  ip46_address_fib_t key;
-  upf_peer_t *p;
-  uword *peer;
+  clib_bihash_kv_24_8_t kv, value;
+  upf_peer_t *p = NULL;
 
-  memset (&key, 0, sizeof (key));
-
-  key.addr = fwd->outer_header_creation.ip;
-  key.fib_index = (is_ip4) ?
+  kv.key[0] = fwd->outer_header_creation.ip.as_u64[0];
+  kv.key[1] = fwd->outer_header_creation.ip.as_u64[1];
+  kv.key[2] = (is_ip4) ?
     ip4_fib_table_get_index_for_sw_if_index (fwd->dst_sw_if_index) :
     ip6_fib_table_get_index_for_sw_if_index (fwd->dst_sw_if_index);
 
-  peer = hash_get_mem (gtm->peer_index_by_ip, &key);
-  ASSERT (peer);
+  if (!clib_bihash_search_24_8 (&gtm->peer_index_by_ip, &kv, &value))
+    p = pool_elt_at_index (gtm->peers, value.value);
+  ASSERT (p);
 
-  p = pool_elt_at_index (gtm->peers, peer[0]);
   if (--(p->ref_cnt) != 0)
     return p->ref_cnt;
 
-  hash_unset_mem_free (&gtm->peer_index_by_ip, &key);
+  clib_bihash_add_del_24_8 (&gtm->peer_index_by_ip, &kv, 0 /* is_add */);
 
   fib_entry_child_remove (p->fib_entry_index, p->sibling_index);
   fib_table_entry_delete_index (p->fib_entry_index, FIB_SOURCE_RR);
@@ -800,6 +798,7 @@ static void
 sx_free_rules (upf_session_t * sx, int rule)
 {
   struct rules *rules = sx_get_rules (sx, rule);
+  upf_urr_traffic_t *tt;
   upf_pdr_t *pdr;
   upf_far_t *far;
   upf_urr_t *urr;
@@ -823,6 +822,13 @@ sx_free_rules (upf_session_t * sx, int rule)
   vec_free (rules->far);
   vec_foreach (urr, rules->urr)
     {
+      /* *INDENT-OFF* */
+      pool_foreach (tt, urr->traffic,
+      ({
+	hash_unset_mem_free (&urr->traffic_by_ue, &tt->ip);
+      }));
+      /* *INDENT-ON* */
+
       pool_free (urr->traffic);
       hash_free (urr->traffic_by_ue);
     }
@@ -927,7 +933,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
 	{
 	  msg = pool_elt_at_index (sxsm->msg_pool, *m);
 	  hash_unset (sxsm->request_q, msg->seq_no);
-	  hash_unset_mem (sxsm->response_q, msg->request_key);
+	  mhash_unset (&sxsm->response_q, msg->request_key, NULL);
 	  upf_pfcp_server_stop_timer (msg->timer);
 	  sx_msg_free (sxsm, msg);
 	}
@@ -1977,7 +1983,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
 	    pool_get (urr->traffic, t);
 	    *t = tt;
-	    hash_set_mem (urr->traffic_by_ue, &t->ip, t - urr->traffic);
+	    hash_set_mem_alloc (&urr->traffic_by_ue, &t->ip, t - urr->traffic);
 
 	    vec_add1_ha(uev, ev, sizeof (upf_event_urr_hdr_t), 0);
 	    status |= URR_START_OF_TRAFFIC;
