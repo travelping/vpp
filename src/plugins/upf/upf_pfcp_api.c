@@ -347,13 +347,14 @@ static void
   upf_main_t *gtm = &upf_main;
   upf_upip_res_t *res;
 
+  vec_alloc (*upip, pool_elts(gtm->upip_res));
+
   /* *INDENT-OFF* */
   pool_foreach (res, gtm->upip_res,
   ({
     pfcp_user_plane_ip_resource_information_t *r;
 
-    vec_alloc(*upip, 1);
-    r = vec_end(*upip);
+    vec_add2 (*upip, r, 1);
 
     if (res->nwi != ~0)
       {
@@ -387,8 +388,6 @@ static void
 	r->flags |= USER_PLANE_IP_RESOURCE_INFORMATION_V6;
 	r->ip6 = res->ip6;
       }
-
-    _vec_len(*upip)++;
   }));
   /* *INDENT-ON* */
 }
@@ -906,6 +905,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
       {
 	pfcp_urr_id_t *urr_id;
 
+	vec_alloc (create->urr_ids, _vec_len(pdr->urr_id));
 	vec_foreach (urr_id, pdr->urr_id)
 	{
 	  vec_add1 (create->urr_ids, *urr_id);
@@ -916,6 +916,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
       {
 	pfcp_qer_id_t *qer_id;
 
+	vec_alloc (create->qer_ids, _vec_len(pdr->qer_id));
 	vec_foreach (qer_id, pdr->qer_id)
 	{
 	  vec_add1 (create->qer_ids, *qer_id);
@@ -1061,6 +1062,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
       {
 	pfcp_urr_id_t *urr_id;
 
+	vec_alloc (update->urr_ids, _vec_len(pdr->urr_id));
 	vec_foreach (urr_id, pdr->urr_id)
 	{
 	  vec_add1 (update->urr_ids, *urr_id);
@@ -1071,6 +1073,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
       {
 	pfcp_qer_id_t *qer_id;
 
+	vec_alloc (update->qer_ids, _vec_len(pdr->qer_id));
 	vec_foreach (qer_id, pdr->qer_id)
 	{
 	  vec_add1 (update->qer_ids, *qer_id);
@@ -1925,8 +1928,8 @@ init_usage_report (upf_urr_t * urr, u32 trigger,
 {
   pfcp_usage_report_t *r;
 
-  vec_alloc (*report, 1);
-  r = vec_end (*report);
+  vec_add2 (*report, r, 1);
+  memset(r, 0, sizeof(*r));
 
   SET_BIT (r->grp.fields, USAGE_REPORT_URR_ID);
   r->urr_id = urr->id;
@@ -1994,8 +1997,6 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       r->duration_measurement = end - start;
 
       urr->monitoring_time.base = 0;
-
-      _vec_len (*report)++;
     }
 
   r = init_usage_report (urr, trigger, report);
@@ -2056,8 +2057,6 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
   /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_FIRST_PACKET); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_LAST_PACKET); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_USAGE_INFORMATION); */
-
-  _vec_len (*report)++;
 
   urr->status &= ~URR_AFTER_MONITORING_TIME;
   urr->start_time = now;
