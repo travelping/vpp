@@ -3809,6 +3809,7 @@ static struct pfcp_group_ie_def pfcp_pdi_group[] =
     },
     [PDI_SDF_FILTER] = {
       .type = PFCP_IE_SDF_FILTER,
+      .is_array = true,
       .offset = offsetof(pfcp_pdi_t, sdf_filter)
     },
     [PDI_APPLICATION_ID] = {
@@ -4773,6 +4774,7 @@ static struct pfcp_group_ie_def pfcp_ethernet_packet_filter_group[] =
     },
     [ETHERNET_PACKET_FILTER_SDF_FILTER] = {
       .type = PFCP_IE_SDF_FILTER,
+      .is_array = true,
       .offset = offsetof(pfcp_ethernet_packet_filter_t, sdf_filter)
     },
   };

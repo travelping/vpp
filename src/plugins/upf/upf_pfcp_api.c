@@ -848,18 +848,28 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
       }
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_SDF_FILTER))
       {
-	unformat_input_t sdf;
+	pfcp_sdf_filter_t *sdf;
 
 	create->pdi.fields |= F_PDI_SDF_FILTER;
 
-	unformat_init_vector (&sdf, pdr->pdi.sdf_filter.flow);
-	if (!unformat_ipfilter (&sdf, &create->pdi.acl))
-	  {
-	    failed_rule_id->id = pdr->pdr_id;
-	    gtp_debug ("failed to parse SDF '%s'", pdr->pdi.sdf_filter.flow);
-	    r = -1;
-	    break;
-	  }
+	vec_alloc (create->pdi.acl, _vec_len(pdr->pdi.sdf_filter));
+
+	vec_foreach (sdf, pdr->pdi.sdf_filter)
+	{
+	  unformat_input_t input;
+	  acl_rule_t *acl;
+
+	  unformat_init_vector (&input, sdf->flow);
+	  vec_add2 (create->pdi.acl, acl, 1);
+
+	  if (!unformat_ipfilter (&input, acl))
+	    {
+	      failed_rule_id->id = pdr->pdr_id;
+	      gtp_debug ("failed to parse SDF '%s'", sdf->flow);
+	      r = -1;
+	      break;
+	    }
+	}
       }
 
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_APPLICATION_ID))
@@ -992,17 +1002,28 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
       }
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_SDF_FILTER))
       {
-	unformat_input_t sdf;
+	pfcp_sdf_filter_t *sdf;
 
 	update->pdi.fields |= F_PDI_SDF_FILTER;
 
-	unformat_init_vector (&sdf, pdr->pdi.sdf_filter.flow);
-	if (!unformat_ipfilter (&sdf, &update->pdi.acl))
-	  {
-	    gtp_debug ("failed to parse SDF '%s'", pdr->pdi.sdf_filter.flow);
-	    r = -1;
-	    break;
-	  }
+	vec_alloc (update->pdi.acl, _vec_len(pdr->pdi.sdf_filter));
+
+	vec_foreach (sdf, pdr->pdi.sdf_filter)
+	{
+	  unformat_input_t input;
+	  acl_rule_t *acl;
+
+	  unformat_init_vector (&input, sdf->flow);
+	  vec_add2 (update->pdi.acl, acl, 1);
+
+	  if (!unformat_ipfilter (&input, acl))
+	    {
+	      failed_rule_id->id = pdr->pdr_id;
+	      gtp_debug ("failed to parse SDF '%s'", sdf->flow);
+	      r = -1;
+	      break;
+	    }
+	}
       }
 
     if (ISSET_BIT (pdr->pdi.grp.fields, PDI_APPLICATION_ID))
