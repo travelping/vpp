@@ -1001,7 +1001,7 @@ typedef struct
   pfcp_ethertype_t ethertype;
   pfcp_c_tag_t c_tag;
   pfcp_s_tag_t s_tag;
-  pfcp_sdf_filter_t sdf_filter;
+  pfcp_sdf_filter_t *sdf_filter;
 } pfcp_ethernet_packet_filter_t;
 
 enum
@@ -1026,7 +1026,7 @@ typedef struct
   pfcp_f_teid_t f_teid;
   pfcp_network_instance_t network_instance;
   pfcp_ue_ip_address_t ue_ip_address;
-  pfcp_sdf_filter_t sdf_filter;
+  pfcp_sdf_filter_t *sdf_filter;
   pfcp_application_id_t application_id;
   pfcp_ethernet_pdu_session_information_t ethernet_pdu_session_information;
   pfcp_ethernet_packet_filter_t ethernet_packet_filter;

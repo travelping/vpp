@@ -318,7 +318,7 @@ typedef struct
 
   pfcp_f_teid_t teid;
   pfcp_ue_ip_address_t ue_addr;
-  acl_rule_t acl;
+  acl_rule_t *acl;
   adr_rule_t adr;
 } upf_pdi_t;
 

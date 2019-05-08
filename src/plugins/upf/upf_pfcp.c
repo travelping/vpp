@@ -1301,11 +1301,11 @@ acl_set_ue_ip (ip46_address_t * ip, ip46_address_t * mask, int is_ip4,
 
 static void
 ip_assign_address (int dst, int src, int is_ip4, const upf_pdr_t * pdr,
-		   upf_acl_t * acl)
+		   const acl_rule_t * rule, upf_acl_t * acl)
 {
   ip46_address_t *mask = &acl->mask.address[dst];
   ip46_address_t *ip = &acl->match.address[dst];
-  const ipfilter_address_t *addr = &pdr->pdi.acl.address[src];
+  const ipfilter_address_t *addr = &rule->address[src];
 
   if (acl_addr_is_any (addr))
     ;
@@ -1326,53 +1326,54 @@ ip_assign_address (int dst, int src, int is_ip4, const upf_pdr_t * pdr,
 }
 
 static void
-ip_assign_port (int dst, int src, const upf_pdr_t * pdr, upf_acl_t * acl)
+ip_assign_port (int dst, int src, const acl_rule_t * rule, upf_acl_t * acl)
 {
-  const ipfilter_port_t *port = &pdr->pdi.acl.port[src];
+  const ipfilter_port_t *port = &rule->port[src];
 
   acl->mask.port[dst] = port->min;
   acl->match.port[dst] = port->max;
 }
 
 static void
-compile_sdf (int is_ip4, const upf_pdr_t * pdr, upf_acl_t * acl)
+compile_sdf (int is_ip4, const upf_pdr_t * pdr,
+	     const acl_rule_t * rule, upf_acl_t * acl)
 {
   if (!(pdr->pdi.fields & F_PDI_SDF_FILTER))
     return;
 
   acl->match_sdf = 1;
 
-  if (pdr->pdi.acl.proto != (u8) ~ 0)
+  if (rule->proto != (u8) ~ 0)
     {
       acl->mask.protocol = ~0;
-      acl->match.protocol = pdr->pdi.acl.proto;
+      acl->match.protocol = rule->proto;
     }
 
   switch (pdr->pdi.src_intf)
     {
     case SRC_INTF_ACCESS:
       ip_assign_address (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_SRC, is_ip4,
-			 pdr, acl);
+			 pdr, rule, acl);
       ip_assign_address (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_DST, is_ip4,
-			 pdr, acl);
-      ip_assign_port (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_SRC, pdr, acl);
-      ip_assign_port (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_DST, pdr, acl);
+			 pdr, rule, acl);
+      ip_assign_port (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_SRC, rule, acl);
+      ip_assign_port (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_DST, rule, acl);
       break;
 
     default:
       ip_assign_address (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_SRC, is_ip4,
-			 pdr, acl);
+			 pdr, rule, acl);
       ip_assign_address (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_DST, is_ip4,
-			 pdr, acl);
-      ip_assign_port (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_SRC, pdr, acl);
-      ip_assign_port (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_DST, pdr, acl);
+			 pdr, rule, acl);
+      ip_assign_port (UPF_ACL_FIELD_DST, IPFILTER_RULE_FIELD_SRC, rule, acl);
+      ip_assign_port (UPF_ACL_FIELD_SRC, IPFILTER_RULE_FIELD_DST, rule, acl);
       break;
     }
 }
 
 static int
-compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
-		       u32 table_id, upf_acl_t * acl)
+compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, const acl_rule_t * rule,
+		       u32 pdr_idx, u32 table_id, upf_acl_t * acl)
 {
   fib_protocol_t proto =
     (is_ip4) ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6;
@@ -1385,7 +1386,7 @@ compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, u32 pdr_idx,
   acl->pdr_idx = pdr_idx;
 
   compile_teid (pdr, acl);
-  compile_sdf (is_ip4, pdr, acl);
+  compile_sdf (is_ip4, pdr, rule, acl);
   compile_ue_ip (is_ip4, pdr, acl);
 
   gtp_debug ("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
@@ -1525,33 +1526,30 @@ build_sx_rules (upf_session_t * sx)
 
     if (pdr->pdi.fields & F_PDI_SDF_FILTER)
       {
-	if (pdr->pdi.acl.type == IPFILTER_IPV4
-	    || pdr->pdi.acl.type == IPFILTER_WILDCARD)
-	  {
-	    upf_acl_t *acl;
+	acl_rule_t * rule;
 
-	    vec_alloc (pending->v4_acls, 1);
-	    acl = vec_end (pending->v4_acls);
+	vec_foreach (rule, pdr->pdi.acl)
+	{
+	  if (rule->type == IPFILTER_IPV4
+	      || rule->type == IPFILTER_WILDCARD)
+	    {
+	      upf_acl_t *acl;
 
-	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (1 /* is_ip4 */, pdr, idx, table_id, acl);
+	      vec_add2 (pending->v4_acls, acl, 1);
+	      /* compile PDI into ACL matcher */
+	      compile_ipfilter_rule (1 /* is_ip4 */, pdr, rule, idx, table_id, acl);
+	    }
 
-	    _vec_len (pending->v4_acls)++;
-	  }
+	  if (rule->type == IPFILTER_IPV6
+	      || rule->type == IPFILTER_WILDCARD)
+	    {
+	      upf_acl_t *acl;
 
-	if (pdr->pdi.acl.type == IPFILTER_IPV6
-	    || pdr->pdi.acl.type == IPFILTER_WILDCARD)
-	  {
-	    upf_acl_t *acl;
-
-	    vec_alloc (pending->v6_acls, 1);
-	    acl = vec_end (pending->v6_acls);
-
-	    /* compile PDI into ACL matcher */
-	    compile_ipfilter_rule (0 /* is_ip4 */, pdr, idx, table_id, acl);
-
-	    _vec_len (pending->v6_acls)++;
-	  }
+	      vec_add2 (pending->v6_acls, acl, 1);
+	      /* compile PDI into ACL matcher */
+	      compile_ipfilter_rule (0 /* is_ip4 */, pdr, rule, idx, table_id, acl);
+	    }
+	}
       }
     else if ((pdr->pdi.fields & F_PDI_APPLICATION_ID))
       {
@@ -2311,8 +2309,13 @@ format_sx_session (u8 * s, va_list * args)
       }
     if (pdr->pdi.fields & F_PDI_SDF_FILTER)
       {
-	s = format (s, "    SDF Filter:\n");
-	s = format (s, "      %U\n", format_ipfilter, &pdr->pdi.acl);
+	acl_rule_t * rule;
+
+	s = format (s, "    SDF Filter [%u]:\n", vec_len(pdr->pdi.acl));
+	vec_foreach (rule, pdr->pdi.acl)
+	{
+	  s = format (s, "      %U\n", format_ipfilter, rule);
+	}
       }
     if (pdr->pdi.fields & F_PDI_APPLICATION_ID)
       {
