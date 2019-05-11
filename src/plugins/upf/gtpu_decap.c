@@ -318,6 +318,7 @@ gtpu_input (vlib_main_t * vm,
 	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
 	  vnet_buffer (b0)->gtpu.flags =
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
+	  vnet_buffer (b0)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
@@ -499,6 +500,7 @@ gtpu_input (vlib_main_t * vm,
 	    !(sx_get_rules (t1, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index1 : ~0;
 	  vnet_buffer (b1)->gtpu.flags =
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
+	  vnet_buffer (b1)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_1 = vlib_buffer_get_current (b1) + hdr_len1;
@@ -733,6 +735,7 @@ gtpu_input (vlib_main_t * vm,
 	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
 	  vnet_buffer (b0)->gtpu.flags =
 	    (is_ip4) ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
+	  vnet_buffer (b0)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
