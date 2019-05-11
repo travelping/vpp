@@ -29,7 +29,8 @@ static BVT(clib_bihash) **adj_nbr_tables[FIB_PROTOCOL_MAX];
 
 // FIXME SIZE APPROPRIATELY. ASK DAVEB.
 #define ADJ_NBR_DEFAULT_HASH_NUM_BUCKETS (64 * 64)
-#define ADJ_NBR_DEFAULT_HASH_MEMORY_SIZE (32<<20)
+// #define ADJ_NBR_DEFAULT_HASH_MEMORY_SIZE (32<<20)
+#define ADJ_NBR_DEFAULT_HASH_MEMORY_SIZE (1<<18)
 
 
 #define ADJ_NBR_SET_KEY(_key, _lt, _nh)         \
