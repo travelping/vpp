@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-#define _LGPL_SOURCE		/* LGPL v3.0 is compatible with Apache 2.0 */
-#include <urcu-qsbr.h>		/* QSBR RCU flavor */
-
 #include <stdio.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -366,6 +363,7 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
   sx_server_main_t *sxsm = &sx_server_main;
   vnet_main_t *vnm = upf_main.vnet_main;
   l2input_main_t *l2im = &l2input_main;
+  vlib_main_t *vm = vlib_get_main ();
   upf_main_t *gtm = &upf_main;
   u32 hw_if_index = ~0;
   u32 sw_if_index = ~0;
@@ -375,6 +373,8 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
 	     "UP F-SEID: 0x%016" PRIx64 " @ %U\n",
 	     cp_seid, format_ip46_address, cp_address, IP46_TYPE_ANY,
 	     cp_seid, format_ip46_address, up_address, IP46_TYPE_ANY);
+
+  vlib_worker_thread_barrier_sync (vm);
 
   pool_get_aligned (gtm->sessions, sx, CLIB_CACHE_LINE_BYTES);
   memset (sx, 0, sizeof (*sx));
@@ -453,6 +453,8 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
 
   vnet_get_sw_interface (vnet_get_main (), sw_if_index)->flood_class =
     VNET_FLOOD_CLASS_TUNNEL_NORMAL;
+
+  vlib_worker_thread_barrier_release (vm);
 
   return sx;
 }
@@ -848,33 +850,6 @@ sx_free_rules (upf_session_t * sx, int rule)
   memset (rules, 0, sizeof (*rules));
 }
 
-struct rcu_session_info
-{
-  struct rcu_head rcu_head;
-  uword idx;
-};
-
-static void
-rcu_free_sx_session_info (struct rcu_head *head)
-{
-  struct rcu_session_info *si =
-    caa_container_of (head, struct rcu_session_info, rcu_head);
-  upf_main_t *gtm = &upf_main;
-  upf_session_t *sx;
-
-  sx = pool_elt_at_index (gtm->sessions, si->idx);
-
-  for (size_t i = 0; i < ARRAY_LEN (sx->rules); i++)
-    sx_free_rules (sx, i);
-
-  clib_spinlock_free (&sx->lock);
-
-  vec_add1 (gtm->free_session_hw_if_indices, sx->hw_if_index);
-
-  pool_put_index (gtm->sessions, si->idx);
-  clib_mem_free (si);
-}
-
 int
 sx_disable_session (upf_session_t * sx, int drop_msgs)
 {
@@ -945,13 +920,20 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
 void
 sx_free_session (upf_session_t * sx)
 {
+  vlib_main_t *vm = vlib_get_main ();
   upf_main_t *gtm = &upf_main;
-  struct rcu_session_info *si;
 
-  si = clib_mem_alloc_no_fail (sizeof (*si));
-  si->idx = sx - gtm->sessions;
+  vlib_worker_thread_barrier_sync (vm);
 
-  call_rcu (&si->rcu_head, rcu_free_sx_session_info);
+  for (size_t i = 0; i < ARRAY_LEN (sx->rules); i++)
+    sx_free_rules (sx, i);
+
+  clib_spinlock_free (&sx->lock);
+  vec_add1 (gtm->free_session_hw_if_indices, sx->hw_if_index);
+  pool_put (gtm->sessions, sx);
+
+  vlib_worker_thread_barrier_release (vm);
+
 }
 
 #define sx_rule_vector_fns(t, REMOVE)					\
@@ -1579,6 +1561,7 @@ sx_update_apply (upf_session_t * sx)
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
   int pending_pdr, pending_far, pending_urr, pending_qer;
   sx_server_main_t *sxsm = &sx_server_main;
+  vlib_main_t *vm = vlib_get_main ();
   upf_main_t *gtm = &upf_main;
   u32 si = sx - gtm->sessions;
   f64 now = sxsm->now;
@@ -1672,9 +1655,6 @@ sx_update_apply (upf_session_t * sx)
     {
       sx->flags |= SX_UPDATING;
 
-      /* make sure all processing nodes see the update op */
-      synchronize_rcu ();
-
       /* update UE addresses and TEIDs */
       vec_diff (pending->ue_dst_ip, active->ue_dst_ip, ip46_address_fib_cmp,
 		sx_add_del_ue_ip, sx);
@@ -1699,9 +1679,13 @@ sx_update_apply (upf_session_t * sx)
 		sx_add_del_v6_tdf, sx);
     }
 
+  vlib_worker_thread_barrier_sync (vm);
+
   /* flip the switch */
   sx->active ^= SX_PENDING;
   sx->flags &= ~SX_UPDATING;
+
+  vlib_worker_thread_barrier_release (vm);
 
   if (pending->send_end_marker)
     {

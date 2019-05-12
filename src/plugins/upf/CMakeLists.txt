@@ -18,15 +18,10 @@
 # UPF plugin
 ##############################################################################
 
-message(STATUS "Looking for liburcu")
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(URCU liburcu-qsbr)
-
 message(STATUS "Looking for hyperscan")
 pkg_check_modules(HS libhs)
 
-if(URCU_FOUND AND HS_FOUND)
-  include_directories (${URCU_INCLUDE_DIRS})
+if(HS_FOUND)
   include_directories (${HS_INCLUDE_DIRS})
 
   add_vpp_plugin(upf
@@ -75,11 +70,9 @@ if(URCU_FOUND AND HS_FOUND)
     flowtable_tcp.h
 
     LINK_LIBRARIES
-    ${URCU_LIBRARIES}
     ${HS_LIBRARIES}
 
     LINK_FLAGS
-    ${URCU_LDFLAGS}
     ${HS_LDFLAGS}
 
     API_TEST_SOURCES
