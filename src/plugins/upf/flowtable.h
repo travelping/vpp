@@ -133,7 +133,7 @@ typedef struct flow_entry
 
 /* Timers (in seconds) */
 #define TIMER_DEFAULT_LIFETIME (60)
-#define TIMER_MAX_LIFETIME (300)
+#define TIMER_MAX_LIFETIME (600)
 
 /* Default max number of flows to expire during one run.
  * 256 is the max number of packets in a vector, so this is a minimum
