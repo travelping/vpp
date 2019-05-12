@@ -128,7 +128,7 @@ endif
 
 # +ganglia-devel if building the ganglia plugin
 
-RPM_DEPENDS += userspace-rcu-devel hyperscan-devel
+RPM_DEPENDS += hyperscan-devel
 RPM_DEPENDS += chrpath libffi-devel rpm-build
 # lowercase- replace spaces with dashes.
 SUSE_NAME= $(shell grep '^NAME=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g' | sed -e 's/ /-/' | awk '{print tolower($$0)}')
@@ -138,7 +138,7 @@ RPM_SUSE_BUILDTOOLS_DEPS += clang cmake indent libtool make ninja python3-ply
 
 RPM_SUSE_DEVEL_DEPS = glibc-devel-static libnuma-devel
 RPM_SUSE_DEVEL_DEPS += libopenssl-devel openssl-devel mbedtls-devel libuuid-devel
-RPM_SUSE_DEVEL_DEPS += liburcu-devel hyperscan-devel
+RPM_SUSE_DEVEL_DEPS += hyperscan-devel
 
 RPM_SUSE_PYTHON_DEPS = python-devel python3-devel python-pip python3-pip
 RPM_SUSE_PYTHON_DEPS += python-rpm-macros python3-rpm-macros

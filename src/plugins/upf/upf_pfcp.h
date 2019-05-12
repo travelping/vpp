@@ -15,7 +15,6 @@
 #ifndef _UPF_SX_H_
 #define _UPF_SX_H_
 
-#include <urcu-pointer.h>
 #include "upf.h"
 
 #define MAX_LEN 128

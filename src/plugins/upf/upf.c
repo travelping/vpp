@@ -16,9 +16,6 @@
  * limitations under the License.
  */
 
-#define _LGPL_SOURCE		/* LGPL v3.0 is compatible with Apache 2.0 */
-#include <urcu-qsbr.h>		/* QSBR RCU flavor */
-
 #include <vnet/vnet.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
