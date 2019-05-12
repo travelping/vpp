@@ -184,15 +184,11 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  FLOW_DEBUG (fm, flow1);
 
 	  /* timer management */
-	  if (flow_update_lifetime (flow0, b0, is_ip4))
-	    {
-	      timer_wheel_resched_flow (fm, fmt, flow0, current_time);
-	    }
+	  flow_update_lifetime (flow0, b0, is_ip4);
+	  flow_update_lifetime (flow1, b1, is_ip4);
 
-	  if (flow_update_lifetime (flow1, b1, is_ip4))
-	    {
-	      timer_wheel_resched_flow (fm, fmt, flow1, current_time);
-	    }
+	  timer_wheel_resched_flow (fm, fmt, flow0, current_time);
+	  timer_wheel_resched_flow (fm, fmt, flow1, current_time);
 
 	  /* flow statistics */
 	  flow0->stats[is_reverse0].pkts++;
@@ -274,10 +270,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  FLOW_DEBUG (fm, flow);
 
 	  /* timer management */
-	  if (flow_update_lifetime (flow, b0, is_ip4))
-	    {
-	      timer_wheel_resched_flow (fm, fmt, flow, current_time);
-	    }
+	  flow_update_lifetime (flow, b0, is_ip4);
+	  timer_wheel_resched_flow (fm, fmt, flow, current_time);
 
 	  /* flow statistics */
 	  flow->stats[is_reverse].pkts++;
