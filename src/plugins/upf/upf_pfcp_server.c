@@ -77,7 +77,7 @@ upf_pfcp_send_data (sx_msg_t * msg)
 
   if (vlib_buffer_alloc (vm, &bi0, 1) != 1)
     {
-      clib_warning ("can't allocate buffer for Sx send event");
+      gtp_debug ("can't allocate buffer for Sx send event");
       return;
     }
 
@@ -160,14 +160,14 @@ encode_sx_session_msg (upf_session_t * sx, u8 type,
   msg->rmt.address = sx->cp_address;
   msg->lcl.port = clib_host_to_net_u16 (UDP_DST_PORT_SX);
   msg->rmt.port = clib_host_to_net_u16 (UDP_DST_PORT_SX);
-  clib_warning ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
+  gtp_debug ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
 		msg->fib_index,
 		format_ip46_address, &msg->lcl.address, IP46_TYPE_ANY,
 		clib_net_to_host_u16 (msg->lcl.port),
 		format_ip46_address, &msg->rmt.address, IP46_TYPE_ANY,
 		clib_net_to_host_u16 (msg->rmt.port));
 
-  clib_warning ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
+  gtp_debug ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
 		msg->fib_index,
 		format_ip46_address, &sx->up_address, IP46_TYPE_ANY,
 		clib_net_to_host_u16 (msg->lcl.port),
@@ -215,7 +215,7 @@ encode_sx_node_msg (upf_node_assoc_t * n, u8 type, struct pfcp_group *grp,
   msg->rmt.address = n->rmt_addr;
   msg->lcl.port = clib_host_to_net_u16 (UDP_DST_PORT_SX);
   msg->rmt.port = clib_host_to_net_u16 (UDP_DST_PORT_SX);
-  clib_warning ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
+  gtp_debug ("PFCP Msg no VRF %d from %U:%d to %U:%d\n",
 		msg->fib_index,
 		format_ip46_address, &msg->lcl.address, IP46_TYPE_ANY,
 		clib_net_to_host_u16 (msg->lcl.port),
@@ -297,7 +297,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 	  {
 	    sx_msg_t *resp = pool_elt_at_index (sxsm->msg_pool, p[0]);
 
-	    clib_warning ("resend... %d\n", p[0]);
+	    gtp_debug ("resend... %d\n", p[0]);
 	    upf_pfcp_send_data (resp);
 	    restart_response_timer (resp);
 	  }
@@ -321,7 +321,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 	uword *p;
 
 	p = hash_get (sxsm->request_q, msg->seq_no);
-	clib_warning ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, p,
+	gtp_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, p,
 		      p ? p[0] : ~0);
 	if (!p)
 	  break;
@@ -412,7 +412,7 @@ enqueue_request (sx_msg_t * msg, u32 n1, u32 t1)
   sx_server_main_t *sxsm = &sx_server_main;
   u32 id = msg - sxsm->msg_pool;
 
-  clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
   msg->n1 = n1;
   msg->t1 = t1;
 
@@ -427,12 +427,12 @@ request_t1_expired (u32 id)
   sx_msg_t *msg = pool_elt_at_index (sxsm->msg_pool, id);
   upf_main_t *gtm = &upf_main;
 
-  clib_warning ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
+  gtp_debug ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
 		msg->n1);
 
   if (--msg->n1 != 0)
     {
-      clib_warning ("resend...\n");
+      gtp_debug ("resend...\n");
       msg->timer = upf_pfcp_server_start_timer (PFCP_SERVER_T1, id, msg->t1);
       upf_pfcp_send_data (msg);
     }
@@ -441,7 +441,7 @@ request_t1_expired (u32 id)
       u8 type = msg->hdr->type;
       u32 node = msg->node;
 
-      clib_warning ("abort...\n");
+      gtp_debug ("abort...\n");
       // TODO: handle communication breakdown....
 
       hash_unset (sxsm->request_q, msg->seq_no);
@@ -472,7 +472,7 @@ upf_pfcp_server_send_session_request (upf_session_t * sx, u8 type,
 
   if ((msg = build_sx_session_msg (sx, type, grp)))
     {
-      clib_warning ("Msg: %p\n", msg);
+      gtp_debug ("Msg: %p\n", msg);
       upf_pfcp_server_send_request (msg);
     }
 }
@@ -485,7 +485,7 @@ upf_pfcp_server_send_node_request (upf_node_assoc_t * n, u8 type,
 
   if ((msg = build_sx_node_msg (n, type, grp)))
     {
-      clib_warning ("Node Msg: %p\n", msg);
+      gtp_debug ("Node Msg: %p\n", msg);
       upf_pfcp_server_send_request (msg);
     }
 }
@@ -496,8 +496,8 @@ response_expired (u32 id)
   sx_server_main_t *sxsm = &sx_server_main;
   sx_msg_t *msg = pool_elt_at_index (sxsm->msg_pool, id);
 
-  clib_warning ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
-  clib_warning ("release...\n");
+  gtp_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
+  gtp_debug ("release...\n");
 
   mhash_unset (&sxsm->response_q, msg->request_key, NULL);
   sx_msg_free (sxsm, msg);
@@ -509,7 +509,7 @@ restart_response_timer (sx_msg_t * msg)
   sx_server_main_t *sxsm = &sx_server_main;
   u32 id = msg - sxsm->msg_pool;
 
-  clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   if (msg->timer != ~0)
     upf_pfcp_server_stop_timer (msg->timer);
@@ -523,7 +523,7 @@ enqueue_response (sx_msg_t * msg)
   sx_server_main_t *sxsm = &sx_server_main;
   u32 id = msg - sxsm->msg_pool;
 
-  clib_warning ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   mhash_set (&sxsm->response_q, msg->request_key, id, NULL);
   msg->timer =
@@ -617,7 +617,7 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
   active = sx_get_rules (sx, SX_ACTIVE);
 
-  clib_warning ("Active: %p (%d)\n", active, vec_len (active->urr));
+  gtp_debug ("Active: %p (%d)\n", active, vec_len (active->urr));
 
   if (vec_len (active->urr) == 0)
     /* how could that happen? */
@@ -644,7 +644,7 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
   {
     u32 trigger = 0;
 
-    clib_warning ("URR: %p\n", urr);
+    gtp_debug ("URR: %p\n", urr);
 
 #define urr_check(V, D)					\
       urr_check_counter(				\
@@ -770,7 +770,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
        (trunc(((NOW) - (V).base - (f64)(V).period) * TW_CLOCKS_PER_SECOND) >= 0))
 
 #define urr_debug(Label, t)						\
-      clib_warning( "%-10s %20lu secs @ %U, in %9.3f secs (%9.3f  %9.3f), handle 0x%08x, check: %u", \
+      gtp_debug( "%-10s %20lu secs @ %U, in %9.3f secs (%9.3f  %9.3f), handle 0x%08x, check: %u", \
 		    (Label), (t).period,				\
 		    /* VPP does not support ISO dates... */		\
 		    format_time_float, 0, (t).base + (f64)(t).period,	\
@@ -779,7 +779,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 		    trunc((now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND), \
 		    (t).handle, urr_check(t, now));
 
-    clib_warning ("URR: %p, Id: %u", urr, urr->id);
+    gtp_debug ("URR: %p, Id: %u", urr, urr->id);
     urr_debug ("Period", urr->measurement_period);
     urr_debug ("Threshold", urr->time_threshold);
     urr_debug ("Quota", urr->time_quota);
@@ -978,7 +978,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		upf_session_t *sx;
 
 		sx = pool_elt_at_index (gtm->sessions, ueh->session_idx);
-		clib_warning ("URR Event on Session Idx: %wd, %p, UE: %U, Events: %u\n",
+		gtp_debug ("URR Event on Session Idx: %wd, %p, UE: %U, Events: %u\n",
 			      ueh->session_idx, sx,
 			      format_ip46_address, &ueh->ue, IP46_TYPE_ANY,
 			      vec_len(uev));
@@ -1022,25 +1022,25 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	      break;
 
 	    case 0x80 | PFCP_SERVER_HB_TIMER:
-	      clib_warning ("PFCP Server Heartbeat Timeout: %u",
+	      gtp_debug ("PFCP Server Heartbeat Timeout: %u",
 			    expired[i] & 0x00FFFFFF);
 	      upf_server_send_heartbeat (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    case 0x80 | PFCP_SERVER_T1:
-	      clib_warning ("PFCP Server T1 Timeout: %u",
+	      gtp_debug ("PFCP Server T1 Timeout: %u",
 			    expired[i] & 0x00FFFFFF);
 	      request_t1_expired (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    case 0x80 | PFCP_SERVER_RESPONSE:
-	      clib_warning ("PFCP Server Response Timeout: %u",
+	      gtp_debug ("PFCP Server Response Timeout: %u",
 			    expired[i] & 0x00FFFFFF);
 	      response_expired (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    default:
-	      clib_warning ("timeout for unknown id: %u", expired[i] >> 24);
+	      gtp_debug ("timeout for unknown id: %u", expired[i] >> 24);
 	      break;
 	    }
 	}
