@@ -55,7 +55,7 @@ upf_main_t upf_main;
 static void sx_add_del_ue_ip (const void *ue_ip, void *si, int is_add);
 static void sx_add_del_v4_teid (const void *teid, void *si, int is_add);
 static void sx_add_del_v6_teid (const void *teid, void *si, int is_add);
-static u8 * format_upf_acl (u8 * s, va_list * args);
+u8 * format_upf_acl (u8 * s, va_list * args);
 
 #define vec_bsearch(k, v, compar)				\
 	bsearch((k), (v), vec_len((v)), sizeof((v)[0]), compar)
@@ -1137,7 +1137,7 @@ sx_add_del_tdf (const void *tdf, void *si, int is_ip4, int is_add)
   if (acl->fib_index >= vec_len (gtm->tdf_ul_table[pfx.fp_proto]))
     return;
 
-  clib_warning("acl fib idx: 0x%08x, tdf fib idx: 0x%08x, ACL: %U\n",
+  gtp_debug("acl fib idx: 0x%08x, tdf fib idx: 0x%08x, ACL: %U\n",
 	       acl->fib_index,
 	       vec_elt (gtm->tdf_ul_table[pfx.fp_proto], acl->fib_index),
 	       format_upf_acl, acl);
@@ -1189,7 +1189,7 @@ sx_add_del_v6_tdf (const void *tdf, void *si, int is_add)
   sx_add_del_tdf (tdf, si, 0 /* is_ip4 */, is_add);
 }
 
-static u8 *
+u8 *
 format_upf_acl (u8 * s, va_list * args)
 {
   upf_acl_t *acl = va_arg (*args, upf_acl_t *);
@@ -1663,11 +1663,11 @@ sx_update_apply (upf_session_t * sx)
       vec_diff (pending->v6_teid, active->v6_teid, v6_teid_cmp,
 		sx_add_del_v6_teid, sx);
 
-      clib_warning("v4 TEIDs %u\n", pending->v4_teid);
-      clib_warning("v6 TEIDs %u\n", pending->v6_teid);
-      clib_warning("UE Src IPs %u\n", pending->ue_src_ip);
-      clib_warning("v4 ACLs %u\n", pending->v4_acls);
-      clib_warning("v6 ACLs %u\n", pending->v6_acls);
+      gtp_debug("v4 TEIDs %u\n", pending->v4_teid);
+      gtp_debug("v6 TEIDs %u\n", pending->v6_teid);
+      gtp_debug("UE Src IPs %u\n", pending->ue_src_ip);
+      gtp_debug("v4 ACLs %u\n", pending->v4_acls);
+      gtp_debug("v6 ACLs %u\n", pending->v6_acls);
 
       vec_diff (pending->ue_src_ip, active->ue_src_ip, ip46_address_fib_cmp,
 		sx_add_del_ue_ip, sx);
@@ -1707,7 +1707,6 @@ sx_update_apply (upf_session_t * sx)
 
   pending = sx_get_rules (sx, SX_PENDING);
   active = sx_get_rules (sx, SX_ACTIVE);
-
 
   vec_foreach (urr, active->urr)
   {
@@ -1935,7 +1934,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	      }
 	  }
 
-	clib_warning ("Start Of Traffic UE IP: %U, Pool: %p, Hash: %p\n",
+	gtp_debug ("Start Of Traffic UE IP: %U, Pool: %p, Hash: %p\n",
 		      format_ip46_address, &tt.ip, IP46_TYPE_ANY,
 		      urr->traffic, urr->traffic_by_ue);
 
@@ -1988,7 +1987,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
       ueh->session_idx = (uword) (sess - gtm->sessions);
       ueh->ue = tt.ip;
 
-      clib_warning ("sending URR event on %wd\n", (uword) ueh->session_idx);
+      gtp_debug ("sending URR event on %wd\n", (uword) ueh->session_idx);
       upf_pfcp_server_session_usage_report (uev);
     }
 

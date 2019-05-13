@@ -243,17 +243,17 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  clib_warning ("flow: %p (%u): %U\n",
-			fm->flows + vnet_buffer (b)->gtpu.flow_id,
-			vnet_buffer (b)->gtpu.flow_id,
-			format_flow_key,
-			&(fm->flows + vnet_buffer (b)->gtpu.flow_id)->key);
-
 	  if (~0 != vnet_buffer (b)->gtpu.flow_id)
 	    {
-	      flow_entry_t *flow =
-		pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
+	      flow_entry_t *flow;
 
+	      gtp_debug ("flow: %p (%u): %U\n",
+			 fm->flows + vnet_buffer (b)->gtpu.flow_id,
+			 vnet_buffer (b)->gtpu.flow_id,
+			 format_flow_key,
+			 &(fm->flows + vnet_buffer (b)->gtpu.flow_id)->key);
+
+	      flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
 	      if (flow->is_l3_proxy)
 		{
 		  next = upf_to_proxy (b, is_ip4, sidx, ~0, &error);
