@@ -117,7 +117,7 @@ typedef struct flow_entry
   flow_stats_t stats[FT_ORDER_MAX];
 
   /* timers */
-  u32 expire;			/* in seconds */
+  u32 active;			/* last activity ts */
   u16 lifetime;			/* in seconds */
   u32 timer_index;		/* index in the timer pool */
 
@@ -147,7 +147,6 @@ typedef struct
 
   /* timers */
   dlist_elt_t *timers;
-  u32 *timer_wheel;
   u32 time_index;
 
   /* flow cache
@@ -333,6 +332,12 @@ flow_update_lifetime (flow_entry_t * f, vlib_buffer_t * b, u8 is_ip4)
 }
 
 always_inline void
+flow_update_active (flow_entry_t * f, u32 now)
+{
+  f->active = now;
+}
+
+always_inline void
 timer_wheel_insert_flow (flowtable_main_t * fm,
 			 flowtable_main_per_cpu_t * fmt, flow_entry_t * f)
 {
@@ -340,19 +345,8 @@ timer_wheel_insert_flow (flowtable_main_t * fm,
 
   timer_slot_head_index =
     (fmt->time_index + f->lifetime) % fm->timer_max_lifetime;
+  f->active = fmt->time_index;
   clib_dlist_addtail (fmt->timers, timer_slot_head_index, f->timer_index);
-}
-
-always_inline void
-timer_wheel_resched_flow (flowtable_main_t * fm,
-			  flowtable_main_per_cpu_t * fmt, flow_entry_t * f,
-			  u32 now)
-{
-  clib_dlist_remove (fmt->timers, f->timer_index);
-  f->expire = now + f->lifetime;
-  timer_wheel_insert_flow (fm, fmt, f);
-
-  return;
 }
 
 #endif /* __flowtable_h__ */

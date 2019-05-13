@@ -60,6 +60,7 @@ flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
   int i;
   flow_entry_t *f;
   clib_error_t *error = 0;
+  dlist_elt_t *timer_slot;
 
   /* init hashtable */
   BV (clib_bihash_init) (&fmt->flows_ht, "flow hash table",
@@ -67,15 +68,19 @@ flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 
   /* init timer wheel */
   fmt->time_index = ~0;
-  for (i = 0; i < TIMER_MAX_LIFETIME; i++)
-    {
-      dlist_elt_t *timer_slot;
-      pool_get (fmt->timers, timer_slot);
 
-      u32 timer_slot_head_index = timer_slot - fmt->timers;
-      clib_dlist_init (fmt->timers, timer_slot_head_index);
-      vec_add1 (fmt->timer_wheel, timer_slot_head_index);
-    }
+  /* alloc TIMER_MAX_LIFETIME heads from the timers pool and fill them with defaults */
+  pool_validate_index(fmt->timers, TIMER_MAX_LIFETIME - 1);
+  clib_warning("POOL SIZE %u", pool_elts (fmt->timers));
+
+  /* *INDENT-OFF* */
+  pool_foreach (timer_slot, fmt->timers,
+  ({
+    u32 timer_slot_head_index = timer_slot - fmt->timers;
+
+    clib_dlist_init (fmt->timers, timer_slot_head_index);
+  }));
+  /* *INDENT-ON* */
 
   /* fill flow entry cache */
   if (pthread_spin_lock (&fm->flows_lock) == 0)
