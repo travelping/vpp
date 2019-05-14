@@ -252,7 +252,7 @@ recycle_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt, u32 now)
 }
 
 /* TODO: replace with a more appropriate hashtable */
-flow_entry_t *
+u32
 flowtable_entry_lookup_create (flowtable_main_t * fm,
 			       flowtable_main_per_cpu_t * fmt,
 			       BVT (clib_bihash_kv) * kv, u32 const now,
@@ -264,7 +264,7 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   if (PREDICT_FALSE
       (BV (clib_bihash_search_inline) (&fmt->flows_ht, kv) == 0))
     {
-      return pool_elt_at_index (fm->flows, kv->value);
+      return kv->value;
     }
 
   /* create new flow */
@@ -274,10 +274,13 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
       recycle_flow (fm, fmt, now);
       f = flow_entry_alloc (fm, fmt);
       if (PREDICT_FALSE (f == NULL))
-	clib_error ("flowtable failed to recycle a flow");
+	{
+	  clib_error ("flowtable failed to recycle a flow");
 
-      vlib_node_increment_counter (fm->vlib_main, upf_flow_node.index,
-				   FLOWTABLE_ERROR_RECYCLE, 1);
+	  vlib_node_increment_counter (fm->vlib_main, upf_flow_node.index,
+				       FLOWTABLE_ERROR_RECYCLE, 1);
+	  return ~0;
+	}
     }
 
   *created = 1;
@@ -302,7 +305,7 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   kv->value = f - fm->flows;
   BV (clib_bihash_add_del) (&fmt->flows_ht, kv, 1 /* is_add */ );
 
-  return f;
+  return kv->value;
 }
 
 void

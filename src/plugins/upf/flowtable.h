@@ -205,11 +205,18 @@ flowtable_lifetime_get (flowtable_timeout_type_t type)
   return (type >= FT_TIMEOUT_TYPE_MAX) ? ~0 : fm->timer_lifetime[type];
 }
 
-flow_entry_t *flowtable_entry_lookup_create (flowtable_main_t * fm,
-					     flowtable_main_per_cpu_t * fmt,
-					     BVT (clib_bihash_kv) * kv,
-					     u32 const now, u8 is_reverse,
-					     int *created);
+static inline flow_entry_t *
+flowtable_get_flow (flowtable_main_t * fm, u32 flow_index)
+{
+  return pool_elt_at_index (fm->flows, flow_index);
+}
+
+u32
+flowtable_entry_lookup_create (flowtable_main_t * fm,
+			       flowtable_main_per_cpu_t * fmt,
+			       BVT (clib_bihash_kv) * kv,
+			       u32 const now, u8 is_reverse,
+			       int *created);
 
 void
 timer_wheel_index_update (flowtable_main_t * fm,
