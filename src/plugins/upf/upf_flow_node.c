@@ -120,6 +120,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  BVT (clib_bihash_kv) kv0, kv1;
 	  int created0, created1;
 	  uword is_reverse0, is_reverse1;
+	  u32 flow_idx0, flow_idx1;
 	  flow_entry_t *flow0, *flow1;
 
 	  /* prefetch next iteration */
@@ -164,21 +165,23 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		       &is_reverse1, &kv1);
 
 	  /* lookup/create flow */
-	  flow0 =
+	  flow_idx0 =
 	    flowtable_entry_lookup_create (fm, fmt, &kv0, current_time,
 					   is_reverse0, &created0);
-	  if (PREDICT_FALSE (flow0 == NULL))
-	    {
-	      CPT_UNHANDLED++;
-	    }
-
-	  flow1 =
+	  flow_idx1 =
 	    flowtable_entry_lookup_create (fm, fmt, &kv1, current_time,
 					   is_reverse1, &created1);
-	  if (PREDICT_FALSE (flow1 == NULL))
+
+	  if (PREDICT_FALSE (~0 == flow_idx0 || ~0 == flow_idx1))
 	    {
-	      CPT_UNHANDLED++;
+	      CPT_UNHANDLED += 2;
+	      next0 = next1 = FT_NEXT_DROP;
+
+	      goto stats0;
 	    }
+
+	  flow0 = flowtable_get_flow (fm, flow_idx0);
+	  flow1 = flowtable_get_flow (fm, flow_idx1);
 
 	  FLOW_DEBUG (fm, flow0);
 	  FLOW_DEBUG (fm, flow1);
@@ -205,6 +208,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  CPT_CREATED += created0 + created1;
 	  CPT_HIT += !created0 + !created1;
 
+	stats0:
 	  if (b0->flags & VLIB_BUFFER_IS_TRACED)
 	    {
 	      u32 sidx = vnet_buffer (b0)->gtpu.session_index;
@@ -245,6 +249,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  vlib_buffer_t *b0;
 	  upf_session_t *sx0;
 	  int created = 0;
+	  u32 flow_idx;
 	  flow_entry_t *flow = NULL;
 	  uword is_reverse = 0;
 	  BVT (clib_bihash_kv) kv;
@@ -258,15 +263,19 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  flow_mk_key (sx0->cp_seid, b0,
 		       vnet_buffer (b0)->gtpu.data_offset, is_ip4,
 		       &is_reverse, &kv);
-	  flow =
+	  flow_idx =
 	    flowtable_entry_lookup_create (fm, fmt, &kv, current_time,
 					   is_reverse, &created);
 
-	  if (PREDICT_FALSE (flow == NULL))
+	  if (PREDICT_FALSE (~0 == flow_idx))
 	    {
 	      CPT_UNHANDLED++;
+	      next0 = FT_NEXT_DROP;
+
+	      goto stats1;
 	    }
 
+	  flow = flowtable_get_flow (fm, flow_idx);
 	  FLOW_DEBUG (fm, flow);
 
 	  /* timer management */
@@ -285,6 +294,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  CPT_CREATED += created;
 	  CPT_HIT += !created;
 
+	stats1:
 	  /* frame mgmt */
 	  from++;
 	  to_next++;
