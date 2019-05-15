@@ -161,7 +161,7 @@ typedef struct
  * hashtable is configured to alloc (NUM_BUCKETS * CLIB_CACHE_LINE_BYTES) Bytes
  * with (flow_count / (BIHASH_KVP_PER_PAGE / 2)) Buckets
  */
-#define FM_POOL_COUNT_LOG2 16
+#define FM_POOL_COUNT_LOG2 22
 #define FM_POOL_COUNT (1 << FM_POOL_COUNT_LOG2)
 #define FM_NUM_BUCKETS (1 << (FM_POOL_COUNT_LOG2 - (BIHASH_KVP_PER_PAGE / 2)))
 #define FM_MEMORY_SIZE (FM_NUM_BUCKETS * CLIB_CACHE_LINE_BYTES * 6)
