@@ -782,7 +782,7 @@ lookup_nwi (u8 * name)
 }
 
 static int
-handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
+handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -790,14 +790,25 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   upf_main_t *gtm = &upf_main;
   pfcp_create_pdr_t *pdr;
+  struct rules *rules;
   int r = 0;
+
+  if ((r = sx_make_pending_pdr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
+  rules = sx_get_rules(sx, SX_PENDING);
+  vec_alloc(rules->pdr, vec_len (create_pdr));
 
   vec_foreach (pdr, create_pdr)
   {
     upf_pdr_t *create;
 
-    create = clib_mem_alloc_no_fail (sizeof (*create));
+    vec_add2 (rules->pdr, create, 1);
     memset (create, 0, sizeof (*create));
+
     create->pdi.nwi = ~0;
     create->pdi.adr.application_id = ~0;
     create->pdi.adr.db_id = ~0;
@@ -816,6 +827,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	      gtp_debug ("NWI: %v (%d)", pdr->pdi.network_instance,
 			 vec_len (pdr->pdi.network_instance));
 	    failed_rule_id->id = pdr->pdr_id;
+	    vec_pop (rules->pdr);
 	    break;
 	  }
 
@@ -832,6 +844,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	   {
 	   gtp_debug("PDR: %d, TEID not within configure partition\n", pdr->pdr_id);
 	   failed_rule_id->id = pdr->pdr_id;
+	   vec_pop (rules->pdr);
 	   break;
 	   }
 	 */
@@ -861,6 +874,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	  if (!unformat_ipfilter (&input, acl))
 	    {
 	      failed_rule_id->id = pdr->pdr_id;
+	      vec_pop (rules->pdr);
 	      gtp_debug ("failed to parse SDF '%s'", sdf->flow);
 	      r = -1;
 	      break;
@@ -878,6 +892,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 	if (!p)
 	  {
 	    failed_rule_id->id = pdr->pdr_id;
+	    vec_pop (rules->pdr);
 	    r = -1;
 	    fformat (stderr,
 		     "PDR: %d, application id %v has not been configured\n",
@@ -921,14 +936,9 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
       }
 
     // CREATE_PDR_ACTIVATE_PREDEFINED_RULES
-
-    if ((r = sx_create_pdr (sess, create)) != 0)
-      {
-	gtp_debug ("Failed to add PDR %d\n", pdr->pdr_id);
-	failed_rule_id->id = pdr->pdr_id;
-	break;
-      }
   }
+
+  sx_sort_pdrs (rules);
 
   if (r != 0)
     {
@@ -942,7 +952,7 @@ handle_create_pdr (upf_session_t * sess, pfcp_create_pdr_t * create_pdr,
 }
 
 static int
-handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
+handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -952,15 +962,21 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
   pfcp_update_pdr_t *pdr;
   int r = 0;
 
+  if ((r = sx_make_pending_pdr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (pdr, update_pdr)
   {
     upf_pdr_t *update;
 
-    update = sx_get_pdr (sess, SX_PENDING, pdr->pdr_id);
+    update = sx_get_pdr (sx, SX_PENDING, pdr->pdr_id);
     if (!update)
       {
 	gtp_debug ("Sx Session %" PRIu64 ", update PDR Id %d not found.\n",
-		   sess->cp_seid, pdr->pdr_id);
+		   sx->cp_seid, pdr->pdr_id);
 	failed_rule_id->id = pdr->pdr_id;
 	r = -1;
 	break;
@@ -1004,6 +1020,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
 
 	update->pdi.fields |= F_PDI_SDF_FILTER;
 
+	vec_reset_length (update->pdi.acl);
 	vec_alloc (update->pdi.acl, _vec_len(pdr->pdi.sdf_filter));
 
 	vec_foreach (sdf, pdr->pdi.sdf_filter)
@@ -1059,6 +1076,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
       {
 	pfcp_urr_id_t *urr_id;
 
+	vec_reset_length (update->urr_ids);
 	vec_alloc (update->urr_ids, _vec_len(pdr->urr_id));
 	vec_foreach (urr_id, pdr->urr_id)
 	{
@@ -1070,6 +1088,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
       {
 	pfcp_qer_id_t *qer_id;
 
+	vec_reset_length (update->qer_ids);
 	vec_alloc (update->qer_ids, _vec_len(pdr->qer_id));
 	vec_foreach (qer_id, pdr->qer_id)
 	{
@@ -1092,7 +1111,7 @@ handle_update_pdr (upf_session_t * sess, pfcp_update_pdr_t * update_pdr,
 }
 
 static int
-handle_remove_pdr (upf_session_t * sess, pfcp_remove_pdr_t * remove_pdr,
+handle_remove_pdr (upf_session_t * sx, pfcp_remove_pdr_t * remove_pdr,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -1101,9 +1120,15 @@ handle_remove_pdr (upf_session_t * sess, pfcp_remove_pdr_t * remove_pdr,
   pfcp_remove_pdr_t *pdr;
   int r = 0;
 
+  if ((r = sx_make_pending_pdr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (pdr, remove_pdr)
   {
-    if ((r = sx_delete_pdr (sess, pdr->pdr_id)) != 0)
+    if ((r = sx_delete_pdr (sx, pdr->pdr_id)) != 0)
       {
 	gtp_debug ("Failed to add PDR %d\n", pdr->pdr_id);
 	failed_rule_id->id = pdr->pdr_id;
@@ -1276,7 +1301,7 @@ upf_ip46_get_resolving_interface (u32 fib_index, ip46_address_t * pa46,
 }
 
 static int
-handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
+handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -1284,13 +1309,23 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   upf_main_t *gtm = &upf_main;
   pfcp_create_far_t *far;
+  struct rules *rules;
   int r = 0;
+
+  if ((r = sx_make_pending_far(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
+  rules = sx_get_rules(sx, SX_PENDING);
+  vec_alloc(rules->far, vec_len (create_far));
 
   vec_foreach (far, create_far)
   {
     upf_far_t *create;
 
-    create = clib_mem_alloc_no_fail (sizeof (*create));
+    vec_add2 (rules->far, create, 1);
     memset (create, 0, sizeof (*create));
     create->forward.nwi = ~0;
     create->forward.dst_sw_if_index = ~0;
@@ -1313,6 +1348,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 		  ("FAR: %d, Parameter with unknown network instance\n",
 		   far->far_id);
 		failed_rule_id->id = far->far_id;
+		vec_pop (rules->far);
 		break;
 	      }
 
@@ -1354,6 +1390,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
 		   far->far_id, is_ip4 ? 4 : 6);
 		failed_rule_id->id = far->far_id;
+		vec_pop (rules->far);
 		break;
 	      }
 	    create->forward.dst_sw_if_index =
@@ -1365,6 +1402,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
 		   create->forward.table_id);
 		failed_rule_id->id = far->far_id;
+		vec_pop (rules->far);
 		break;
 	      }
 
@@ -1374,14 +1412,9 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 	//TODO: forwarding_policy
 	//TODO: header_enrichment
       }
-
-    if ((r = sx_create_far (sess, create)) != 0)
-      {
-	gtp_debug ("Failed to add FAR %d\n", far->far_id);
-	failed_rule_id->id = far->far_id;
-	break;
-      }
   }
+
+  sx_sort_fars (rules);
 
   if (r != 0)
     {
@@ -1395,7 +1428,7 @@ handle_create_far (upf_session_t * sess, pfcp_create_far_t * create_far,
 }
 
 static int
-handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
+handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -1405,15 +1438,21 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
   pfcp_update_far_t *far;
   int r = 0;
 
+  if ((r = sx_make_pending_far(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (far, update_far)
   {
     upf_far_t *update;
 
-    update = sx_get_far (sess, SX_PENDING, far->far_id);
+    update = sx_get_far (sx, SX_PENDING, far->far_id);
     if (!update)
       {
 	gtp_debug ("Sx Session %" PRIu64 ", update FAR Id %d not found.\n",
-		   sess->cp_seid, far->far_id);
+		   sx->cp_seid, far->far_id);
 	failed_rule_id->id = far->far_id;
 	r = -1;
 	break;
@@ -1477,7 +1516,7 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 			   UPDATE_FORWARDING_PARAMETERS_SXSMREQ_FLAGS) &&
 		far->update_forwarding_parameters.
 		sxsmreq_flags & SXSMREQ_SNDEM)
-	      sx_send_end_marker (sess, far->far_id);
+	      sx_send_end_marker (sx, far->far_id);
 
 	    update->forward.flags |= FAR_F_OUTER_HEADER_CREATION;
 	    update->forward.outer_header_creation = *ohc;
@@ -1526,7 +1565,7 @@ handle_update_far (upf_session_t * sess, pfcp_update_far_t * update_far,
 }
 
 static int
-handle_remove_far (upf_session_t * sess, pfcp_remove_far_t * remove_far,
+handle_remove_far (upf_session_t * sx, pfcp_remove_far_t * remove_far,
 		   struct pfcp_group *grp,
 		   int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
@@ -1535,9 +1574,15 @@ handle_remove_far (upf_session_t * sess, pfcp_remove_far_t * remove_far,
   pfcp_remove_far_t *far;
   int r = 0;
 
+  if ((r = sx_make_pending_far(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (far, remove_far)
   {
-    if ((r = sx_delete_far (sess, far->far_id)) != 0)
+    if ((r = sx_delete_far (sx, far->far_id)) != 0)
       {
 	gtp_debug ("Failed to add FAR %d\n", far->far_id);
 	failed_rule_id->id = far->far_id;
@@ -1557,19 +1602,29 @@ handle_remove_far (upf_session_t * sess, pfcp_remove_far_t * remove_far,
 }
 
 static int
-handle_create_urr (upf_session_t * sess, pfcp_create_urr_t * create_urr,
+handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   pfcp_create_urr_t *urr;
+  struct rules *rules;
   int r = 0;
+
+  if ((r = sx_make_pending_urr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
+  rules = sx_get_rules(sx, SX_PENDING);
+  vec_alloc(rules->urr, vec_len (create_urr));
 
   vec_foreach (urr, create_urr)
   {
     upf_urr_t *create;
 
-    create = clib_mem_alloc_no_fail (sizeof (*create));
+    vec_add2 (rules->urr, create, 1);
     memset (create, 0, sizeof (*create));
 
     create->measurement_period.handle =
@@ -1631,14 +1686,9 @@ handle_create_urr (upf_session_t * sess, pfcp_create_urr_t * create_urr,
     //TODO: linked_urr_id;
     //TODO: measurement_information;
     //TODO: time_quota_mechanism;
-
-    if ((r = sx_create_urr (sess, create)) != 0)
-      {
-	gtp_debug ("Failed to add URR %d\n", urr->urr_id);
-	failed_rule_id->id = urr->urr_id;
-	break;
-      }
   }
+
+  sx_sort_urrs (rules);
 
   if (r != 0)
     {
@@ -1652,7 +1702,7 @@ handle_create_urr (upf_session_t * sess, pfcp_create_urr_t * create_urr,
 }
 
 static int
-handle_update_urr (upf_session_t * sess, pfcp_update_urr_t * update_urr,
+handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
@@ -1660,15 +1710,21 @@ handle_update_urr (upf_session_t * sess, pfcp_update_urr_t * update_urr,
   pfcp_update_urr_t *urr;
   int r = 0;
 
+  if ((r = sx_make_pending_urr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (urr, update_urr)
   {
     upf_urr_t *update;
 
-    update = sx_get_urr (sess, SX_PENDING, urr->urr_id);
+    update = sx_get_urr (sx, SX_PENDING, urr->urr_id);
     if (!update)
       {
 	gtp_debug ("Sx Session %" PRIu64 ", update URR Id %d not found.\n",
-		   sess->cp_seid, urr->urr_id);
+		   sx->cp_seid, urr->urr_id);
 	failed_rule_id->id = urr->urr_id;
 	r = -1;
 	break;
@@ -1743,7 +1799,7 @@ handle_update_urr (upf_session_t * sess, pfcp_update_urr_t * update_urr,
 }
 
 static int
-handle_remove_urr (upf_session_t * sess, pfcp_remove_urr_t * remove_urr,
+handle_remove_urr (upf_session_t * sx, pfcp_remove_urr_t * remove_urr,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
@@ -1751,9 +1807,15 @@ handle_remove_urr (upf_session_t * sess, pfcp_remove_urr_t * remove_urr,
   pfcp_remove_urr_t *urr;
   int r = 0;
 
+  if ((r = sx_make_pending_urr(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (urr, remove_urr)
   {
-    if ((r = sx_delete_urr (sess, urr->urr_id)) != 0)
+    if ((r = sx_delete_urr (sx, urr->urr_id)) != 0)
       {
 	gtp_debug ("Failed to add URR %d\n", urr->urr_id);
 	failed_rule_id->id = urr->urr_id;
@@ -1773,26 +1835,36 @@ handle_remove_urr (upf_session_t * sess, pfcp_remove_urr_t * remove_urr,
 }
 
 static int
-handle_create_qer (upf_session_t * sess, pfcp_create_qer_t * create_qer,
+handle_create_qer (upf_session_t * sx, pfcp_create_qer_t * create_qer,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   upf_main_t *gtm = &upf_main;
   pfcp_create_qer_t *qer;
+  struct rules *rules;
   int r = 0;
+
+  if ((r = sx_make_pending_qer(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
+  rules = sx_get_rules(sx, SX_PENDING);
+  vec_alloc(rules->qer, vec_len (create_qer));
 
   vec_foreach (qer, create_qer)
   {
     upf_qer_t *create;
 
-    create = clib_mem_alloc_no_fail (sizeof (*create));
+    vec_add2 (rules->qer, create, 1);
     memset (create, 0, sizeof (*create));
 
     create->id = qer->qer_id;
     create->policer.key =
       OPT (qer, CREATE_QER_QER_CORRELATION_ID, qer_correlation_id,
-	   (u64) (sess - gtm->sessions) << 32 | create->id);
+	   (u64) (sx - gtm->sessions) << 32 | create->id);
     create->policer.value = ~0;
 
     create->gate_status[UPF_UL] = qer->gate_status.ul;
@@ -1809,14 +1881,9 @@ handle_create_qer (upf_session_t * sess, pfcp_create_qer_t * create_qer,
     //TODO: dl_flow_level_marking;
     //TODO: qos_flow_identifier;
     //TODO: reflective_qos;
-
-    if ((r = sx_create_qer (sess, create)) != 0)
-      {
-	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
-	failed_rule_id->id = qer->qer_id;
-	break;
-      }
   }
+
+  sx_sort_qers (rules);
 
   if (r != 0)
     {
@@ -1830,7 +1897,7 @@ handle_create_qer (upf_session_t * sess, pfcp_create_qer_t * create_qer,
 }
 
 static int
-handle_update_qer (upf_session_t * sess, pfcp_update_qer_t * update_qer,
+handle_update_qer (upf_session_t * sx, pfcp_update_qer_t * update_qer,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
@@ -1839,15 +1906,21 @@ handle_update_qer (upf_session_t * sess, pfcp_update_qer_t * update_qer,
   pfcp_update_qer_t *qer;
   int r = 0;
 
+  if ((r = sx_make_pending_qer(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (qer, update_qer)
   {
     upf_qer_t *update;
 
-    update = sx_get_qer (sess, SX_PENDING, qer->qer_id);
+    update = sx_get_qer (sx, SX_PENDING, qer->qer_id);
     if (!update)
       {
 	gtp_debug ("Sx Session %" PRIu64 ", update QER Id %d not found.\n",
-		   sess->cp_seid, qer->qer_id);
+		   sx->cp_seid, qer->qer_id);
 	failed_rule_id->id = qer->qer_id;
 	r = -1;
 	break;
@@ -1855,7 +1928,7 @@ handle_update_qer (upf_session_t * sess, pfcp_update_qer_t * update_qer,
 
     update->policer.key =
       (ISSET_BIT (qer->grp.fields, UPDATE_QER_QER_CORRELATION_ID)) ?
-      qer->qer_correlation_id : (u64) (sess -
+      qer->qer_correlation_id : (u64) (sx -
 				       gtm->sessions) << 32 | update->id;
     update->policer.value = ~0;
 
@@ -1890,7 +1963,7 @@ handle_update_qer (upf_session_t * sess, pfcp_update_qer_t * update_qer,
 }
 
 static int
-handle_remove_qer (upf_session_t * sess, pfcp_remove_qer_t * remove_qer,
+handle_remove_qer (upf_session_t * sx, pfcp_remove_qer_t * remove_qer,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
@@ -1898,9 +1971,15 @@ handle_remove_qer (upf_session_t * sess, pfcp_remove_qer_t * remove_qer,
   pfcp_remove_qer_t *qer;
   int r = 0;
 
+  if ((r = sx_make_pending_qer(sx)) != 0)
+    {
+      response->cause = PFCP_CAUSE_NO_RESOURCES_AVAILABLE;
+      return r;
+    }
+
   vec_foreach (qer, remove_qer)
   {
-    if ((r = sx_delete_qer (sess, qer->qer_id)) != 0)
+    if ((r = sx_delete_qer (sx, qer->qer_id)) != 0)
       {
 	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
 	failed_rule_id->id = qer->qer_id;
