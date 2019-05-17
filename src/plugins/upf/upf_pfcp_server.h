@@ -136,14 +136,32 @@ init_sx_msg (sx_msg_t * m)
   m->node = ~0;
 }
 
-static inline void
-sx_msg_free (sx_server_main_t * sxsm, sx_msg_t * m)
+static inline sx_msg_t *
+sx_msg_pool_get (sx_server_main_t * sxsm)
 {
-  if (!m)
-    return;
+  sx_msg_t * m;
 
+  pool_get_aligned_zero (sxsm->msg_pool, m, CLIB_CACHE_LINE_BYTES);
+  return m;
+}
+
+static inline void
+sx_msg_pool_put (sx_server_main_t * sxsm, sx_msg_t *m )
+{
   vec_free (m->data);
   pool_put (sxsm->msg_pool, m);
+}
+
+static inline sx_msg_t *
+sx_msg_pool_elt_at_index (sx_server_main_t * sxsm, u32 index)
+{
+  return pool_elt_at_index (sxsm->msg_pool, index);
+}
+
+static inline u32
+sx_msg_get_index (sx_server_main_t * sxsm, sx_msg_t *m )
+{
+  return m - sxsm->msg_pool;
 }
 
 #endif /* _UPF_SX_SERVER_H */

@@ -243,6 +243,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 
       gtp_debug ("PFCP: msg version invalid: %d.", msg->hdr->version);
 
+      memset (&resp, 0, sizeof (resp));
       upf_pfcp_make_response (&resp, msg, sizeof (pfcp_header_t));
 
       resp.hdr->version = 1;
@@ -295,7 +296,7 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 	  }
 	else
 	  {
-	    sx_msg_t *resp = pool_elt_at_index (sxsm->msg_pool, p[0]);
+	    sx_msg_t *resp = sx_msg_pool_elt_at_index (sxsm, p[0]);
 
 	    gtp_debug ("resend... %d\n", p[0]);
 	    upf_pfcp_send_data (resp);
@@ -326,13 +327,13 @@ upf_pfcp_server_rx_msg (sx_msg_t * msg)
 	if (!p)
 	  break;
 
-	req = pool_elt_at_index (sxsm->msg_pool, p[0]);
+	req = sx_msg_pool_elt_at_index (sxsm, p[0]);
 	hash_unset (sxsm->request_q, msg->seq_no);
 	upf_pfcp_server_stop_timer (req->timer);
 
 	msg->node = req->node;
 
-	sx_msg_free (sxsm, req);
+	sx_msg_pool_put (sxsm, req);
 
 	upf_pfcp_handle_msg (msg);
 
@@ -353,10 +354,10 @@ build_sx_session_msg (upf_session_t * sx, u8 type, struct pfcp_group *grp)
   sx_msg_t *msg;
   int r = 0;
 
-  pool_get_aligned (sxsm->msg_pool, msg, CLIB_CACHE_LINE_BYTES);
+  msg = sx_msg_pool_get(sxsm);
   if ((r = encode_sx_session_msg (sx, type, grp, msg)) != 0)
     {
-      pool_put (sxsm->msg_pool, msg);
+      sx_msg_pool_put (sxsm, msg);
       return NULL;
     }
 
@@ -370,10 +371,10 @@ build_sx_node_msg (upf_node_assoc_t * n, u8 type, struct pfcp_group *grp)
   sx_msg_t *msg;
   int r = 0;
 
-  pool_get_aligned (sxsm->msg_pool, msg, CLIB_CACHE_LINE_BYTES);
+  msg = sx_msg_pool_get(sxsm);
   if ((r = encode_sx_node_msg (n, type, grp, msg)) != 0)
     {
-      pool_put (sxsm->msg_pool, msg);
+      sx_msg_pool_put (sxsm, msg);
       return NULL;
     }
 
@@ -410,7 +411,7 @@ static void
 enqueue_request (sx_msg_t * msg, u32 n1, u32 t1)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  u32 id = msg - sxsm->msg_pool;
+  u32 id = sx_msg_get_index(sxsm, msg);
 
   gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
   msg->n1 = n1;
@@ -424,7 +425,7 @@ static void
 request_t1_expired (u32 id)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  sx_msg_t *msg = pool_elt_at_index (sxsm->msg_pool, id);
+  sx_msg_t *msg = sx_msg_pool_elt_at_index (sxsm, id);
   upf_main_t *gtm = &upf_main;
 
   gtp_debug ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
@@ -445,7 +446,7 @@ request_t1_expired (u32 id)
       // TODO: handle communication breakdown....
 
       hash_unset (sxsm->request_q, msg->seq_no);
-      sx_msg_free (sxsm, msg);
+      sx_msg_pool_put (sxsm, msg);
 
       if (type == PFCP_HEARTBEAT_REQUEST
 	  && !pool_is_free_index (gtm->nodes, node))
@@ -494,20 +495,20 @@ static void
 response_expired (u32 id)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  sx_msg_t *msg = pool_elt_at_index (sxsm->msg_pool, id);
+  sx_msg_t *msg = sx_msg_pool_elt_at_index (sxsm, id);
 
   gtp_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
   gtp_debug ("release...\n");
 
   mhash_unset (&sxsm->response_q, msg->request_key, NULL);
-  sx_msg_free (sxsm, msg);
+  sx_msg_pool_put (sxsm, msg);
 }
 
 static void
 restart_response_timer (sx_msg_t * msg)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  u32 id = msg - sxsm->msg_pool;
+  u32 id = sx_msg_get_index(sxsm, msg);
 
   gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
@@ -521,7 +522,7 @@ static void
 enqueue_response (sx_msg_t * msg)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  u32 id = msg - sxsm->msg_pool;
+  u32 id = sx_msg_get_index(sxsm, msg);
 
   gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
@@ -533,8 +534,6 @@ enqueue_response (sx_msg_t * msg)
 static void
 upf_pfcp_make_response (sx_msg_t * resp, sx_msg_t * req, size_t len)
 {
-  memset (resp, 0, sizeof (*resp));
-
   resp->timer = ~0;
   resp->seq_no = req->seq_no;
   resp->fib_index = req->fib_index;
@@ -551,7 +550,7 @@ upf_pfcp_send_response (sx_msg_t * req, u64 cp_seid, u8 type,
   sx_msg_t *resp;
   int r = 0;
 
-  pool_get_aligned (sxsm->msg_pool, resp, CLIB_CACHE_LINE_BYTES);
+  resp = sx_msg_pool_get(sxsm);
   upf_pfcp_make_response (resp, req, 2048);
 
   resp->hdr->version = req->hdr->version;
@@ -577,7 +576,7 @@ upf_pfcp_send_response (sx_msg_t * req, u64 cp_seid, u8 type,
   r = pfcp_encode_msg (type, grp, &resp->data);
   if (r != 0)
     {
-      pool_put (sxsm->msg_pool, resp);
+      sx_msg_pool_put (sxsm, resp);
       goto out_free;
     }
 
@@ -955,8 +954,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		  {
 		    sx_msg_t *msg;
 
-		    pool_get_aligned (sxsm->msg_pool, msg,
-				      CLIB_CACHE_LINE_BYTES);
+		    msg = sx_msg_pool_get (sxsm);
 		    *msg = *tx;
 
 		    upf_pfcp_server_send_request (msg);
