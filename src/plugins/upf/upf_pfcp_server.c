@@ -897,6 +897,7 @@ static uword
 sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 {
   sx_server_main_t *sxsm = &sx_server_main;
+  uword event_type, *event_data = 0;
   upf_main_t *gtm = &upf_main;
   u32 *expired = NULL;
 
@@ -905,7 +906,6 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 
   while (1)
     {
-      uword event_type, *event_data = 0;
       u32 ticks_until_expiration;
       f64 timeout;
 
@@ -958,6 +958,10 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		    *msg = *tx;
 
 		    upf_pfcp_server_send_request (msg);
+		  }
+		else
+		  {
+		    vec_free (tx->data);
 		  }
 
 		clib_mem_free (tx);
