@@ -619,8 +619,17 @@ peer_addr_unref (const upf_far_forward_t * fwd)
   return 0;
 }
 
-static int
-make_pending_pdr (upf_session_t * sx)
+static inline void
+sx_free_pdr (upf_pdr_t *pdr)
+{
+  upf_adf_put_adr_db (pdr->pdi.adr.db_id);
+  vec_free (pdr->pdi.acl);
+  vec_free (pdr->urr_ids);
+  vec_free (pdr->qer_ids);
+}
+
+int
+sx_make_pending_pdr (upf_session_t * sx)
 {
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
@@ -638,6 +647,7 @@ make_pending_pdr (upf_session_t * sx)
 	upf_pdr_t *pdr = vec_elt_at_index (pending->pdr, i);
 
 	pdr->pdi.adr.db_id = upf_adf_get_adr_db (pdr->pdi.adr.application_id);
+	pdr->pdi.acl = vec_dup (vec_elt (active->pdr, i).pdi.acl);
 	pdr->urr_ids = vec_dup (vec_elt (active->pdr, i).urr_ids);
 	pdr->qer_ids = vec_dup (vec_elt (active->pdr, i).qer_ids);
       }
@@ -646,8 +656,14 @@ make_pending_pdr (upf_session_t * sx)
   return 0;
 }
 
-static int
-make_pending_far (upf_session_t * sx)
+static inline void
+sx_free_far (upf_far_t *far)
+{
+  vec_free (far->forward.rewrite);
+}
+
+int
+sx_make_pending_far (upf_session_t * sx)
 {
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
@@ -679,8 +695,24 @@ make_pending_far (upf_session_t * sx)
   return 0;
 }
 
-static int
-make_pending_urr (upf_session_t * sx)
+static inline void
+sx_free_urr (upf_urr_t *urr)
+{
+  upf_urr_traffic_t *tt;
+
+  /* *INDENT-OFF* */
+  pool_foreach (tt, urr->traffic,
+  ({
+    hash_unset_mem_free (&urr->traffic_by_ue, &tt->ip);
+  }));
+  /* *INDENT-ON* */
+
+  pool_free (urr->traffic);
+  hash_free (urr->traffic_by_ue);
+}
+
+int
+sx_make_pending_urr (upf_session_t * sx)
 {
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
@@ -774,8 +806,14 @@ detach_qer_policer (upf_qer_t * qer)
     }
 }
 
-static int
-make_pending_qer (upf_session_t * sx)
+static inline void
+sx_free_qer (upf_qer_t *qer)
+{
+  detach_qer_policer (qer);
+}
+
+int
+sx_make_pending_qer (upf_session_t * sx)
 {
   struct rules *pending = sx_get_rules (sx, SX_PENDING);
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
@@ -800,7 +838,6 @@ static void
 sx_free_rules (upf_session_t * sx, int rule)
 {
   struct rules *rules = sx_get_rules (sx, rule);
-  upf_urr_traffic_t *tt;
   upf_pdr_t *pdr;
   upf_far_t *far;
   upf_urr_t *urr;
@@ -808,9 +845,7 @@ sx_free_rules (upf_session_t * sx, int rule)
 
   vec_foreach (pdr, rules->pdr)
   {
-    upf_adf_put_adr_db (pdr->pdi.adr.db_id);
-    vec_free (pdr->urr_ids);
-    vec_free (pdr->qer_ids);
+    sx_free_pdr (pdr);
   }
 
   vec_free (rules->pdr);
@@ -819,25 +854,17 @@ sx_free_rules (upf_session_t * sx, int rule)
     if (far->forward.outer_header_creation.description != 0)
       peer_addr_unref (&far->forward);
 
-    vec_free (far->forward.rewrite);
+    sx_free_far (far);
   }
   vec_free (rules->far);
   vec_foreach (urr, rules->urr)
     {
-      /* *INDENT-OFF* */
-      pool_foreach (tt, urr->traffic,
-      ({
-	hash_unset_mem_free (&urr->traffic_by_ue, &tt->ip);
-      }));
-      /* *INDENT-ON* */
-
-      pool_free (urr->traffic);
-      hash_free (urr->traffic_by_ue);
+      sx_free_urr (urr);
     }
   vec_free (rules->urr);
   vec_foreach (qer, rules->qer)
   {
-    detach_qer_policer (qer);
+      sx_free_qer (qer);
   }
   vec_free (rules->qer);
   vec_free (rules->ue_src_ip);
@@ -952,7 +979,7 @@ upf_##t##_t *sx_get_##t(upf_session_t *sx, int rule,		\
   upf_##t##_t r = { .id = t##_id };					\
 									\
   if (rule == SX_PENDING)						\
-    if (make_pending_##t(sx) != 0)					\
+    if (sx_make_pending_##t(sx) != 0)					\
       return NULL;							\
 									\
   printf("LOOKUP t##: %u\n", t##_id);					\
@@ -963,10 +990,16 @@ int sx_create_##t(upf_session_t *sx, upf_##t##_t *t)			\
 {									\
   struct rules *rules = sx_get_rules(sx, SX_PENDING);			\
 									\
-  if (make_pending_##t(sx) != 0)					\
+  if (sx_make_pending_##t(sx) != 0)					\
     return -1;								\
 									\
   vec_add1(rules->t, *t);						\
+  vec_sort_with_function(rules->t, sx_##t##_id_compare);		\
+  return 0;								\
+}									\
+									\
+int sx_sort_##t##s(struct rules *rules)					\
+{									\
   vec_sort_with_function(rules->t, sx_##t##_id_compare);		\
   return 0;								\
 }									\
@@ -977,20 +1010,21 @@ int sx_delete_##t(upf_session_t *sx, u32 t##_id)			\
   upf_##t##_t r = { .id = t##_id };					\
   upf_##t##_t *p;							\
 									\
-  if (make_pending_##t(sx) != 0)					\
+  if (sx_make_pending_##t(sx) != 0)					\
     return -1;								\
 									\
   if (!(p = vec_bsearch(&r, rules->t, sx_##t##_id_compare)))		\
     return -1;								\
 									\
   do { REMOVE; } while (0);						\
+  sx_free_##t (p);							\
 									\
   vec_del1(rules->t, p - rules->t);					\
   return 0;								\
 }
 
 /* *INDENT-OFF* */
-sx_rule_vector_fns(pdr, ({ upf_adf_put_adr_db(p->pdi.adr.db_id); }))
+sx_rule_vector_fns(pdr, ({}))
 sx_rule_vector_fns(far, ({}))
 sx_rule_vector_fns(urr, ({}))
 sx_rule_vector_fns(qer, ({}))

@@ -37,9 +37,11 @@ void sx_free_session (upf_session_t * sx);
 #define sx_rule_vector_fns(t)						\
 upf_##t##_t * sx_get_##t##_by_id(struct rules *,			\
 				   typeof (((upf_##t##_t *)0)->id) t##_id);	\
-upf_##t##_t *sx_get_##t(upf_session_t *sx, int rule,		\
+upf_##t##_t *sx_get_##t(upf_session_t *sx, int rule,			\
 			  typeof (((upf_##t##_t *)0)->id) t##_id);	\
-int sx_create_##t(upf_session_t *sx, upf_##t##_t *t);		\
+int sx_create_##t(upf_session_t *sx, upf_##t##_t *t);			\
+int sx_make_pending_##t(upf_session_t *sx);				\
+int sx_sort_##t##s(struct rules *rules);				\
 int sx_delete_##t(upf_session_t *sx, u32 t##_id);			\
 
 /* *INDENT-OFF* */
