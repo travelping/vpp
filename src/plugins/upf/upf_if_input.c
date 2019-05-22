@@ -127,12 +127,9 @@ VLIB_NODE_FN (upf_if_input_node) (vlib_main_t * vm,
 
 	  b = vlib_get_buffer (vm, bi);
 
-	  /* Get next node index and adj index from tunnel next_dpo */
-	  sw_if_index = vnet_buffer (b)->sw_if_index[VLIB_TX];
-	  sidx = gtm->session_index_by_sw_if_index[sw_if_index];
-
-	  gtp_debug ("HW If: %p, Session %d",
-		     vnet_get_sup_hw_interface (vnm, sw_if_index), sidx);
+	  sidx = vnet_buffer (b)->ip.adj_index[VLIB_TX];
+	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
+	  ASSERT (~0 != sidx);
 
 	  vnet_buffer (b)->gtpu.session_index = sidx;
 	  vnet_buffer (b)->gtpu.flags = 0;
@@ -141,6 +138,7 @@ VLIB_NODE_FN (upf_if_input_node) (vlib_main_t * vm,
 	  vnet_buffer (b)->gtpu.teid = 0;
 	  ip4 = (ip4_header_t *) vlib_buffer_get_current (b);
 
+	  ASSERT (NULL);
 	  if ((ip4->ip_version_and_header_length & 0xF0) == 0x40)
 	    {
 	      next = UPF_IF_INPUT_NEXT_IP4_CLASSIFY;

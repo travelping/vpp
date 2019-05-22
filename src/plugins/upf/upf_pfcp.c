@@ -59,10 +59,16 @@ u8 * format_upf_acl (u8 * s, va_list * args);
 	bsearch((k), (v), vec_len((v)), sizeof((v)[0]), compar)
 
 static u8 *
-format_upf_name (u8 * s, va_list * args)
+format_upf_device_name (u8 * s, va_list * args)
 {
-  u32 dev_instance = va_arg (*args, u32);
-  return format (s, "upf_session%d", dev_instance);
+  upf_main_t *gtm = &upf_main;
+  u32 i = va_arg (*args, u32);
+  upf_nwi_t *nwi;
+
+  nwi = pool_elt_at_index (gtm->nwis, i);
+
+  s = format (s, "upf-nwi-%U", format_network_instance, nwi->name);
+  return s;
 }
 
 static clib_error_t *
@@ -78,7 +84,7 @@ upf_interface_admin_up_down (vnet_main_t * vnm, u32 hw_if_index, u32 flags)
 /* *INDENT-OFF* */
 VNET_DEVICE_CLASS (gtpu_device_class,static) = {
   .name = "GTPU",
-  .format_device_name = format_upf_name,
+  .format_device_name = format_upf_device_name,
   .format_tx_trace = format_upf_encap_trace,
   .admin_up_down_function = upf_interface_admin_up_down,
 };
@@ -101,6 +107,136 @@ VNET_HW_INTERFACE_CLASS (gtpu_hw_class) =
   .flags = VNET_HW_INTERFACE_CLASS_FLAG_P2P,
 };
 /* *INDENT-ON* */
+
+int vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+{
+  vnet_main_t *vnm = upf_main.vnet_main;
+  l2input_main_t *l2im = &l2input_main;
+  upf_main_t *gtm = &upf_main;
+  vnet_hw_interface_t *hi;
+  u32 hw_if_index = ~0;
+  u32 sw_if_index = ~0;
+  upf_nwi_t *nwi;
+  uword if_index;
+  uword *p;
+
+  p = hash_get_mem (gtm->nwi_index_by_name, name);
+  if (p)
+    {
+      nwi = vec_elt_at_index (gtm->nwis, p[0]);
+      if (sw_if_index)
+	*sw_if_idx = nwi->sw_if_index;
+      return VNET_API_ERROR_IF_ALREADY_EXISTS;
+    }
+
+  pool_get (gtm->nwis, nwi);
+  memset (nwi, 0, sizeof (*nwi));
+
+  nwi->name = vec_dup (name);
+  nwi->table_id = table_id;
+
+  if_index = nwi - gtm->nwis;
+
+  if (vec_len (gtm->free_nwi_hw_if_indices) > 0)
+    {
+      vnet_interface_main_t *im = &vnm->interface_main;
+      hw_if_index = gtm->free_nwi_hw_if_indices
+	[vec_len (gtm->free_nwi_hw_if_indices) - 1];
+      _vec_len (gtm->free_nwi_hw_if_indices) -= 1;
+
+      hi = vnet_get_hw_interface (vnm, hw_if_index);
+      hi->dev_instance = if_index;
+      hi->hw_instance = hi->dev_instance;
+
+      /* clear old stats of freed nwi before reuse */
+      sw_if_index = hi->sw_if_index;
+      vnet_interface_counter_lock (im);
+      vlib_zero_combined_counter
+	(&im->combined_sw_if_counters[VNET_INTERFACE_COUNTER_TX],
+	 sw_if_index);
+      vlib_zero_combined_counter (&im->combined_sw_if_counters
+				  [VNET_INTERFACE_COUNTER_RX], sw_if_index);
+      vlib_zero_simple_counter (&im->sw_if_counters
+				[VNET_INTERFACE_COUNTER_DROP], sw_if_index);
+      vnet_interface_counter_unlock (im);
+    }
+  else
+    {
+      hw_if_index = vnet_register_interface
+	(vnm, gtpu_device_class.index, if_index, gtpu_hw_class.index, if_index);
+      hi = vnet_get_hw_interface (vnm, hw_if_index);
+    }
+
+  /* Set GTP-U tunnel output node */
+  vnet_set_interface_output_node (vnm, hw_if_index, upf_if_input_node.index);
+
+  nwi->hw_if_index = hw_if_index;
+  nwi->sw_if_index = sw_if_index = hi->sw_if_index;
+
+  vec_validate_init_empty (gtm->nwi_index_by_sw_if_index, sw_if_index, ~0);
+  gtm->nwi_index_by_sw_if_index[sw_if_index] = if_index;
+
+  /* setup l2 input config with l2 feature and bd 0 to drop packet */
+  vec_validate (l2im->configs, sw_if_index);
+  l2im->configs[sw_if_index].feature_bitmap = L2INPUT_FEAT_DROP;
+  l2im->configs[sw_if_index].bd_index = 0;
+
+  /* move into fib table */
+  ip_table_bind (FIB_PROTOCOL_IP4, sw_if_index, table_id, 0);
+  ip_table_bind (FIB_PROTOCOL_IP6, sw_if_index, table_id, 0);
+
+  vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, sw_if_index);
+  si->flags &= ~VNET_SW_INTERFACE_FLAG_HIDDEN;
+  vnet_sw_interface_set_flags (vnm, sw_if_index,
+			       VNET_SW_INTERFACE_FLAG_ADMIN_UP);
+
+  /*
+   * L3 enable the interface
+   */
+  ip4_sw_interface_enable_disable (sw_if_index, 1);
+  ip6_sw_interface_enable_disable (sw_if_index, 1);
+
+  vnet_get_sw_interface (vnet_get_main (), sw_if_index)->flood_class =
+    VNET_FLOOD_CLASS_TUNNEL_NORMAL;
+
+  hash_set_mem (gtm->nwi_index_by_name, nwi->name, if_index);
+
+  if (sw_if_idx)
+    *sw_if_idx = nwi->sw_if_index;
+
+  return 0;
+}
+
+int vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+{
+  vnet_main_t *vnm = upf_main.vnet_main;
+  upf_main_t *gtm = &upf_main;
+  upf_nwi_t *nwi;
+  uword *p;
+
+  p = hash_get_mem (gtm->nwi_index_by_name, name);
+  if (!p)
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+  nwi = pool_elt_at_index (gtm->nwis, p[0]);
+
+  /* disable nwi if */
+  vnet_sw_interface_set_flags (vnm, nwi->sw_if_index, 0 /* down */ );
+  vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, nwi->sw_if_index);
+  si->flags |= VNET_SW_INTERFACE_FLAG_HIDDEN;
+
+  /* make sure session is removed from l2 bd or xconnect */
+  set_int_l2_mode (gtm->vlib_main, vnm, MODE_L3, nwi->sw_if_index, 0, 0, 0, 0);
+  gtm->nwi_index_by_sw_if_index[nwi->sw_if_index] = ~0;
+
+  vec_add1 (gtm->free_nwi_hw_if_indices, nwi->hw_if_index);
+
+  hash_unset_mem (gtm->nwi_index_by_name, nwi->name);
+  vec_free (nwi->name);
+  pool_put (gtm->nwis, nwi);
+
+  return 0;
+}
 
 static int
 sx_pdr_id_compare (const void *p1, const void *p2)
@@ -352,12 +488,8 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
 		   const ip46_address_t * cp_address)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  vnet_main_t *vnm = upf_main.vnet_main;
-  l2input_main_t *l2im = &l2input_main;
   vlib_main_t *vm = vlib_get_main ();
   upf_main_t *gtm = &upf_main;
-  u32 hw_if_index = ~0;
-  u32 sw_if_index = ~0;
   upf_session_t *sx;
 
   gtp_debug ("CP F-SEID: 0x%016" PRIx64 " @ %U\n"
@@ -382,68 +514,6 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
   //TODO sx->up_f_seid = sx - gtm->sessions;
   node_assoc_attach_session (assoc, sx);
   hash_set (gtm->session_by_id, cp_seid, sx - gtm->sessions);
-
-  vnet_hw_interface_t *hi;
-
-  if (vec_len (gtm->free_session_hw_if_indices) > 0)
-    {
-      vnet_interface_main_t *im = &vnm->interface_main;
-      hw_if_index = gtm->free_session_hw_if_indices
-	[vec_len (gtm->free_session_hw_if_indices) - 1];
-      _vec_len (gtm->free_session_hw_if_indices) -= 1;
-
-      hi = vnet_get_hw_interface (vnm, hw_if_index);
-      hi->dev_instance = sx - gtm->sessions;
-      hi->hw_instance = hi->dev_instance;
-
-      /* clear old stats of freed session before reuse */
-      sw_if_index = hi->sw_if_index;
-      vnet_interface_counter_lock (im);
-      vlib_zero_combined_counter
-	(&im->combined_sw_if_counters[VNET_INTERFACE_COUNTER_TX],
-	 sw_if_index);
-      vlib_zero_combined_counter (&im->combined_sw_if_counters
-				  [VNET_INTERFACE_COUNTER_RX], sw_if_index);
-      vlib_zero_simple_counter (&im->sw_if_counters
-				[VNET_INTERFACE_COUNTER_DROP], sw_if_index);
-      vnet_interface_counter_unlock (im);
-    }
-  else
-    {
-      hw_if_index = vnet_register_interface
-	(vnm, gtpu_device_class.index, sx - gtm->sessions,
-	 gtpu_hw_class.index, sx - gtm->sessions);
-      hi = vnet_get_hw_interface (vnm, hw_if_index);
-    }
-
-  /* Set GTP-U tunnel output node */
-  vnet_set_interface_output_node (vnm, hw_if_index, upf_if_input_node.index);
-
-  sx->hw_if_index = hw_if_index;
-  sx->sw_if_index = sw_if_index = hi->sw_if_index;
-
-  vec_validate_init_empty (gtm->session_index_by_sw_if_index, sw_if_index,
-			   ~0);
-  gtm->session_index_by_sw_if_index[sw_if_index] = sx - gtm->sessions;
-
-  /* setup l2 input config with l2 feature and bd 0 to drop packet */
-  vec_validate (l2im->configs, sw_if_index);
-  l2im->configs[sw_if_index].feature_bitmap = L2INPUT_FEAT_DROP;
-  l2im->configs[sw_if_index].bd_index = 0;
-
-  vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, sw_if_index);
-  si->flags &= ~VNET_SW_INTERFACE_FLAG_HIDDEN;
-  vnet_sw_interface_set_flags (vnm, sw_if_index,
-			       VNET_SW_INTERFACE_FLAG_ADMIN_UP);
-
-  /*
-   * L3 enable the interface
-   */
-  ip4_sw_interface_enable_disable (sw_if_index, 1);
-  ip6_sw_interface_enable_disable (sw_if_index, 1);
-
-  vnet_get_sw_interface (vnet_get_main (), sw_if_index)->flood_class =
-    VNET_FLOOD_CLASS_TUNNEL_NORMAL;
 
   vlib_worker_thread_barrier_release (vm);
 
@@ -871,9 +941,8 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
   sx_server_main_t *sxsm = &sx_server_main;
   const f64 now = sxsm->timer.last_run_time;
-  vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
-  ip46_address_fib_t *ue_dst_ip;
+  ue_ip_t *ue_dst_ip;
   gtpu4_endp_rule_t *v4_teid;
   gtpu6_endp_rule_t *v6_teid;
   upf_urr_t *urr;
@@ -887,14 +956,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
 
   //TODO: free DL fifo...
 
-  /* disable tunnel if */
-  vnet_sw_interface_set_flags (vnm, sx->sw_if_index, 0 /* down */ );
-  vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, sx->sw_if_index);
-  si->flags |= VNET_SW_INTERFACE_FLAG_HIDDEN;
-
-  /* make sure session is removed from l2 bd or xconnect */
-  set_int_l2_mode (gtm->vlib_main, vnm, MODE_L3, sx->sw_if_index, 0, 0, 0, 0);
-  gtm->session_index_by_sw_if_index[sx->sw_if_index] = ~0;
+  //gtm->session_index_by_sw_if_index[sx->sw_if_index] = ~0;
 
   /* stop all timers */
   vec_foreach (urr, active->urr)
@@ -940,7 +1002,6 @@ sx_free_session (upf_session_t * sx)
     sx_free_rules (sx, i);
 
   clib_spinlock_free (&sx->lock);
-  vec_add1 (gtm->free_session_hw_if_indices, sx->hw_if_index);
   pool_put (gtm->sessions, sx);
 
   vlib_worker_thread_barrier_release (vm);
@@ -1075,8 +1136,8 @@ upf_acl_cmp (const void *a, const void *b)
 static void
 sx_add_del_ue_ip (const void *ip, void *si, int is_add)
 {
-  const ip46_address_fib_t *ue_ip = ip;
-  upf_session_t *sess = si;
+  const ue_ip_t * ue_ip = ip;
+  upf_session_t *sx = si;
   fib_prefix_t pfx;
 
   memset (&pfx, 0, sizeof (pfx));
@@ -1097,21 +1158,21 @@ sx_add_del_ue_ip (const void *ip, void *si, int is_add)
 
   if (is_add)
     {
-      /* add reverse route for client ip */
-      fib_table_entry_path_add (ue_ip->fib_index, &pfx,
-				FIB_SOURCE_PLUGIN_HI, FIB_ENTRY_FLAG_ATTACHED,
-				fib_proto_to_dpo (pfx.fp_proto),
-				NULL, sess->sw_if_index, ~0,
-				1, NULL, FIB_ROUTE_PATH_FLAG_NONE);
+      dpo_id_t sxd = DPO_INVALID;
+
+      upf_session_dpo_add_or_lock (fib_proto_to_dpo (pfx.fp_proto), sx,
+				   &sxd);
+
+      /* delete reverse route for client ip through special DPO */
+      fib_table_entry_special_dpo_add (ue_ip->fib_index, &pfx,
+				       FIB_SOURCE_SPECIAL,
+				       FIB_ENTRY_FLAG_EXCLUSIVE,
+				       &sxd);
     }
   else
     {
       /* delete reverse route for client ip */
-      fib_table_entry_path_remove (ue_ip->fib_index, &pfx,
-				   FIB_SOURCE_PLUGIN_HI,
-				   fib_proto_to_dpo (pfx.fp_proto),
-				   NULL, sess->sw_if_index, ~0, 1,
-				   FIB_ROUTE_PATH_FLAG_NONE);
+      fib_table_entry_special_remove (ue_ip->fib_index, &pfx, FIB_SOURCE_SPECIAL);
     }
 }
 
@@ -1245,6 +1306,15 @@ format_upf_acl (u8 * s, va_list * args)
 		 &acl->mask.address[IPFILTER_RULE_FIELD_DST], itype,
 		 acl->mask.port[IPFILTER_RULE_FIELD_DST],
 		 acl->match.port[IPFILTER_RULE_FIELD_DST]);
+}
+
+always_inline u32
+upf_fib_index_by_sw_if_index (u32 sw_if_index, int is_ip4)
+{
+  u32 * fib_index_by_sw_if_index = is_ip4 ?
+    ip4_main.fib_index_by_sw_if_index : ip6_main.fib_index_by_sw_if_index;
+
+  return vec_elt (fib_index_by_sw_if_index, sw_if_index);
 }
 
 /* Maybe should be moved into the core somewhere */
@@ -1387,16 +1457,13 @@ compile_sdf (int is_ip4, const upf_pdr_t * pdr,
 
 static int
 compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr, const acl_rule_t * rule,
-		       u32 pdr_idx, u32 table_id, upf_acl_t * acl)
+		       u32 pdr_idx, u32 sw_if_index, upf_acl_t * acl)
 {
-  fib_protocol_t proto =
-    (is_ip4) ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6;
-
   memset (acl, 0, sizeof (*acl));
 
   acl->is_ip4 = is_ip4;
   acl->precedence = pdr->precedence;
-  acl->fib_index = fib_table_find (proto, table_id);
+  acl->fib_index = upf_fib_index_by_sw_if_index (sw_if_index, is_ip4);
   acl->pdr_idx = pdr_idx;
 
   compile_teid (pdr, acl);
@@ -1451,7 +1518,7 @@ rules_add_v6_teid (struct rules *r, const ip6_address_t * addr, u32 teid, u32 ru
 
 static void
 rules_add_ue_ip(struct rules * r, fib_protocol_t fproto,
-		ip46_address_fib_t * ue_ip, u8 is_dst)
+		ue_ip_t * ue_ip, u8 is_dst)
 {
   upf_main_t *gtm = &upf_main;
 
@@ -1485,12 +1552,12 @@ build_sx_rules (upf_session_t * sx)
   vec_foreach_index (idx, pending->pdr)
   {
     upf_pdr_t *pdr = vec_elt_at_index(pending->pdr, idx);
-    u32 table_id = 0;
+    u32 sw_if_index = ~0;
 
     if (pdr->pdi.nwi != ~0)
       {
 	upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi);
-	table_id = nwi->table_id;
+	sw_if_index = nwi->sw_if_index;
       }
 
     /* create UE IP route from SGi Network Instance into Session */
@@ -1506,21 +1573,27 @@ build_sx_rules (upf_session_t * sx)
     if (!(pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
 	pdr->pdi.fields & F_PDI_UE_IP_ADDR)
       {
-	ip46_address_fib_t ue_ip;
+	ue_ip_t ue_ip;
 	u8 is_dst = ! !(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD);
 
 	if (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V4)
 	  {
 	    ip46_address_set_ip4 (&ue_ip.addr, &pdr->pdi.ue_addr.ip4);
-	    ue_ip.fib_index = fib_table_find (FIB_PROTOCOL_IP4, table_id);
+	    ue_ip.fib_index =
+	      upf_fib_index_by_sw_if_index (sw_if_index, 1 /* is_ip4 */);
+	    ue_ip.sw_if_index = sw_if_index;
 
+	    clib_warning("UP FIB Idx %u, sw_if_index %u",
+			 ue_ip.fib_index, ue_ip.sw_if_index);
 	    rules_add_ue_ip(pending, FIB_PROTOCOL_IP4, &ue_ip, is_dst);
 	  }
 
 	if (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V6)
 	  {
 	    ue_ip.addr.ip6 = pdr->pdi.ue_addr.ip6;
-	    ue_ip.fib_index = fib_table_find (FIB_PROTOCOL_IP6, table_id);
+	    ue_ip.fib_index =
+	      upf_fib_index_by_sw_if_index (sw_if_index, 0 /* is_ip4 */);
+	    ue_ip.sw_if_index = sw_if_index;
 
 	    rules_add_ue_ip(pending, FIB_PROTOCOL_IP6, &ue_ip, is_dst);
 	  }
@@ -1551,7 +1624,7 @@ build_sx_rules (upf_session_t * sx)
 
 	      vec_add2 (pending->v4_acls, acl, 1);
 	      /* compile PDI into ACL matcher */
-	      compile_ipfilter_rule (1 /* is_ip4 */, pdr, rule, idx, table_id, acl);
+	      compile_ipfilter_rule (1 /* is_ip4 */, pdr, rule, idx, sw_if_index, acl);
 	    }
 
 	  if (rule->type == IPFILTER_IPV6
@@ -1561,7 +1634,7 @@ build_sx_rules (upf_session_t * sx)
 
 	      vec_add2 (pending->v6_acls, acl, 1);
 	      /* compile PDI into ACL matcher */
-	      compile_ipfilter_rule (0 /* is_ip4 */, pdr, rule, idx, table_id, acl);
+	      compile_ipfilter_rule (0 /* is_ip4 */, pdr, rule, idx, sw_if_index, acl);
 	    }
 	}
       }

@@ -301,36 +301,9 @@ VLIB_CLI_COMMAND (upf_pfcp_show_endpoint_command, static) =
 int
 vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add)
 {
-  upf_main_t *gtm = &upf_main;
-  upf_nwi_t *nwi;
-  uword *p;
-
-  p = hash_get_mem (gtm->nwi_index_by_name, name);
-
-  if (add)
-    {
-      if (p)
-	return VNET_API_ERROR_VALUE_EXIST;
-
-      pool_get (gtm->nwis, nwi);
-      nwi->name = vec_dup (name);
-      nwi->table_id = table_id;
-
-      hash_set_mem (gtm->nwi_index_by_name, nwi->name, nwi - gtm->nwis);
-    }
-  else
-    {
-      if (!p)
-	return VNET_API_ERROR_NO_SUCH_ENTRY;
-
-      nwi = pool_elt_at_index (gtm->nwis, p[0]);
-
-      hash_unset_mem (gtm->nwi_index_by_name, nwi->name);
-      vec_free (nwi->name);
-      pool_put (gtm->nwis, nwi);
-    }
-
-  return 0;
+  return (add) ?
+    vnet_upf_create_nwi_if (name, table_id, NULL) :
+    vnet_upf_delete_nwi_if (name, table_id, NULL);
 }
 
 /**
