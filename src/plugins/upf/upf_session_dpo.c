@@ -21,6 +21,7 @@
 #include <vnet/ip/ip.h>
 #include <vnet/ethernet/ethernet.h>
 #include <vnet/dpo/drop_dpo.h>
+#include <vnet/interface_output.h>
 
 #include <upf/upf.h>
 #include <upf/upf_pfcp.h>
@@ -218,6 +219,7 @@ typedef enum
 typedef enum
 {
     UPF_SESSION_DPO_NEXT_DROP,
+    UPF_SESSION_DPO_NEXT_ICMP_ERROR,
     UPF_SESSION_DPO_NEXT_FLOW_PROCESS,
     UPF_SESSION_DPO_N_NEXT,
 } upf_session_dpo_next_t;
@@ -245,18 +247,72 @@ format_upf_session_dpo_trace (u8 * s, va_list * args)
   return s;
 }
 
-always_inline uword
-upf_session_dpo_inline (vlib_main_t * vm,
-			vlib_node_runtime_t * node,
-			vlib_frame_t * from_frame, u8 is_ip4)
+/* WARNING: the following code is mostly taken from vnet/ip/ip4_forward.c
+ *
+ * It is not clear to me if a similar effect
+ * could be achived with a feature arc
+ */
+
+/* Decrement TTL & update checksum.
+   Works either endian, so no need for byte swap. */
+static_always_inline void
+ip4_ttl_and_checksum_check (vlib_buffer_t * b, ip4_header_t * ip, u16 * next,
+			    u32 * error)
 {
+  i32 ttl;
+  u32 checksum;
+  if (PREDICT_FALSE (b->flags & VNET_BUFFER_F_LOCALLY_ORIGINATED))
+    {
+      b->flags &= ~VNET_BUFFER_F_LOCALLY_ORIGINATED;
+      return;
+    }
+
+  ttl = ip->ttl;
+
+  /* Input node should have reject packets with ttl 0. */
+  ASSERT (ip->ttl > 0);
+
+  checksum = ip->checksum + clib_host_to_net_u16 (0x0100);
+  checksum += checksum >= 0xffff;
+
+  ip->checksum = checksum;
+  ttl -= 1;
+  ip->ttl = ttl;
+
+  /*
+   * If the ttl drops below 1 when forwarding, generate
+   * an ICMP response.
+   */
+  if (PREDICT_FALSE (ttl <= 0))
+    {
+      *error = IP4_ERROR_TIME_EXPIRED;
+      vnet_buffer (b)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+      icmp4_error_set_vnet_buffer (b, ICMP4_time_exceeded,
+				   ICMP4_time_exceeded_ttl_exceeded_in_transit,
+				   0);
+      *next = UPF_SESSION_DPO_NEXT_ICMP_ERROR;
+    }
+
+  /* Verify checksum. */
+  ASSERT ((ip->checksum == ip4_header_checksum (ip)) ||
+	  (b->flags & VNET_BUFFER_F_OFFLOAD_IP_CKSUM));
+}
+
+/* end of copy from ip4_forward.c */
+
+VLIB_NODE_FN (upf_ip4_session_dpo_node) (vlib_main_t * vm,
+					vlib_node_runtime_t * node,
+					vlib_frame_t * from_frame)
+{
+  vlib_node_runtime_t *error_node =
+    vlib_node_get_runtime (vm, ip4_input_node.index);
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
 
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
 
-  u32 next = 0;
+  u16 next = 0;
   u32 sidx = 0;
 
   next_index = node->cached_next_index;
@@ -272,6 +328,9 @@ upf_session_dpo_inline (vlib_main_t * vm,
       /* TODO: dual and maybe quad loop */
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
+	  ip4_header_t *ip0;
+	  u32 error0;
+
 	  bi = from[0];
 	  to_next[0] = bi;
 	  from += 1;
@@ -285,13 +344,19 @@ upf_session_dpo_inline (vlib_main_t * vm,
 	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
 	  ASSERT (~0 != sidx);
 
+	  ip0 = vlib_buffer_get_current (b);
+	  error0 = IP4_ERROR_NONE;
+	  next = UPF_SESSION_DPO_NEXT_FLOW_PROCESS;
+
+	  ip4_ttl_and_checksum_check (b, ip0, &next, &error0);
+
+	  b->error = error_node->errors[error0];
+	  calc_checksums (vm, b);
+
 	  vnet_buffer (b)->gtpu.session_index = sidx;
 	  vnet_buffer (b)->gtpu.data_offset = 0;
 	  vnet_buffer (b)->gtpu.teid = 0;
-
-	  next = UPF_SESSION_DPO_NEXT_FLOW_PROCESS;
-	  vnet_buffer (b)->gtpu.flags =
-	    is_ip4 ? BUFFER_HAS_IP4_HDR : BUFFER_HAS_IP6_HDR;
+	  vnet_buffer (b)->gtpu.flags = BUFFER_HAS_IP4_HDR;
 
 	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	    {
@@ -314,18 +379,123 @@ upf_session_dpo_inline (vlib_main_t * vm,
   return from_frame->n_vectors;
 }
 
-VLIB_NODE_FN (upf_ip4_session_dpo_node) (vlib_main_t * vm,
-					vlib_node_runtime_t * node,
-					vlib_frame_t * from_frame)
+/* begin of copy from ip6_forward.c */
+
+/* Check and Decrement hop limit */
+static_always_inline void
+ip6_hop_limit_check (vlib_buffer_t * b, ip6_header_t * ip, u16 * next,
+		     u32 * error)
 {
-  return (upf_session_dpo_inline (vm, node, from_frame, 1));
+  i32 hop_limit = ip->hop_limit;
+
+  if (PREDICT_FALSE (b->flags & VNET_BUFFER_F_LOCALLY_ORIGINATED))
+    {
+      b->flags &= ~VNET_BUFFER_F_LOCALLY_ORIGINATED;
+      return;
+    }
+
+  hop_limit = ip->hop_limit;
+
+  /* Input node should have reject packets with hop limit 0. */
+  ASSERT (ip->hop_limit > 0);
+
+  hop_limit -= 1;
+  ip->hop_limit = hop_limit;
+
+  if (PREDICT_FALSE (hop_limit <= 0))
+    {
+      /*
+       * If the hop count drops below 1 when forwarding, generate
+       * an ICMP response.
+       */
+      *error = IP6_ERROR_TIME_EXPIRED;
+      vnet_buffer (b)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+      icmp6_error_set_vnet_buffer (b, ICMP6_time_exceeded,
+				   ICMP6_time_exceeded_ttl_exceeded_in_transit,
+				   0);
+      *next = UPF_SESSION_DPO_NEXT_ICMP_ERROR;
+    }
 }
+
+/* end of copy from ip6_forward.c */
 
 VLIB_NODE_FN (upf_ip6_session_dpo_node) (vlib_main_t * vm,
 					vlib_node_runtime_t * node,
 					vlib_frame_t * from_frame)
 {
-  return (upf_session_dpo_inline (vm, node, from_frame, 0));
+  vlib_node_runtime_t *error_node =
+    vlib_node_get_runtime (vm, ip6_input_node.index);
+  u32 n_left_from, next_index, *from, *to_next;
+  upf_main_t *gtm = &upf_main;
+
+  from = vlib_frame_vector_args (from_frame);
+  n_left_from = from_frame->n_vectors;
+
+  u16 next = 0;
+  u32 sidx = 0;
+
+  next_index = node->cached_next_index;
+
+  while (n_left_from > 0)
+    {
+      u32 n_left_to_next;
+      vlib_buffer_t *b;
+      u32 bi;
+
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+
+      /* TODO: dual and maybe quad loop */
+      while (n_left_from > 0 && n_left_to_next > 0)
+	{
+	  ip6_header_t *ip0;
+	  u32 error0;
+
+	  bi = from[0];
+	  to_next[0] = bi;
+	  from += 1;
+	  to_next += 1;
+	  n_left_from -= 1;
+	  n_left_to_next -= 1;
+
+	  b = vlib_get_buffer (vm, bi);
+
+	  sidx = vnet_buffer (b)->ip.adj_index[VLIB_TX];
+	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
+	  ASSERT (~0 != sidx);
+
+	  ip0 = vlib_buffer_get_current (b);
+	  error0 = IP6_ERROR_NONE;
+	  next = UPF_SESSION_DPO_NEXT_FLOW_PROCESS;
+
+	  ip6_hop_limit_check (b, ip0, &next, &error0);
+
+	  b->error = error_node->errors[error0];
+	  calc_checksums (vm, b);
+
+	  vnet_buffer (b)->gtpu.session_index = sidx;
+	  vnet_buffer (b)->gtpu.data_offset = 0;
+	  vnet_buffer (b)->gtpu.teid = 0;
+	  vnet_buffer (b)->gtpu.flags = BUFFER_HAS_IP6_HDR;
+
+	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
+	    {
+	      upf_session_t *sess = pool_elt_at_index (gtm->sessions, sidx);
+	      upf_session_dpo_trace_t *tr =
+		vlib_add_trace (vm, node, b, sizeof (*tr));
+	      tr->session_index = sidx;
+	      tr->cp_seid = sess->cp_seid;
+	      clib_memcpy (tr->packet_data, vlib_buffer_get_current (b),
+			   sizeof (tr->packet_data));
+	    }
+
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next, bi, next);
+	}
+
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+    }
+
+  return from_frame->n_vectors;
 }
 
 /* *INDENT-OFF* */
@@ -341,6 +511,7 @@ VLIB_REGISTER_NODE (upf_ip4_session_dpo_node) = {
   .n_next_nodes = UPF_SESSION_DPO_N_NEXT,
   .next_nodes = {
     [UPF_SESSION_DPO_NEXT_DROP]         = "error-drop",
+    [UPF_SESSION_DPO_NEXT_ICMP_ERROR]   = "ip4-icmp-error",
     [UPF_SESSION_DPO_NEXT_FLOW_PROCESS] = "upf-ip4-flow-process",
   },
 };
@@ -357,6 +528,7 @@ VLIB_REGISTER_NODE (upf_ip6_session_dpo_node) = {
   .n_next_nodes = UPF_SESSION_DPO_N_NEXT,
   .next_nodes = {
     [UPF_SESSION_DPO_NEXT_DROP]         = "error-drop",
+    [UPF_SESSION_DPO_NEXT_ICMP_ERROR]   = "ip6-icmp-error",
     [UPF_SESSION_DPO_NEXT_FLOW_PROCESS] = "upf-ip6-flow-process",
   },
 };

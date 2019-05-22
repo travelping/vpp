@@ -81,16 +81,27 @@ format_upf_process_trace (u8 * s, va_list * args)
 
 static_always_inline u32
 upf_to_proxy (vlib_buffer_t * b, int is_ip4, u32 sidx,
-	      u32 far_idx, u32 * error)
+	      u32 far_idx, u32 fib_index, u32 * error)
 {
   u32 next;
   u32 sw_if_index = vnet_buffer (b)->sw_if_index[VLIB_RX];
-  u32 fib_index = is_ip4 ?
-    ip4_fib_table_get_index_for_sw_if_index (sw_if_index)
-    : ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
+
+  if (~0 == fib_index)
+    fib_index = is_ip4 ?
+      ip4_fib_table_get_index_for_sw_if_index (sw_if_index)
+      : ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
 
   clib_warning("SwIfIdx: %u, FIB: %u", sw_if_index, fib_index);
-  vnet_buffer (b)->sw_if_index[VLIB_TX] = sw_if_index;
+
+  ASSERT (~0 != fib_index);
+  if (PREDICT_FALSE (~0 == fib_index))
+    {
+      clib_warning ("UPF_PROCESS_ERROR_NO_LISTENER\n");
+      *error = UPF_PROCESS_ERROR_NO_LISTENER;
+      return UPF_PROCESS_NEXT_DROP;
+    }
+
+  vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index; //sw_if_index;
   vnet_buffer2 (b)->gtpu.session_index = sidx;
   vnet_buffer2 (b)->gtpu.far_index = far_idx | 0x80000000;
   vnet_buffer2 (b)->connection_index =
@@ -256,7 +267,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
 	      if (flow->is_l3_proxy)
 		{
-		  next = upf_to_proxy (b, is_ip4, sidx, ~0, &error);
+		  next = upf_to_proxy (b, is_ip4, sidx, ~0, ~0, &error);
 		  goto process;
 		}
 	    }
@@ -292,7 +303,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		}
 	      else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
 		{
-		  next = upf_to_proxy (b, is_ip4, sidx, far - active->far, &error);
+		  next = upf_to_proxy (b, is_ip4, sidx, far - active->far,
+				       far->forward.table_id, &error);
 		}
 	      else
 		{
