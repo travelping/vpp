@@ -1166,7 +1166,7 @@ sx_add_del_ue_ip (const void *ip, void *si, int is_add)
       /* delete reverse route for client ip through special DPO */
       fib_table_entry_special_dpo_add (ue_ip->fib_index, &pfx,
 				       FIB_SOURCE_SPECIAL,
-				       FIB_ENTRY_FLAG_EXCLUSIVE,
+				       FIB_ENTRY_FLAG_EXCLUSIVE | FIB_ENTRY_FLAG_LOOSE_URPF_EXEMPT,
 				       &sxd);
     }
   else
@@ -2137,7 +2137,7 @@ process_qers (vlib_main_t * vm, upf_session_t * sess,
 
   /* must be UL or DL, not both and not none */
   if ((is_ul + is_dl) != 1)
-    return UPF_PROCESS_NEXT_DROP;
+    return next;
 
   time_in_policer_periods =
     clib_cpu_time_now () >> POLICER_TICKS_PER_PERIOD_SHIFT;
