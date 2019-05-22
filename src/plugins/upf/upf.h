@@ -500,6 +500,12 @@ typedef struct
   clib_bihash_kv_8_8_t policer;
 } upf_qer_t;
 
+typedef struct {
+  ip46_address_t addr;
+  u32 fib_index;
+  u32 sw_if_index;
+} ue_ip_t;
+
 typedef struct
 {
   /* Required for pool_get_aligned  */
@@ -542,8 +548,8 @@ typedef struct
     upf_acl_t *v4_acls;
     upf_acl_t *v6_acls;
 
-    ip46_address_fib_t *ue_src_ip;
-    ip46_address_fib_t *ue_dst_ip;
+    ue_ip_t *ue_src_ip;
+    ue_ip_t *ue_dst_ip;
     gtpu4_endp_rule_t *v4_teid;
     gtpu6_endp_rule_t *v6_teid;
 
@@ -557,7 +563,9 @@ typedef struct
 
   /* vnet intfc index */
   u32 sw_if_index;
-  u32 hw_if_index;
+
+  /* DPO locks */
+  u32 dpo_locks;
 
   f64 unix_time_start;
 } upf_session_t;
@@ -623,6 +631,10 @@ typedef struct
 {
   u8 *name;
   u32 table_id;
+
+  /* vnet intfc index */
+  u32 sw_if_index;
+  u32 hw_if_index;
 } upf_nwi_t;
 
 typedef struct
@@ -698,6 +710,12 @@ typedef struct
   upf_nwi_t *nwis;
   uword *nwi_index_by_name;
 
+  /* Free vlib hw_if_indices */
+  u32 *free_nwi_hw_if_indices;
+
+  /* Mapping from sw_if_index to tunnel index */
+  u32 *nwi_index_by_sw_if_index;
+
   /* pool of network instances */
   upf_upip_res_t *upip_res;
   mhash_t upip_res_index;
@@ -715,12 +733,6 @@ typedef struct
   /* lookup session by ingress VRF and UE (src) IP */
   //  clib_bihash_8_8_t *session_by_tdf_ue_ip;
   u32 *tdf_ul_table[FIB_PROTOCOL_IP_MAX];
-
-  /* Free vlib hw_if_indices */
-  u32 *free_session_hw_if_indices;
-
-  /* Mapping from sw_if_index to tunnel index */
-  u32 *session_index_by_sw_if_index;
 
   /* policer pool, aligned */
   upf_qer_policer_t *qer_policers;
@@ -789,6 +801,11 @@ typedef struct
 int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 u8 *format_upf_encap_trace (u8 * s, va_list * args);
 u32 gtpu_end_marker (u32 fib_index, u32 dpoi_index, u8 * rewrite, int is_ip4);
+
+int vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx);
+int vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx);
+
+void upf_session_dpo_add_or_lock (dpo_proto_t dproto, upf_session_t *sx, dpo_id_t * dpo);
 
 #endif /* __included_upf_h__ */
 

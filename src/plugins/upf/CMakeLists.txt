@@ -35,6 +35,7 @@ if(HS_FOUND)
     upf_flow_node.c
     upf_classify.c
     upf_process.c
+    upf_session_dpo.c
     pfcp.c
     upf_pfcp.c
     upf_pfcp_api.c
@@ -52,6 +53,7 @@ if(HS_FOUND)
     upf_flow_node.c
     upf_classify.c
     upf_process.c
+    upf_session_dpo.c
 
     API_FILES
     upf.api
