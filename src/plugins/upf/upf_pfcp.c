@@ -1163,7 +1163,7 @@ sx_add_del_ue_ip (const void *ip, void *si, int is_add)
       upf_session_dpo_add_or_lock (fib_proto_to_dpo (pfx.fp_proto), sx,
 				   &sxd);
 
-      /* delete reverse route for client ip through special DPO */
+      /* add reverse route for client ip through special DPO */
       fib_table_entry_special_dpo_add (ue_ip->fib_index, &pfx,
 				       FIB_SOURCE_SPECIAL,
 				       FIB_ENTRY_FLAG_EXCLUSIVE | FIB_ENTRY_FLAG_LOOSE_URPF_EXEMPT,
@@ -1221,7 +1221,7 @@ sx_add_del_tdf (const void *tdf, void *si, int is_ip4, int is_add)
 {
   upf_main_t *gtm = &upf_main;
   upf_acl_t *acl = (upf_acl_t *)tdf;
-  upf_session_t *sess = si;
+  upf_session_t *sx = si;
   fib_prefix_t pfx = {
     .fp_addr = acl->match.address[UPF_ACL_FIELD_SRC],
   };
@@ -1252,21 +1252,22 @@ sx_add_del_tdf (const void *tdf, void *si, int is_ip4, int is_add)
 
   if (is_add)
     {
-      /* add reverse route for client ip */
-      fib_table_entry_update_one_path (fib_index, &pfx,
-				       FIB_SOURCE_PLUGIN_HI, FIB_ENTRY_FLAG_ATTACHED,
-				       fib_proto_to_dpo (pfx.fp_proto),
-				       NULL, sess->sw_if_index, ~0,
-				       1, NULL, FIB_ROUTE_PATH_FLAG_NONE);
+      dpo_id_t sxd = DPO_INVALID;
+
+      upf_session_dpo_add_or_lock (fib_proto_to_dpo (pfx.fp_proto), sx,
+				   &sxd);
+
+      /* add reverse route for client ip through special DPO */
+      fib_table_entry_special_dpo_add (fib_index, &pfx,
+				       FIB_SOURCE_SPECIAL,
+				       FIB_ENTRY_FLAG_ATTACHED,
+				       // FIB_ENTRY_FLAG_EXCLUSIVE | FIB_ENTRY_FLAG_LOOSE_URPF_EXEMPT,
+				       &sxd);
     }
   else
     {
       /* delete reverse route for client ip */
-      fib_table_entry_path_remove (fib_index, &pfx,
-				   FIB_SOURCE_PLUGIN_HI,
-				   fib_proto_to_dpo (pfx.fp_proto),
-				   NULL, sess->sw_if_index, ~0, 1,
-				   FIB_ROUTE_PATH_FLAG_NONE);
+      fib_table_entry_special_remove (fib_index, &pfx, FIB_SOURCE_SPECIAL);
     }
 }
 
