@@ -1,7 +1,7 @@
 /*
  * upf.c - 3GPP TS 29.244 GTP-U UP plug-in header file
  *
- * Copyright (c) 2017 Travelping GmbH
+ * Copyright (c) 2017-2019 Travelping GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -798,12 +798,18 @@ typedef struct
   u32 teid;
 } upf_encap_trace_t;
 
-int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 u8 *format_upf_encap_trace (u8 * s, va_list * args);
 u32 gtpu_end_marker (u32 fib_index, u32 dpoi_index, u8 * rewrite, int is_ip4);
 
-int vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx);
-int vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx);
+int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
+
+int vnet_upf_pfcp_endpoint_add_del (ip46_address_t * ip, u32 fib_index, u8 add);
+int vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add);
+int vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
+			   u8 * name, u8 intf, u32 teid, u32 mask, u8 add);
+
+int vnet_upf_tdf_ul_enable_disable (fib_protocol_t fproto, u32 sw_if_index, int is_en);
+int vnet_upf_tdf_ul_table_add_del (u32 vrf, fib_protocol_t fproto, u32 table_id, u8 add);
 
 void upf_session_dpo_add_or_lock (dpo_proto_t dproto, upf_session_t *sx, dpo_id_t * dpo);
 

@@ -29,6 +29,7 @@ if(HS_FOUND)
     node.c
     upf.c
     upf_api.c
+    upf_cli.c
     gtpu_encap.c
     gtpu_decap.c
     upf_if_input.c
