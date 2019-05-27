@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Travelping GmbH
+ * Copyright (c) 2017-2019 Travelping GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,7 +108,8 @@ VNET_HW_INTERFACE_CLASS (gtpu_hw_class) =
 };
 /* *INDENT-ON* */
 
-int vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+static int
+vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
 {
   vnet_main_t *vnm = upf_main.vnet_main;
   l2input_main_t *l2im = &l2input_main;
@@ -207,7 +208,8 @@ int vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
   return 0;
 }
 
-int vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+static int
+vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
 {
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
@@ -236,6 +238,14 @@ int vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
   pool_put (gtm->nwis, nwi);
 
   return 0;
+}
+
+int
+vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add)
+{
+  return (add) ?
+    vnet_upf_create_nwi_if (name, table_id, NULL) :
+    vnet_upf_delete_nwi_if (name, table_id, NULL);
 }
 
 static int
