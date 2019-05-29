@@ -482,7 +482,7 @@ vnet_upf_app_add_del (u8 * name, u32 flags, u8 add)
 
       app->name = vec_dup (name);
       app->flags = flags;
-      app->rules_by_id = hash_create_u32 ( /* initial length */ 32, sizeof (uword));
+      app->rules_by_id = hash_create ( /* initial length */ 32, sizeof (uword));
 
       app->db_index = ~0;
 
@@ -615,7 +615,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
   if (upf_adf_adr_ref_count (app->db_index) != 0)
     return VNET_API_ERROR_INSTANCE_IN_USE;
 
-  p = hash_get (app->rules_by_id, &rule_index);
+  p = hash_get (app->rules_by_id, rule_index);
 
   if (add)
     {
@@ -629,7 +629,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
       rule->host = vec_dup (args->host);
       rule->path = vec_dup (args->path);
 
-      hash_set (app->rules_by_id, &rule_index, rule - app->rules);
+      hash_set (app->rules_by_id, rule_index, rule - app->rules);
     }
   else
     {
@@ -639,7 +639,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
       rule = pool_elt_at_index (app->rules, p[0]);
       vec_free (rule->host);
       vec_free (rule->path);
-      hash_unset (app->rules_by_id, &rule_index);
+      hash_unset (app->rules_by_id, rule_index);
       pool_put (app->rules, rule);
     }
 
