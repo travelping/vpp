@@ -187,7 +187,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = sx_get_far_by_id (active, pdr->far_id);
 	    }
 
-	  if (PREDICT_FALSE (!pdr))
+	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
 	  /* Outer Header Removal */
