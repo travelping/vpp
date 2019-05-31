@@ -1041,18 +1041,6 @@ upf_##t##_t *sx_get_##t(upf_session_t *sx, int rule,		\
   return vec_bsearch(&r, rules->t, sx_##t##_id_compare);		\
 }									\
 									\
-int sx_create_##t(upf_session_t *sx, upf_##t##_t *t)			\
-{									\
-  struct rules *rules = sx_get_rules(sx, SX_PENDING);			\
-									\
-  if (sx_make_pending_##t(sx) != 0)					\
-    return -1;								\
-									\
-  vec_add1(rules->t, *t);						\
-  vec_sort_with_function(rules->t, sx_##t##_id_compare);		\
-  return 0;								\
-}									\
-									\
 int sx_sort_##t##s(struct rules *rules)					\
 {									\
   vec_sort_with_function(rules->t, sx_##t##_id_compare);		\
@@ -1074,7 +1062,7 @@ int sx_delete_##t(upf_session_t *sx, u32 t##_id)			\
   do { REMOVE; } while (0);						\
   sx_free_##t (p);							\
 									\
-  vec_del1(rules->t, p - rules->t);					\
+  vec_delete(rules->t, 1, p - rules->t);				\
   return 0;								\
 }
 
