@@ -20,18 +20,29 @@ variables:
     - echo "Docker HUB login..."
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD}
     - echo "Building the image from $DOCKER_FILE ..."
-    - DOCKER_BUILDKIT=1 docker build -t ${CONTAINER_IMAGE_BUILT} -f ${DOCKER_FILE} .
+    - DOCKER_BUILDKIT=1 docker build --target=build-stage -t ${CONTAINER_ARTIFACTS} -f ${DOCKER_FILE} .
+    - DOCKER_BUILDKIT=1 docker build --progress=plain -t ${CONTAINER_IMAGE_BUILT} -f ${DOCKER_FILE} .
     - docker push ${CONTAINER_IMAGE_BUILT}
+    - echo "Extracting *.deb files from the image ..."
+    - mkdir debs
+    - DOCKER_BUILDKIT=1 docker run --rm ${CONTAINER_ARTIFACTS} | tar -C "debs" -xf -
+  artifacts:
+    when: always
+    untracked: true
+    paths:
+      - debs
 
 # build container image
 build:release:
   extends: .build
   variables:
     DOCKER_FILE: extras/docker/Dockerfile
+    CONTAINER_ARTIFACTS: artifacts:${CI_COMMIT_SHA}
     CONTAINER_IMAGE_BUILT: ${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHA}
 
 build:debug:
   extends: .build
   variables:
     DOCKER_FILE: extras/docker/Dockerfile.devel
+    CONTAINER_ARTIFACTS: artifacts:${CI_COMMIT_SHA}_debug
     CONTAINER_IMAGE_BUILT: ${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}_${CI_COMMIT_SHA}_debug
