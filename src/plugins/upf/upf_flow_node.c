@@ -146,11 +146,31 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  created0 = created1 = 0;
 	  is_reverse0 = is_reverse1 = 0;
 
-	  /* frame mgmt */
-	  from += 2;
-	  to_next += 2;
-	  n_left_from -= 2;
-	  n_left_to_next -= 2;
+	  if (PREDICT_FALSE
+	      (pool_is_free_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index) ||
+	       pool_is_free_index (gtm->sessions, vnet_buffer (b1)->gtpu.session_index)))
+	    {
+	      /*
+	       * break out of the dual loop and let the
+	       * single loop handle the problem
+	       */
+
+	      /* TODO: it is not clear how this can happen, but it DOES!
+	       *
+	       * The session removed with vlib_worker_thread_barrier_sync beeing held.
+	       * According to the vpp-dev ML, that should stop workers at he top the
+	       * dispatch chain and SHOULD therefor prevent packets entering the chain
+	       * with now invalid things.
+	       * Clearly, if we hit here, a packet with an invalid session_index HAS
+	       * entered the chain or the session was removed in the middle of the chain.
+	       * The later is the most likely case and that would mean that somehow
+	       * we are not using the sync correctly.
+	       *
+	       * This needs to be investigated in depth. For the moment do the simple
+	       * thing a drop the packet.
+	       */
+	      break;
+	    }
 
 	  sx0 = pool_elt_at_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index);
 	  sx1 = pool_elt_at_index (gtm->sessions, vnet_buffer (b1)->gtpu.session_index);
@@ -172,10 +192,11 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  if (PREDICT_FALSE (~0 == flow_idx0 || ~0 == flow_idx1))
 	    {
-	      CPT_UNHANDLED += 2;
-	      next0 = next1 = FT_NEXT_DROP;
-
-	      goto stats0;
+	      /*
+	       * break out of the dual loop and let the
+	       * single loop handle the problem
+	       */
+	      break;
 	    }
 
 	  flow0 = flowtable_get_flow (fm, flow_idx0);
@@ -206,7 +227,12 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  CPT_CREATED += created0 + created1;
 	  CPT_HIT += !created0 + !created1;
 
-	stats0:
+	  /* frame mgmt */
+	  from += 2;
+	  to_next += 2;
+	  n_left_from -= 2;
+	  n_left_to_next -= 2;
+
 	  if (b0->flags & VLIB_BUFFER_IS_TRACED)
 	    {
 	      u32 sidx = vnet_buffer (b0)->gtpu.session_index;
@@ -254,6 +280,22 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  bi0 = to_next[0] = from[0];
 	  b0 = vlib_get_buffer (vm, bi0);
+
+	  if (PREDICT_FALSE
+	      (pool_is_free_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index)))
+	    {
+	      /*
+	       * break out of the dual loop and let the
+	       * single loop handle the problem
+	       */
+
+	      /* TODO: see comment in dual loop */
+
+	      CPT_UNHANDLED++;
+	      next0 = FT_NEXT_DROP;
+
+	      goto stats1;
+	    }
 
 	  sx0 = pool_elt_at_index (gtm->sessions, vnet_buffer (b0)->gtpu.session_index);
 
