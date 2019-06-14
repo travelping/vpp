@@ -36,14 +36,19 @@
 #define RESPONSE_TIMEOUT 30
 
 #define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
+#define TW_JITTER 10e-4                        /*  1ms */
 #define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 0
 #if CLIB_DEBUG > 0
 #define gtp_debug clib_warning
+#define urr_debug_out(format, args...)				\
+  _clib_error (CLIB_ERROR_WARNING, NULL, 0, format, ## args)
+
 #else
 #define gtp_debug(...)				\
+  do { } while (0)
+
+#define urr_debug_out(...)			\
   do { } while (0)
 #endif
 
@@ -764,25 +769,41 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   {
     u32 trigger = 0;
 
-#define urr_check(V, NOW)					\
-      (((V).base != 0) && ((V).period != 0) &&			\
-       (trunc(((NOW) - (V).base - (f64)(V).period) * TW_CLOCKS_PER_SECOND) >= 0))
+#define urr_diff_with_jitter(V, NOW, JITTER)				\
+    trunc(((NOW) - (V).base - (f64)(V).period + (JITTER)) * TW_CLOCKS_PER_SECOND)
 
-#define urr_debug(Label, t)						\
-      gtp_debug( "%-10s %20lu secs @ %U, in %9.3f secs (%9.3f  %9.3f), handle 0x%08x, check: %u", \
-		    (Label), (t).period,				\
-		    /* VPP does not support ISO dates... */		\
-		    format_time_float, 0, (t).base + (f64)(t).period,	\
-		    ((f64)(t).period) - (now - (t).base),		\
-		    (now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND, \
-		    trunc((now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND), \
-		    (t).handle, urr_check(t, now));
+#define urr_check(V, NOW)				\
+    urr_check_with_jitter((V), (NOW), TW_JITTER)
+
+#define urr_check_with_jitter(V, NOW, JITTER)				\
+    (((V).base != 0) && ((V).period != 0) &&				\
+     (urr_diff_with_jitter((V), (NOW), (JITTER)) >= 0))
+
+#define URR_COND_TIME(t, time)			\
+    (t).period != 0 ? time : 0
+#define URR_DEBUG_HEADER						\
+    "Rule       | period   | expire at               | in secs   | ticks     | corrected | handle     | check result\n"
+#define URR_DEUBG_LINE "%-10s | %8lu | %U | %9.3f | %9.3f | %9.3f | 0x%08x | %u\n"
+#define URR_DEBUG_VALUES(Label, t)					\
+    (Label), (t).period,						\
+      /* VPP does not support ISO dates... */				\
+      format_time_float, 0, (t).base + (f64)(t).period,			\
+      URR_COND_TIME(t, ((f64)(t).period) - (now - (t).base)),		\
+      URR_COND_TIME(t, (now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND), \
+      URR_COND_TIME(t, urr_diff_with_jitter((t), now, TW_JITTER)),	\
+      (t).handle, urr_check(t, now)
 
     gtp_debug ("URR: %p, Id: %u", urr, urr->id);
-    urr_debug ("Period", urr->measurement_period);
-    urr_debug ("Threshold", urr->time_threshold);
-    urr_debug ("Quota", urr->time_quota);
-    urr_debug ("Monitoring", urr->monitoring_time);
+    urr_debug_out
+      (URR_DEBUG_HEADER
+       URR_DEUBG_LINE
+       URR_DEUBG_LINE
+       URR_DEUBG_LINE
+       URR_DEUBG_LINE,
+       URR_DEBUG_VALUES ("Period", urr->measurement_period),
+       URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
+       URR_DEBUG_VALUES ("Quota", urr->time_quota),
+       URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
 
     if (urr_check (urr->measurement_period, now))
       {
@@ -1149,7 +1170,7 @@ sx_server_main_init (vlib_main_t * vm)
   mhash_init (&sx->response_q, sizeof (uword), sizeof (u64) * 4);
 
   TW (tw_timer_wheel_init) (&sx->timer, NULL,
-			    10e-3 /* 10ms timer interval */ , ~0);
+			    TW_SECS_PER_CLOCK /* 10ms timer interval */ , ~0);
 
   udp_register_dst_port (vm, UDP_DST_PORT_SX,
 			 sx4_input_node.index, /* is_ip4 */ 1);
