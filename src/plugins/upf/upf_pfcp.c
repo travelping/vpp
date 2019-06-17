@@ -850,12 +850,9 @@ sx_free_rules (upf_session_t * sx, int rule)
 
   vec_free (rules->pdr);
   vec_foreach (far, rules->far)
-  {
-    if (far->forward.outer_header_creation.description != 0)
-      peer_addr_unref (&far->forward);
-
-    sx_free_far (far);
-  }
+    {
+      sx_free_far (far);
+    }
   vec_free (rules->far);
   vec_foreach (urr, rules->urr)
     {
@@ -1609,10 +1606,15 @@ sx_update_apply (upf_session_t * sx)
   pending_urr = ! !pending->urr;
   pending_qer = ! !pending->qer;
 
+  vlib_worker_thread_barrier_sync (vm);
+
   if (pending_pdr)
     {
       if (build_sx_rules (sx) != 0)
-	return -1;
+	{
+	  vlib_worker_thread_barrier_release (vm);
+	  return -1;
+	}
     }
   else
     {
@@ -1713,34 +1715,43 @@ sx_update_apply (upf_session_t * sx)
 		sx_add_del_v6_tdf, sx);
     }
 
-  vlib_worker_thread_barrier_sync (vm);
-
   /* flip the switch */
   sx->active ^= SX_PENDING;
   sx->flags &= ~SX_UPDATING;
 
+  pending = sx_get_rules (sx, SX_PENDING);
+  active = sx_get_rules (sx, SX_ACTIVE);
+
+  if (pending_far)
+    {
+      upf_far_t *far;
+
+      vec_foreach (far, pending->far)
+	{
+	  if (far->forward.outer_header_creation.description != 0)
+	    peer_addr_unref (&far->forward);
+	}
+    }
+
   vlib_worker_thread_barrier_release (vm);
 
-  if (pending->send_end_marker)
+  if (active->send_end_marker)
     {
       u16 *send_em;
 
-      vec_foreach (send_em, pending->send_end_marker)
+      vec_foreach (send_em, active->send_end_marker)
       {
 	upf_far_t *far;
 	upf_far_t r = {.id = *send_em };
 
-	if (!(far = vec_bsearch (&r, active->far, sx_far_id_compare)))
+	if (!(far = vec_bsearch (&r, pending->far, sx_far_id_compare)))
 	  continue;
 
 	gtp_debug ("TODO: send_end_marker for FAR %d", far->id);
 	gtpu_send_end_marker (&far->forward);
       }
-      vec_free (pending->send_end_marker);
+      vec_free (active->send_end_marker);
     }
-
-  pending = sx_get_rules (sx, SX_PENDING);
-  active = sx_get_rules (sx, SX_ACTIVE);
 
   vec_foreach (urr, active->urr)
   {
