@@ -863,7 +863,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	upf_pfcp_session_stop_urr_time (&urr->monitoring_time);
 
 	urr->usage_before_monitoring_time.start_time = urr->start_time;
-	urr->start_time = now;
+	urr->start_time += trunc(now - urr->start_time);
 	urr->status |= URR_AFTER_MONITORING_TIME;
       }
   }

@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <errno.h>
+#include <math.h>
 #include <sys/mman.h>
 #include <sys/queue.h>
 #include <sys/resource.h>
@@ -1739,6 +1740,16 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
       {
 	update->update_flags |= SX_URR_UPDATE_MEASUREMENT_PERIOD;
 	update->measurement_period.period = urr->measurement_period;
+
+	/* TODO:
+	 *
+	 * 3GPP TS 29.244 is not clear on whether the inclusion of
+	 * Measurement-Period IE resets the start of the periodic
+	 * reporting.
+	 *
+	 * The current implementation does reset the start time
+	 * for periodic reporting
+	 */
 	update->measurement_period.base = now;
       }
 
@@ -2026,7 +2037,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 {
   pfcp_usage_report_t *r;
   urr_volume_t volume;
-  u32 start, end;
+  u64 duration;
 
   clib_spinlock_lock (&sess->lock);
 
@@ -2045,9 +2056,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       SET_BIT (r->grp.fields, USAGE_REPORT_USAGE_INFORMATION);
       r->usage_information = USAGE_INFORMATION_BEFORE;
 
-      /* TODO: apply proper rounding, the f64 to u32 conversion works a trunc */
-      start = urr->usage_before_monitoring_time.start_time;
-      end = urr->start_time;
+      duration = trunc(urr->start_time - urr->usage_before_monitoring_time.start_time);
 
       if ((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
 		      USAGE_REPORT_TRIGGER_STOP_OF_TRAFFIC)) == 0)
@@ -2055,8 +2064,8 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 	  SET_BIT (r->grp.fields, USAGE_REPORT_START_TIME);
 	  SET_BIT (r->grp.fields, USAGE_REPORT_END_TIME);
 
-	  r->start_time = start;
-	  r->end_time = end;
+	  r->start_time = trunc(urr->usage_before_monitoring_time.start_time);
+	  r->end_time = r->start_time + duration;
 	}
 
       SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
@@ -2070,7 +2079,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 	urr->usage_before_monitoring_time.volume.bytes.total;
 
       SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
-      r->duration_measurement = end - start;
+      r->duration_measurement = duration;
 
       urr->monitoring_time.base = 0;
     }
@@ -2083,9 +2092,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       r->usage_information = USAGE_INFORMATION_AFTER;
     }
 
-  /* TODO: apply proper rounding, the f64 to u32 conversion works a trunc */
-  start = urr->start_time;
-  end = now;
+  duration = trunc(now - urr->start_time);
 
   if ((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
 		  USAGE_REPORT_TRIGGER_STOP_OF_TRAFFIC)) == 0)
@@ -2093,8 +2100,8 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       SET_BIT (r->grp.fields, USAGE_REPORT_START_TIME);
       SET_BIT (r->grp.fields, USAGE_REPORT_END_TIME);
 
-      r->start_time = start;
-      r->end_time = end;
+      r->start_time = trunc(urr->start_time);
+      r->end_time = r->start_time + duration;
     }
 
   if (((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
@@ -2125,7 +2132,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       r->volume_measurement.total = volume.measure.bytes.total;
 
       SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
-      r->duration_measurement = end - start;
+      r->duration_measurement = duration;
     }
 
   /* SET_BIT(r->grp.fields, USAGE_REPORT_APPLICATION_DETECTION_INFORMATION); */
@@ -2135,9 +2142,9 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
   /* SET_BIT(r->grp.fields, USAGE_REPORT_USAGE_INFORMATION); */
 
   urr->status &= ~URR_AFTER_MONITORING_TIME;
-  urr->start_time = now;
+  urr->start_time += duration;
   if (urr->time_threshold.base)
-    urr->time_threshold.base = now;
+    urr->time_threshold.base = urr->start_time;
 
   return r;
 }
