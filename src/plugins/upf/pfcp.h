@@ -86,12 +86,14 @@ struct pfcp_group
 struct pfcp_group_ie_def
 {
   u16 type;
+  u16 vendor;
   bool is_array;
   ptrdiff_t offset;
 };
 
 struct pfcp_ie_def
 {
+  char * name;
   ssize_t length;
   u8 size;
   union
@@ -884,6 +886,23 @@ typedef pfcp_mac_addresses_vec_t pfcp_mac_addresses_removed_t;
 
 #define PFCP_IE_ETHERNET_INACTIVITY_TIMER		146
 typedef u32 pfcp_ethernet_inactivity_timer_t;
+
+#define VENDOR_TRAVELPING   18681
+
+#define PFCP_IE_TP_PACKET_MEASUREMENT			1
+typedef pfcp_volume_threshold_t pfcp_tp_packet_measurement_t;
+
+#define PFCP_IE_TP_BUILD_ID				2
+typedef u8 * pfcp_tp_build_id_t;
+
+#define PFCP_IE_TP_NOW					3
+typedef f64 pfcp_tp_now_t;
+
+#define PFCP_IE_TP_START_TIME				4
+typedef f64 pfcp_tp_start_time_t;
+
+#define PFCP_IE_TP_END_TIME				5
+typedef f64 pfcp_tp_end_time_t;
 
 /* Grouped PFCP Information Elements */
 
@@ -1702,7 +1721,10 @@ enum
   USAGE_REPORT_USAGE_INFORMATION,
   USAGE_REPORT_QUERY_URR_REFERENCE,
   USAGE_REPORT_ETHERNET_TRAFFIC_INFORMATION,
-  USAGE_REPORT_LAST = USAGE_REPORT_ETHERNET_TRAFFIC_INFORMATION
+  USAGE_REPORT_TP_NOW,
+  USAGE_REPORT_TP_START_TIME,
+  USAGE_REPORT_TP_END_TIME,
+  USAGE_REPORT_LAST = USAGE_REPORT_TP_END_TIME
 };
 
 typedef struct
@@ -1724,6 +1746,9 @@ typedef struct
   pfcp_usage_information_t usage_information;
   pfcp_query_urr_reference_t query_urr_reference;
   pfcp_ethernet_traffic_information_t ethernet_traffic_information;
+  pfcp_tp_now_t tp_now;
+  pfcp_tp_start_time_t tp_start_time;
+  pfcp_tp_end_time_t tp_end_time;
 } pfcp_usage_report_t;
 
 
@@ -1819,8 +1844,9 @@ enum
   ASSOCIATION_SETUP_REQUEST_UP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_REQUEST_CP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_REQUEST_USER_PLANE_IP_RESOURCE_INFORMATION,
+  ASSOCIATION_SETUP_REQUEST_TP_BUILD_ID,
   ASSOCIATION_SETUP_REQUEST_LAST =
-    ASSOCIATION_SETUP_REQUEST_USER_PLANE_IP_RESOURCE_INFORMATION
+    ASSOCIATION_SETUP_REQUEST_TP_BUILD_ID
 };
 
 typedef struct
@@ -1831,8 +1857,9 @@ typedef struct
   pfcp_recovery_time_stamp_t recovery_time_stamp;
   pfcp_cp_function_features_t cp_function_features;
   pfcp_up_function_features_t up_function_features;
-    pfcp_user_plane_ip_resource_information_t
+  pfcp_user_plane_ip_resource_information_t
     * user_plane_ip_resource_information;
+  pfcp_tp_build_id_t tp_build_id;
 } pfcp_association_setup_request_t;
 
 enum
@@ -1843,8 +1870,9 @@ enum
   ASSOCIATION_SETUP_RESPONSE_UP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_RESPONSE_CP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_RESPONSE_USER_PLANE_IP_RESOURCE_INFORMATION,
+  ASSOCIATION_SETUP_RESPONSE_TP_BUILD_ID,
   ASSOCIATION_SETUP_RESPONSE_LAST =
-    ASSOCIATION_SETUP_RESPONSE_USER_PLANE_IP_RESOURCE_INFORMATION
+    ASSOCIATION_SETUP_REQUEST_TP_BUILD_ID
 };
 
 typedef struct
@@ -1855,8 +1883,9 @@ typedef struct
   pfcp_recovery_time_stamp_t recovery_time_stamp;
   pfcp_cp_function_features_t cp_function_features;
   pfcp_up_function_features_t up_function_features;
-    pfcp_user_plane_ip_resource_information_t
+  pfcp_user_plane_ip_resource_information_t
     * user_plane_ip_resource_information;
+  pfcp_tp_build_id_t tp_build_id;
 } pfcp_association_setup_response_t;
 
 enum
