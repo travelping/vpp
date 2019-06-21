@@ -51,6 +51,8 @@
 
 #define API_VERSION      1
 
+extern char *vpe_version_string;
+
 typedef struct
 {
   time_t start_time;
@@ -478,6 +480,9 @@ handle_association_setup_request (sx_msg_t * req,
 
   SET_BIT (resp.grp.fields, ASSOCIATION_SETUP_RESPONSE_RECOVERY_TIME_STAMP);
   resp.recovery_time_stamp = sx->start_time;
+
+  SET_BIT (resp.grp.fields, ASSOCIATION_SETUP_RESPONSE_TP_BUILD_ID);
+  vec_add (resp.tp_build_id, vpe_version_string, strlen (vpe_version_string));
 
   n = sx_get_association (&msg->request.node_id);
   if (n)
@@ -2066,6 +2071,14 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 
 	  r->start_time = trunc(urr->usage_before_monitoring_time.start_time);
 	  r->end_time = r->start_time + duration;
+
+	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
+	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_START_TIME);
+	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_END_TIME);
+
+	  r->tp_now = now;
+	  r->tp_start_time = urr->usage_before_monitoring_time.start_time;
+	  r->tp_end_time = urr->start_time;
 	}
 
       SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
@@ -2102,6 +2115,14 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 
       r->start_time = trunc(urr->start_time);
       r->end_time = r->start_time + duration;
+
+      SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
+      SET_BIT (r->grp.fields, USAGE_REPORT_TP_START_TIME);
+      SET_BIT (r->grp.fields, USAGE_REPORT_TP_END_TIME);
+
+      r->tp_now = now;
+      r->tp_start_time = urr->start_time;
+      r->tp_end_time = urr->start_time + duration;
     }
 
   if (((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
