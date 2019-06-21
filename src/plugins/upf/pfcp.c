@@ -137,130 +137,6 @@ static const char *msg_desc[] = {
   [PFCP_SESSION_REPORT_RESPONSE] = "Session Report Response",
 };
 
-static const char *ie_desc[] = {
-  [PFCP_IE_CREATE_PDR] = "Create PDR",
-  [PFCP_IE_PDI] = "PDI",
-  [PFCP_IE_CREATE_FAR] = "Create FAR",
-  [PFCP_IE_FORWARDING_PARAMETERS] = "Forwarding Parameters",
-  [PFCP_IE_DUPLICATING_PARAMETERS] = "Duplicating Parameters",
-  [PFCP_IE_CREATE_URR] = "Create URR",
-  [PFCP_IE_CREATE_QER] = "Create QER",
-  [PFCP_IE_CREATED_PDR] = "Created PDR",
-  [PFCP_IE_UPDATE_PDR] = "Update PDR",
-  [PFCP_IE_UPDATE_FAR] = "Update FAR",
-  [PFCP_IE_UPDATE_FORWARDING_PARAMETERS] = "Update Forwarding Parameters",
-  [PFCP_IE_UPDATE_BAR_RESPONSE] = "Update BAR Response",
-  [PFCP_IE_UPDATE_URR] = "Update URR",
-  [PFCP_IE_UPDATE_QER] = "Update QER",
-  [PFCP_IE_REMOVE_PDR] = "Remove PDR",
-  [PFCP_IE_REMOVE_FAR] = "Remove FAR",
-  [PFCP_IE_REMOVE_URR] = "Remove URR",
-  [PFCP_IE_REMOVE_QER] = "Remove QER",
-  [PFCP_IE_CAUSE] = "Cause",
-  [PFCP_IE_SOURCE_INTERFACE] = "Source Interface",
-  [PFCP_IE_F_TEID] = "F-TEID",
-  [PFCP_IE_NETWORK_INSTANCE] = "Network Instance",
-  [PFCP_IE_SDF_FILTER] = "SDF Filter",
-  [PFCP_IE_APPLICATION_ID] = "Application ID",
-  [PFCP_IE_GATE_STATUS] = "Gate Status",
-  [PFCP_IE_MBR] = "MBR",
-  [PFCP_IE_GBR] = "GBR",
-  [PFCP_IE_QER_CORRELATION_ID] = "QER Correlation ID",
-  [PFCP_IE_PRECEDENCE] = "Precedence",
-  [PFCP_IE_TRANSPORT_LEVEL_MARKING] = "Transport Level Marking",
-  [PFCP_IE_VOLUME_THRESHOLD] = "Volume Threshold",
-  [PFCP_IE_TIME_THRESHOLD] = "Time Threshold",
-  [PFCP_IE_MONITORING_TIME] = "Monitoring Time",
-  [PFCP_IE_SUBSEQUENT_VOLUME_THRESHOLD] = "Subsequent Volume Threshold",
-  [PFCP_IE_SUBSEQUENT_TIME_THRESHOLD] = "Subsequent Time Threshold",
-  [PFCP_IE_INACTIVITY_DETECTION_TIME] = "Inactivity Detection Time",
-  [PFCP_IE_REPORTING_TRIGGERS] = "Reporting Triggers",
-  [PFCP_IE_REDIRECT_INFORMATION] = "Redirect Information",
-  [PFCP_IE_REPORT_TYPE] = "Report Type",
-  [PFCP_IE_OFFENDING_IE] = "Offending IE",
-  [PFCP_IE_FORWARDING_POLICY] = "Forwarding Policy",
-  [PFCP_IE_DESTINATION_INTERFACE] = "Destination Interface",
-  [PFCP_IE_UP_FUNCTION_FEATURES] = "UP Function Features",
-  [PFCP_IE_APPLY_ACTION] = "Apply Action",
-  [PFCP_IE_DOWNLINK_DATA_SERVICE_INFORMATION] =
-    "Downlink Data Service Information",
-  [PFCP_IE_DOWNLINK_DATA_NOTIFICATION_DELAY] =
-    "Downlink Data Notification Delay",
-  [PFCP_IE_DL_BUFFERING_DURATION] = "DL Buffering Duration",
-  [PFCP_IE_DL_BUFFERING_SUGGESTED_PACKET_COUNT] =
-    "DL Buffering Suggested Packet Count",
-  [PFCP_IE_SXSMREQ_FLAGS] = "SxSMReq-Flags",
-  [PFCP_IE_SXSRRSP_FLAGS] = "SxSRRsp-Flags",
-  [PFCP_IE_LOAD_CONTROL_INFORMATION] = "Load Control Information",
-  [PFCP_IE_SEQUENCE_NUMBER] = "Sequence Number",
-  [PFCP_IE_METRIC] = "Metric",
-  [PFCP_IE_OVERLOAD_CONTROL_INFORMATION] = "Overload Control Information",
-  [PFCP_IE_TIMER] = "Timer",
-  [PFCP_IE_PDR_ID] = "PDR Id",
-  [PFCP_IE_F_SEID] = "F-SEID",
-  [PFCP_IE_APPLICATION_ID_PFDS] = "Application ID PFDs",
-  [PFCP_IE_PFD] = "PFD",
-  [PFCP_IE_NODE_ID] = "Node ID",
-  [PFCP_IE_PFD_CONTENTS] = "PFD contents",
-  [PFCP_IE_MEASUREMENT_METHOD] = "Measurement Method",
-  [PFCP_IE_USAGE_REPORT_TRIGGER] = "Usage Report Trigger",
-  [PFCP_IE_MEASUREMENT_PERIOD] = "Measurement Period",
-  [PFCP_IE_FQ_CSID] = "FQ-CSID",
-  [PFCP_IE_VOLUME_MEASUREMENT] = "Volume Measurement",
-  [PFCP_IE_DURATION_MEASUREMENT] = "Duration Measurement",
-  [PFCP_IE_APPLICATION_DETECTION_INFORMATION] =
-    "Application Detection Information",
-  [PFCP_IE_TIME_OF_FIRST_PACKET] = "Time of First Packet",
-  [PFCP_IE_TIME_OF_LAST_PACKET] = "Time of Last Packet",
-  [PFCP_IE_QUOTA_HOLDING_TIME] = "Quota Holding Time",
-  [PFCP_IE_DROPPED_DL_TRAFFIC_THRESHOLD] = "Dropped DL Traffic Threshold",
-  [PFCP_IE_VOLUME_QUOTA] = "Volume Quota",
-  [PFCP_IE_TIME_QUOTA] = "Time Quota",
-  [PFCP_IE_START_TIME] = "Start Time",
-  [PFCP_IE_END_TIME] = "End Time",
-  [PFCP_IE_QUERY_URR] = "Query URR",
-  [PFCP_IE_USAGE_REPORT_SMR] = "Usage Report SMR",
-  [PFCP_IE_USAGE_REPORT_SDR] = "Usage Report SDR",
-  [PFCP_IE_USAGE_REPORT_SRR] = "Usage Report SRR",
-  [PFCP_IE_URR_ID] = "URR ID",
-  [PFCP_IE_LINKED_URR_ID] = "Linked URR ID",
-  [PFCP_IE_DOWNLINK_DATA_REPORT] = "Downlink Data Report",
-  [PFCP_IE_OUTER_HEADER_CREATION] = "Outer Header Creation",
-  [PFCP_IE_CREATE_BAR] = "Create BAR",
-  [PFCP_IE_UPDATE_BAR_REQUEST] = "Update BAR Request",
-  [PFCP_IE_REMOVE_BAR] = "Remove BAR",
-  [PFCP_IE_BAR_ID] = "BAR ID",
-  [PFCP_IE_CP_FUNCTION_FEATURES] = "CP Function Features",
-  [PFCP_IE_USAGE_INFORMATION] = "Usage Information",
-  [PFCP_IE_APPLICATION_INSTANCE_ID] = "Application Instance ID",
-  [PFCP_IE_FLOW_INFORMATION] = "Flow Information",
-  [PFCP_IE_UE_IP_ADDRESS] = "UE IP Address",
-  [PFCP_IE_PACKET_RATE] = "Packet Rate",
-  [PFCP_IE_OUTER_HEADER_REMOVAL] = "Outer Header Removal",
-  [PFCP_IE_RECOVERY_TIME_STAMP] = "Recovery Time Stamp",
-  [PFCP_IE_DL_FLOW_LEVEL_MARKING] = "DL Flow Level Marking",
-  [PFCP_IE_HEADER_ENRICHMENT] = "Header Enrichment",
-  [PFCP_IE_ERROR_INDICATION_REPORT] = "Error Indication Report",
-  [PFCP_IE_MEASUREMENT_INFORMATION] = "Measurement Information",
-  [PFCP_IE_NODE_REPORT_TYPE] = "Node Report Type",
-  [PFCP_IE_USER_PLANE_PATH_FAILURE_REPORT] = "User Plane Path Failure Report",
-  [PFCP_IE_REMOTE_GTP_U_PEER] = "Remote GTP-U Peer",
-  [PFCP_IE_UR_SEQN] = "UR-SEQN",
-  [PFCP_IE_UPDATE_DUPLICATING_PARAMETERS] = "Update Duplicating Parameters",
-  [PFCP_IE_ACTIVATE_PREDEFINED_RULES] = "Activate Predefined Rules",
-  [PFCP_IE_DEACTIVATE_PREDEFINED_RULES] = "Deactivate Predefined Rules",
-  [PFCP_IE_FAR_ID] = "FAR ID",
-  [PFCP_IE_QER_ID] = "QER ID",
-  [PFCP_IE_OCI_FLAGS] = "OCI Flags",
-  [PFCP_IE_SX_ASSOCIATION_RELEASE_REQUEST] = "Sx Association Release Request",
-  [PFCP_IE_GRACEFUL_RELEASE_PERIOD] = "Graceful Release Period",
-  [PFCP_IE_PDN_TYPE] = "PDN Type",
-  [PFCP_IE_FAILED_RULE_ID] = "Failed Rule ID",
-  [PFCP_IE_TIME_QUOTA_MECHANISM] = "Time Quota Mechanism",
-  [PFCP_IE_USER_PLANE_IP_RESOURCE_INFORMATION] =
-    "User Plane IP Resource Information",
-};
-
 u8 *
 format_pfcp_msg_hdr (u8 * s, va_list * args)
 {
@@ -275,20 +151,6 @@ format_pfcp_msg_hdr (u8 * s, va_list * args)
     return format (s, "PFCP: V:%d,S:%d,MP:%d, %d, Length: %d.",
 		   pfcp->version, pfcp->s_flag, pfcp->mp_flag,
 		   type, clib_net_to_host_u16 (pfcp->length));
-}
-
-u8 *
-format_pfcp_ie (u8 * s, va_list * args)
-{
-  pfcp_ie_t *ie = va_arg (*args, pfcp_ie_t *);
-  u16 type = clib_net_to_host_u16 (ie->type);
-
-  if (type < ARRAY_LEN (ie_desc) && ie_desc[type])
-    return format (s, "IE: %s (%d), Length: %d.",
-		   ie_desc[type], type, clib_net_to_host_u16 (ie->length));
-  else
-    return format (s, "IE: %d, Length: %d.", type,
-		   clib_net_to_host_u16 (ie->length));
 }
 
 /*************************************************************************/
@@ -327,7 +189,7 @@ format_pfcp_ie (u8 * s, va_list * args)
 #define finalize_ie(V,HDR,P) set_ie_hdr_length((V), (P) - (HDR) - sizeof(pfcp_ie_t), (HDR))
 
 #define set_ie_vendor_hdr_type(V,TYPE,VEND,P)			\
-  ((pfcp_ievendor__t *)&(V)[(P)])->type = htons((TYPE))
+  ((pfcp_ie_vendor_t *)&(V)[(P)])->type = htons((TYPE))
 #define set_ie_vendor_hdr_length(V,LEN,P)			\
   ((pfcp_ie_vendor_t *)&(V)[(P)])->length = htons((LEN))
 #define set_ie_vendor_hdr_vendor(V,VEND,P)			\
@@ -407,6 +269,22 @@ format_pfcp_ie (u8 * s, va_list * args)
   ({u64 *_V = (u64 *)(V);			\
     (V) += sizeof(u64);				\
     be64toh(*_V); })
+
+typedef union {
+  f64 _float;
+  u64 _uint;
+} f64_u64_t;
+
+#define put_f64(V,I)						\
+  do {								\
+    *((u64 *)&(V)[_vec_len((V))]) = htobe64(*(u64 *)&(I));	\
+    _vec_len((V)) += sizeof(u64);				\
+  } while (0)
+
+#define get_f64(V)					\
+  ({f64_u64_t _V = { ._uint = be64toh(*(u64 *)(V))};	\
+    (V) += sizeof(f64);					\
+    _V._float; })
 
 #define get_ip4(IP,V)				\
   do {						\
@@ -747,6 +625,37 @@ encode_timer_ie (void *p, u8 ** vec)
   pfcp_timer_ie_t *v = p;
 
   put_u8 (*vec, ((v->unit & 0x0f) << 4) | (v->value & 0x0f));
+
+  return 0;
+}
+
+static u8 *
+format_f64_time_stamp (u8 * s, va_list * args)
+{
+  f64 *v = va_arg (*args, f64 *);
+
+  return format (s, "%U", format_time_float, 0, *v);
+}
+
+static int
+decode_f64_time_stamp_ie (u8 * data, u16 length, void *p)
+{
+  u64 *v = (u64 *) p;
+
+  if (length != 8)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  *v = get_f64 (data);
+
+  return 0;
+}
+
+static int
+encode_f64_time_stamp_ie (void *p, u8 ** vec)
+{
+  f64 *v = (f64 *) p;
+
+  put_f64 (*vec, *v);
 
   return 0;
 }
@@ -3742,6 +3651,28 @@ free_mac_addresses_vec (void *p)
 #define decode_ethernet_inactivity_timer decode_u32_ie
 #define encode_ethernet_inactivity_timer encode_u32_ie
 
+#define format_tp_packet_measurement format_volume_ie
+#define decode_tp_packet_measurement decode_volume_ie
+#define encode_tp_packet_measurement encode_volume_ie
+
+#define format_tp_build_id format_simple_vec_ie
+#define decode_tp_build_id decode_simple_vec_ie
+#define encode_tp_build_id encode_simple_vec_ie
+#define free_tp_build_id free_simple_vec_ie
+
+#define format_tp_now format_f64_time_stamp
+#define decode_tp_now decode_f64_time_stamp_ie
+#define encode_tp_now encode_f64_time_stamp_ie
+
+#define format_tp_start_time format_f64_time_stamp
+#define decode_tp_start_time decode_f64_time_stamp_ie
+#define encode_tp_start_time encode_f64_time_stamp_ie
+
+#define format_tp_end_time format_f64_time_stamp
+#define decode_tp_end_time decode_f64_time_stamp_ie
+#define encode_tp_end_time encode_f64_time_stamp_ie
+
+
 /* Grouped Information Elements */
 
 
@@ -4461,6 +4392,21 @@ static struct pfcp_group_ie_def pfcp_usage_report_smr_group[] =
       .type = PFCP_IE_ETHERNET_TRAFFIC_INFORMATION,
       .offset = offsetof(pfcp_usage_report_t, ethernet_traffic_information)
     },
+    [USAGE_REPORT_TP_NOW] = {
+      .type = PFCP_IE_TP_NOW,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_now)
+    },
+    [USAGE_REPORT_TP_START_TIME] = {
+      .type = PFCP_IE_TP_START_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_start_time)
+    },
+    [USAGE_REPORT_TP_END_TIME] = {
+      .type = PFCP_IE_TP_END_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_end_time)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_usage_report_sdr_group[] =
@@ -4508,6 +4454,21 @@ static struct pfcp_group_ie_def pfcp_usage_report_sdr_group[] =
     [USAGE_REPORT_ETHERNET_TRAFFIC_INFORMATION] = {
       .type = PFCP_IE_ETHERNET_TRAFFIC_INFORMATION,
       .offset = offsetof(pfcp_usage_report_t, ethernet_traffic_information)
+    },
+    [USAGE_REPORT_TP_NOW] = {
+      .type = PFCP_IE_TP_NOW,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_now)
+    },
+    [USAGE_REPORT_TP_START_TIME] = {
+      .type = PFCP_IE_TP_START_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_start_time)
+    },
+    [USAGE_REPORT_TP_END_TIME] = {
+      .type = PFCP_IE_TP_END_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_end_time)
     },
   };
 
@@ -4572,6 +4533,21 @@ static struct pfcp_group_ie_def pfcp_usage_report_srr_group[] =
     [USAGE_REPORT_ETHERNET_TRAFFIC_INFORMATION] = {
       .type = PFCP_IE_ETHERNET_TRAFFIC_INFORMATION,
       .offset = offsetof(pfcp_usage_report_t, ethernet_traffic_information)
+    },
+    [USAGE_REPORT_TP_NOW] = {
+      .type = PFCP_IE_TP_NOW,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_now)
+    },
+    [USAGE_REPORT_TP_START_TIME] = {
+      .type = PFCP_IE_TP_START_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_start_time)
+    },
+    [USAGE_REPORT_TP_END_TIME] = {
+      .type = PFCP_IE_TP_END_TIME,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_usage_report_t, tp_end_time)
     },
   };
 
@@ -4790,16 +4766,18 @@ static struct pfcp_group_ie_def pfcp_ethernet_traffic_information_group[] =
 
 /**********************************************************/
 
-#define SIMPLE_IE(IE, TYPE)				\
+#define SIMPLE_IE(IE, TYPE, NAME)			\
   [IE] = {						\
+    .name = NAME,					\
     .length = sizeof(pfcp_ ## TYPE ## _t),		\
     .format = format_ ## TYPE,				\
     .decode = decode_ ## TYPE,				\
     .encode = encode_ ## TYPE,				\
 }
 
-#define SIMPLE_IE_FREE(IE, TYPE)			\
+#define SIMPLE_IE_FREE(IE, TYPE, NAME)			\
   [IE] = {						\
+    .name = NAME,					\
     .length = sizeof(pfcp_ ## TYPE ## _t),		\
     .format = format_ ## TYPE,				\
     .decode = decode_ ## TYPE,				\
@@ -4807,10 +4785,11 @@ static struct pfcp_group_ie_def pfcp_ethernet_traffic_information_group[] =
     .free = free_ ## TYPE,				\
 }
 
-static struct pfcp_ie_def group_specs[] =
+static struct pfcp_ie_def tgpp_specs[] =
   {
     [PFCP_IE_CREATE_PDR] =
     {
+      .name = "Create PDR",
       .length = sizeof(pfcp_create_pdr_t),
       .mandatory = (BIT(CREATE_PDR_PDR_ID) |
 		    BIT(CREATE_PDR_PRECEDENCE) |
@@ -4820,6 +4799,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_PDI] =
     {
+      .name = "PDI",
       .length = sizeof(pfcp_pdi_t),
       .mandatory = BIT(PDI_SOURCE_INTERFACE),
       .size = ARRAY_LEN(pfcp_pdi_group),
@@ -4827,6 +4807,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_CREATE_FAR] =
     {
+      .name = "Create FAR",
       .length = sizeof(pfcp_create_far_t),
       .mandatory = (BIT(CREATE_FAR_FAR_ID) |
 		    BIT(CREATE_FAR_APPLY_ACTION)),
@@ -4835,6 +4816,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_FORWARDING_PARAMETERS] =
     {
+      .name = "Forwarding Parameters",
       .length = sizeof(pfcp_forwarding_parameters_t),
       .mandatory = BIT(FORWARDING_PARAMETERS_DESTINATION_INTERFACE),
       .size = ARRAY_LEN(pfcp_forwarding_parameters_group),
@@ -4842,6 +4824,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_DUPLICATING_PARAMETERS] =
     {
+      .name = "Duplicating Parameters",
       .length = sizeof(pfcp_duplicating_parameters_t),
       .mandatory = BIT(DUPLICATING_PARAMETERS_DESTINATION_INTERFACE),
       .size = ARRAY_LEN(pfcp_duplicating_parameters_group),
@@ -4849,6 +4832,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_CREATE_URR] =
     {
+      .name = "Create URR",
       .length = sizeof(pfcp_create_urr_t),
       .mandatory = (BIT(CREATE_URR_URR_ID) |
 		    BIT(CREATE_URR_MEASUREMENT_METHOD) |
@@ -4858,6 +4842,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_CREATE_QER] =
     {
+      .name = "Create QER",
       .length = sizeof(pfcp_create_qer_t),
       .mandatory = (BIT(CREATE_QER_QER_ID) |
 		    BIT(CREATE_QER_GATE_STATUS)),
@@ -4866,6 +4851,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_CREATED_PDR] =
     {
+      .name = "Created PDR",
       .length = sizeof(pfcp_created_pdr_t),
       .mandatory = BIT(CREATED_PDR_PDR_ID),
       .size = ARRAY_LEN(pfcp_created_pdr_group),
@@ -4873,6 +4859,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_PDR] =
     {
+      .name = "Update PDR",
       .length = sizeof(pfcp_update_pdr_t),
       .mandatory = BIT(UPDATE_PDR_PDR_ID),
       .size = ARRAY_LEN(pfcp_update_pdr_group),
@@ -4880,6 +4867,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_FAR] =
     {
+      .name = "Update FAR",
       .length = sizeof(pfcp_update_far_t),
       .mandatory = BIT(UPDATE_FAR_FAR_ID),
       .size = ARRAY_LEN(pfcp_update_far_group),
@@ -4887,12 +4875,14 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_FORWARDING_PARAMETERS] =
     {
+      .name = "Update Forwarding Parameters",
       .length = sizeof(pfcp_update_forwarding_parameters_t),
       .size = ARRAY_LEN(pfcp_update_forwarding_parameters_group),
       .group = pfcp_update_forwarding_parameters_group,
     },
     [PFCP_IE_UPDATE_BAR_RESPONSE] =
     {
+      .name = "Update BAR Response",
       .length = sizeof(pfcp_update_bar_response_t),
       .mandatory = BIT(UPDATE_BAR_RESPONSE_BAR_ID),
       .size = ARRAY_LEN(pfcp_update_bar_response_group),
@@ -4900,6 +4890,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_URR] =
     {
+      .name = "Update URR",
       .length = sizeof(pfcp_update_urr_t),
       .mandatory = BIT(UPDATE_URR_URR_ID),
       .size = ARRAY_LEN(pfcp_update_urr_group),
@@ -4907,6 +4898,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_QER] =
     {
+      .name = "Update QER",
       .length = sizeof(pfcp_update_qer_t),
       .mandatory = BIT(UPDATE_QER_QER_ID),
       .size = ARRAY_LEN(pfcp_update_qer_group),
@@ -4914,6 +4906,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_PDR] =
     {
+      .name = "Remove PDR",
       .length = sizeof(pfcp_remove_pdr_t),
       .mandatory = BIT(REMOVE_PDR_PDR_ID),
       .size = ARRAY_LEN(pfcp_remove_pdr_group),
@@ -4921,6 +4914,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_FAR] =
     {
+      .name = "Remove FAR",
       .length = sizeof(pfcp_remove_far_t),
       .mandatory = BIT(REMOVE_FAR_FAR_ID),
       .size = ARRAY_LEN(pfcp_remove_far_group),
@@ -4928,6 +4922,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_URR] =
     {
+      .name = "Remove URR",
       .length = sizeof(pfcp_remove_urr_t),
       .mandatory = BIT(REMOVE_URR_URR_ID),
       .size = ARRAY_LEN(pfcp_remove_urr_group),
@@ -4935,55 +4930,67 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_QER] =
     {
+      .name = "Remove QER",
       .length = sizeof(pfcp_remove_qer_t),
       .mandatory = BIT(REMOVE_QER_QER_ID),
       .size = ARRAY_LEN(pfcp_remove_qer_group),
       .group = pfcp_remove_qer_group,
     },
-    SIMPLE_IE(PFCP_IE_CAUSE, cause),
-    SIMPLE_IE(PFCP_IE_SOURCE_INTERFACE, source_interface),
-    SIMPLE_IE(PFCP_IE_F_TEID, f_teid),
-    SIMPLE_IE_FREE(PFCP_IE_NETWORK_INSTANCE, network_instance),
-    SIMPLE_IE_FREE(PFCP_IE_SDF_FILTER, sdf_filter),
-    SIMPLE_IE_FREE(PFCP_IE_APPLICATION_ID, application_id),
-    SIMPLE_IE(PFCP_IE_GATE_STATUS, gate_status),
-    SIMPLE_IE(PFCP_IE_MBR, mbr),
-    SIMPLE_IE(PFCP_IE_GBR, gbr),
-    SIMPLE_IE(PFCP_IE_QER_CORRELATION_ID, qer_correlation_id),
-    SIMPLE_IE(PFCP_IE_PRECEDENCE, precedence),
-    SIMPLE_IE(PFCP_IE_TRANSPORT_LEVEL_MARKING, transport_level_marking),
-    SIMPLE_IE(PFCP_IE_VOLUME_THRESHOLD, volume_threshold),
-    SIMPLE_IE(PFCP_IE_TIME_THRESHOLD, time_threshold),
-    SIMPLE_IE(PFCP_IE_MONITORING_TIME, monitoring_time),
-    SIMPLE_IE(PFCP_IE_SUBSEQUENT_VOLUME_THRESHOLD, subsequent_volume_threshold),
-    SIMPLE_IE(PFCP_IE_SUBSEQUENT_TIME_THRESHOLD, subsequent_time_threshold),
-    SIMPLE_IE(PFCP_IE_INACTIVITY_DETECTION_TIME, inactivity_detection_time),
-    SIMPLE_IE(PFCP_IE_REPORTING_TRIGGERS, reporting_triggers),
-    SIMPLE_IE_FREE(PFCP_IE_REDIRECT_INFORMATION, redirect_information),
-    SIMPLE_IE(PFCP_IE_REPORT_TYPE, report_type),
-    SIMPLE_IE(PFCP_IE_OFFENDING_IE, offending_ie),
-    SIMPLE_IE(PFCP_IE_FORWARDING_POLICY, forwarding_policy),
-    SIMPLE_IE(PFCP_IE_DESTINATION_INTERFACE, destination_interface),
-    SIMPLE_IE(PFCP_IE_UP_FUNCTION_FEATURES, up_function_features),
-    SIMPLE_IE(PFCP_IE_APPLY_ACTION, apply_action),
-    SIMPLE_IE(PFCP_IE_DOWNLINK_DATA_SERVICE_INFORMATION, downlink_data_service_information),
-    SIMPLE_IE(PFCP_IE_DOWNLINK_DATA_NOTIFICATION_DELAY, downlink_data_notification_delay),
-    SIMPLE_IE(PFCP_IE_DL_BUFFERING_DURATION, dl_buffering_duration),
-    SIMPLE_IE(PFCP_IE_DL_BUFFERING_SUGGESTED_PACKET_COUNT, dl_buffering_suggested_packet_count),
-    SIMPLE_IE(PFCP_IE_SXSMREQ_FLAGS, sxsmreq_flags),
-    SIMPLE_IE(PFCP_IE_SXSRRSP_FLAGS, sxsrrsp_flags),
+    SIMPLE_IE(PFCP_IE_CAUSE, cause, "Cause"),
+    SIMPLE_IE(PFCP_IE_SOURCE_INTERFACE, source_interface, "Source Interface"),
+    SIMPLE_IE(PFCP_IE_F_TEID, f_teid, "F-TEID"),
+    SIMPLE_IE_FREE(PFCP_IE_NETWORK_INSTANCE, network_instance, "Network Instance"),
+    SIMPLE_IE_FREE(PFCP_IE_SDF_FILTER, sdf_filter, "SDF Filter"),
+    SIMPLE_IE_FREE(PFCP_IE_APPLICATION_ID, application_id, "Application ID"),
+    SIMPLE_IE(PFCP_IE_GATE_STATUS, gate_status, "Gate Status"),
+    SIMPLE_IE(PFCP_IE_MBR, mbr, "MBR"),
+    SIMPLE_IE(PFCP_IE_GBR, gbr, "GBR"),
+    SIMPLE_IE(PFCP_IE_QER_CORRELATION_ID, qer_correlation_id, "QER Correlation ID"),
+    SIMPLE_IE(PFCP_IE_PRECEDENCE, precedence, "Precedence"),
+    SIMPLE_IE(PFCP_IE_TRANSPORT_LEVEL_MARKING, transport_level_marking,
+	      "Transport Level Marking"),
+    SIMPLE_IE(PFCP_IE_VOLUME_THRESHOLD, volume_threshold, "Volume Threshold"),
+    SIMPLE_IE(PFCP_IE_TIME_THRESHOLD, time_threshold, "Time Threshold"),
+    SIMPLE_IE(PFCP_IE_MONITORING_TIME, monitoring_time, "Monitoring Time"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_VOLUME_THRESHOLD, subsequent_volume_threshold,
+	      "Subsequent Volume Threshold"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_TIME_THRESHOLD, subsequent_time_threshold,
+	      "Subsequent Time Threshold"),
+    SIMPLE_IE(PFCP_IE_INACTIVITY_DETECTION_TIME, inactivity_detection_time,
+	      "Inactivity Detection Time"),
+    SIMPLE_IE(PFCP_IE_REPORTING_TRIGGERS, reporting_triggers, "Reporting Triggers"),
+    SIMPLE_IE_FREE(PFCP_IE_REDIRECT_INFORMATION, redirect_information, "Redirect Information"),
+    SIMPLE_IE(PFCP_IE_REPORT_TYPE, report_type, "Report Type"),
+    SIMPLE_IE(PFCP_IE_OFFENDING_IE, offending_ie, "Offending IE"),
+    SIMPLE_IE(PFCP_IE_FORWARDING_POLICY, forwarding_policy, "Forwarding Policy"),
+    SIMPLE_IE(PFCP_IE_DESTINATION_INTERFACE, destination_interface, "Destination Interface"),
+    SIMPLE_IE(PFCP_IE_UP_FUNCTION_FEATURES, up_function_features, "UP Function Features"),
+    SIMPLE_IE(PFCP_IE_APPLY_ACTION, apply_action, "Apply Action"),
+    SIMPLE_IE(PFCP_IE_DOWNLINK_DATA_SERVICE_INFORMATION, downlink_data_service_information,
+	      "Downlink Data Service Information"),
+    SIMPLE_IE(PFCP_IE_DOWNLINK_DATA_NOTIFICATION_DELAY, downlink_data_notification_delay,
+	      "Downlink Data Notification Delay"),
+    SIMPLE_IE(PFCP_IE_DL_BUFFERING_DURATION, dl_buffering_duration, "DL Buffering Duration"),
+    SIMPLE_IE(PFCP_IE_DL_BUFFERING_SUGGESTED_PACKET_COUNT, dl_buffering_suggested_packet_count,
+	      "DL Buffering Suggested Packet Count"),
+    SIMPLE_IE(PFCP_IE_SXSMREQ_FLAGS, sxsmreq_flags, "SxSMReq-Flags"),
+    SIMPLE_IE(PFCP_IE_SXSRRSP_FLAGS, sxsrrsp_flags, "SxSRRsp-Flags"),
+
+
     [PFCP_IE_LOAD_CONTROL_INFORMATION] =
     {
+      .name = "Load Control Information",
       .length = sizeof(pfcp_load_control_information_t),
       .mandatory = (BIT(LOAD_CONTROL_INFORMATION_SEQUENCE_NUMBER) |
 		    BIT(LOAD_CONTROL_INFORMATION_METRIC)),
       .size = ARRAY_LEN(pfcp_load_control_information_group),
       .group = pfcp_load_control_information_group,
     },
-    SIMPLE_IE(PFCP_IE_SEQUENCE_NUMBER, sequence_number),
-    SIMPLE_IE(PFCP_IE_METRIC, metric),
+    SIMPLE_IE(PFCP_IE_SEQUENCE_NUMBER, sequence_number, "Sequence Number"),
+    SIMPLE_IE(PFCP_IE_METRIC, metric, "Metric"),
     [PFCP_IE_OVERLOAD_CONTROL_INFORMATION] =
     {
+      .name = "Overload Control Information",
       .length = sizeof(pfcp_overload_control_information_t),
       .mandatory = (BIT(OVERLOAD_CONTROL_INFORMATION_SEQUENCE_NUMBER) |
 		    BIT(OVERLOAD_CONTROL_INFORMATION_METRIC) |
@@ -4991,11 +4998,12 @@ static struct pfcp_ie_def group_specs[] =
       .size = ARRAY_LEN(pfcp_overload_control_information_group),
       .group = pfcp_overload_control_information_group,
     },
-    SIMPLE_IE(PFCP_IE_TIMER, timer),
-    SIMPLE_IE(PFCP_IE_PDR_ID, pdr_id),
-    SIMPLE_IE(PFCP_IE_F_SEID, f_seid),
+    SIMPLE_IE(PFCP_IE_TIMER, timer, "Timer"),
+    SIMPLE_IE(PFCP_IE_PDR_ID, pdr_id, "PDR Id"),
+    SIMPLE_IE(PFCP_IE_F_SEID, f_seid, "F-SEID"),
     [PFCP_IE_APPLICATION_ID_PFDS] =
     {
+      .name = "Application ID PFDs",
       .length = sizeof(pfcp_application_id_pfds_t),
       .mandatory = BIT(APPLICATION_ID_PFDS_APPLICATION_ID),
       .size = ARRAY_LEN(pfcp_application_id_pfds_group),
@@ -5003,36 +5011,40 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_PFD] =
     {
+      .name = "PFD",
       .length = sizeof(pfcp_pfd_t),
       .mandatory = BIT(PFD_PFD_CONTENTS),
       .size = ARRAY_LEN(pfcp_pfd_group),
       .group = pfcp_pfd_group,
     },
-    SIMPLE_IE_FREE(PFCP_IE_NODE_ID, node_id),
-    SIMPLE_IE(PFCP_IE_PFD_CONTENTS, pfd_contents),
-    SIMPLE_IE(PFCP_IE_MEASUREMENT_METHOD, measurement_method),
-    SIMPLE_IE(PFCP_IE_USAGE_REPORT_TRIGGER, usage_report_trigger),
-    SIMPLE_IE(PFCP_IE_MEASUREMENT_PERIOD, measurement_period),
-    SIMPLE_IE(PFCP_IE_FQ_CSID, fq_csid),
-    SIMPLE_IE(PFCP_IE_VOLUME_MEASUREMENT, volume_measurement),
-    SIMPLE_IE(PFCP_IE_DURATION_MEASUREMENT, duration_measurement),
+    SIMPLE_IE_FREE(PFCP_IE_NODE_ID, node_id, "Node ID"),
+    SIMPLE_IE(PFCP_IE_PFD_CONTENTS, pfd_contents, "PFD contents"),
+    SIMPLE_IE(PFCP_IE_MEASUREMENT_METHOD, measurement_method, "Measurement Method"),
+    SIMPLE_IE(PFCP_IE_USAGE_REPORT_TRIGGER, usage_report_trigger, "Usage Report Trigger"),
+    SIMPLE_IE(PFCP_IE_MEASUREMENT_PERIOD, measurement_period, "Measurement Period"),
+    SIMPLE_IE(PFCP_IE_FQ_CSID, fq_csid, "FQ-CSID"),
+    SIMPLE_IE(PFCP_IE_VOLUME_MEASUREMENT, volume_measurement, "Volume Measurement"),
+    SIMPLE_IE(PFCP_IE_DURATION_MEASUREMENT, duration_measurement, "Duration Measurement"),
     [PFCP_IE_APPLICATION_DETECTION_INFORMATION] =
     {
+      .name = "Application Detection Information",
       .length = sizeof(pfcp_application_detection_information_t),
       .mandatory = BIT(APPLICATION_DETECTION_INFORMATION_APPLICATION_ID),
       .size = ARRAY_LEN(pfcp_application_detection_information_group),
       .group = pfcp_application_detection_information_group,
     },
-    SIMPLE_IE(PFCP_IE_TIME_OF_FIRST_PACKET, time_of_first_packet),
-    SIMPLE_IE(PFCP_IE_TIME_OF_LAST_PACKET, time_of_last_packet),
-    SIMPLE_IE(PFCP_IE_QUOTA_HOLDING_TIME, quota_holding_time),
-    SIMPLE_IE(PFCP_IE_DROPPED_DL_TRAFFIC_THRESHOLD, dropped_dl_traffic_threshold),
-    SIMPLE_IE(PFCP_IE_VOLUME_QUOTA, volume_quota),
-    SIMPLE_IE(PFCP_IE_TIME_QUOTA, time_quota),
-    SIMPLE_IE(PFCP_IE_START_TIME, start_time),
-    SIMPLE_IE(PFCP_IE_END_TIME, end_time),
+    SIMPLE_IE(PFCP_IE_TIME_OF_FIRST_PACKET, time_of_first_packet, "Time of First Packet"),
+    SIMPLE_IE(PFCP_IE_TIME_OF_LAST_PACKET, time_of_last_packet, "Time of Last Packet"),
+    SIMPLE_IE(PFCP_IE_QUOTA_HOLDING_TIME, quota_holding_time, "Quota Holding Time"),
+    SIMPLE_IE(PFCP_IE_DROPPED_DL_TRAFFIC_THRESHOLD, dropped_dl_traffic_threshold,
+	      "Dropped DL Traffic Threshold"),
+    SIMPLE_IE(PFCP_IE_VOLUME_QUOTA, volume_quota, "Volume Quota"),
+    SIMPLE_IE(PFCP_IE_TIME_QUOTA, time_quota, "Time Quota"),
+    SIMPLE_IE(PFCP_IE_START_TIME, start_time, "Start Time"),
+    SIMPLE_IE(PFCP_IE_END_TIME, end_time, "End Time"),
     [PFCP_IE_QUERY_URR] =
     {
+      .name = "Query URR",
       .length = sizeof(pfcp_query_urr_t),
       .mandatory = BIT(QUERY_URR_URR_ID),
       .size = ARRAY_LEN(pfcp_query_urr_group),
@@ -5040,6 +5052,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_USAGE_REPORT_SMR] =
     {
+      .name = "Usage Report SMR",
       .length = sizeof(pfcp_usage_report_t),
       .mandatory = (BIT(USAGE_REPORT_URR_ID) |
 		    BIT(USAGE_REPORT_UR_SEQN) |
@@ -5049,6 +5062,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_USAGE_REPORT_SDR] =
     {
+      .name = "Usage Report SDR",
       .length = sizeof(pfcp_usage_report_t),
       .mandatory = (BIT(USAGE_REPORT_URR_ID) |
 		    BIT(USAGE_REPORT_UR_SEQN) |
@@ -5058,6 +5072,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_USAGE_REPORT_SRR] =
     {
+      .name = "Usage Report SRR",
       .length = sizeof(pfcp_usage_report_t),
       .mandatory = (BIT(USAGE_REPORT_URR_ID) |
 		    BIT(USAGE_REPORT_UR_SEQN) |
@@ -5065,18 +5080,20 @@ static struct pfcp_ie_def group_specs[] =
       .size = ARRAY_LEN(pfcp_usage_report_srr_group),
       .group = pfcp_usage_report_srr_group,
     },
-    SIMPLE_IE(PFCP_IE_URR_ID, urr_id),
-    SIMPLE_IE(PFCP_IE_LINKED_URR_ID, linked_urr_id),
+    SIMPLE_IE(PFCP_IE_URR_ID, urr_id, "URR ID"),
+    SIMPLE_IE(PFCP_IE_LINKED_URR_ID, linked_urr_id, "Linked URR ID"),
     [PFCP_IE_DOWNLINK_DATA_REPORT] =
     {
+      .name = "Downlink Data Report",
       .length = sizeof(pfcp_downlink_data_report_t),
       .mandatory = BIT(DOWNLINK_DATA_REPORT_PDR_ID),
       .size = ARRAY_LEN(pfcp_downlink_data_report_group),
       .group = pfcp_downlink_data_report_group,
     },
-    SIMPLE_IE(PFCP_IE_OUTER_HEADER_CREATION, outer_header_creation),
+    SIMPLE_IE(PFCP_IE_OUTER_HEADER_CREATION, outer_header_creation, "Outer Header Creation"),
     [PFCP_IE_CREATE_BAR] =
     {
+      .name = "Create BAR",
       .length = sizeof(pfcp_create_bar_t),
       .mandatory = BIT(CREATE_BAR_BAR_ID),
       .size = ARRAY_LEN(pfcp_create_bar_group),
@@ -5084,6 +5101,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_BAR_REQUEST] =
     {
+      .name = "Update BAR Request",
       .length = sizeof(pfcp_update_bar_request_t),
       .mandatory = BIT(UPDATE_BAR_REQUEST_BAR_ID),
       .size = ARRAY_LEN(pfcp_update_bar_request_group),
@@ -5091,76 +5109,92 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_BAR] =
     {
+      .name = "Remove BAR",
       .length = sizeof(pfcp_remove_bar_t),
       .mandatory = BIT(REMOVE_BAR_BAR_ID),
       .size = ARRAY_LEN(pfcp_remove_bar_group),
       .group = pfcp_remove_bar_group,
     },
-    SIMPLE_IE(PFCP_IE_BAR_ID, bar_id),
-    SIMPLE_IE(PFCP_IE_CP_FUNCTION_FEATURES, cp_function_features),
-    SIMPLE_IE(PFCP_IE_USAGE_INFORMATION, usage_information),
-    SIMPLE_IE_FREE(PFCP_IE_APPLICATION_INSTANCE_ID, application_instance_id),
-    SIMPLE_IE_FREE(PFCP_IE_FLOW_INFORMATION, flow_information),
-    SIMPLE_IE(PFCP_IE_UE_IP_ADDRESS, ue_ip_address),
-    SIMPLE_IE(PFCP_IE_PACKET_RATE, packet_rate),
-    SIMPLE_IE(PFCP_IE_OUTER_HEADER_REMOVAL, outer_header_removal),
-    SIMPLE_IE(PFCP_IE_RECOVERY_TIME_STAMP, recovery_time_stamp),
-    SIMPLE_IE(PFCP_IE_DL_FLOW_LEVEL_MARKING, dl_flow_level_marking),
-    SIMPLE_IE(PFCP_IE_HEADER_ENRICHMENT, header_enrichment),
+    SIMPLE_IE(PFCP_IE_BAR_ID, bar_id, "BAR ID"),
+    SIMPLE_IE(PFCP_IE_CP_FUNCTION_FEATURES, cp_function_features, "CP Function Features"),
+    SIMPLE_IE(PFCP_IE_USAGE_INFORMATION, usage_information, "Usage Information"),
+    SIMPLE_IE_FREE(PFCP_IE_APPLICATION_INSTANCE_ID, application_instance_id,
+		   "Application Instance ID"),
+    SIMPLE_IE_FREE(PFCP_IE_FLOW_INFORMATION, flow_information, "Flow Information"),
+    SIMPLE_IE(PFCP_IE_UE_IP_ADDRESS, ue_ip_address, "UE IP Address"),
+    SIMPLE_IE(PFCP_IE_PACKET_RATE, packet_rate, "Packet Rate"),
+    SIMPLE_IE(PFCP_IE_OUTER_HEADER_REMOVAL, outer_header_removal, "Outer Header Removal"),
+    SIMPLE_IE(PFCP_IE_RECOVERY_TIME_STAMP, recovery_time_stamp, "Recovery Time Stamp"),
+    SIMPLE_IE(PFCP_IE_DL_FLOW_LEVEL_MARKING, dl_flow_level_marking, "DL Flow Level Marking"),
+    SIMPLE_IE(PFCP_IE_HEADER_ENRICHMENT, header_enrichment, "Header Enrichment"),
     [PFCP_IE_ERROR_INDICATION_REPORT] =
     {
+      .name = "Error Indication Report",
       .length = sizeof(pfcp_error_indication_report_t),
       .mandatory = BIT(ERROR_INDICATION_REPORT_F_TEID),
       .size = ARRAY_LEN(pfcp_error_indication_report_group),
       .group = pfcp_error_indication_report_group,
     },
-    SIMPLE_IE(PFCP_IE_MEASUREMENT_INFORMATION, measurement_information),
-    SIMPLE_IE(PFCP_IE_NODE_REPORT_TYPE, node_report_type),
+    SIMPLE_IE(PFCP_IE_MEASUREMENT_INFORMATION, measurement_information,
+	      "Measurement Information"),
+    SIMPLE_IE(PFCP_IE_NODE_REPORT_TYPE, node_report_type, "Node Report Type"),
     [PFCP_IE_USER_PLANE_PATH_FAILURE_REPORT] =
     {
+      .name = "User Plane Path Failure Report",
       .length = sizeof(pfcp_user_plane_path_failure_report_t),
       .mandatory = BIT(USER_PLANE_PATH_FAILURE_REPORT_REMOTE_GTP_U_PEER),
       .size = ARRAY_LEN(pfcp_user_plane_path_failure_report_group),
       .group = pfcp_user_plane_path_failure_report_group,
     },
-    SIMPLE_IE(PFCP_IE_REMOTE_GTP_U_PEER, remote_gtp_u_peer),
-    SIMPLE_IE(PFCP_IE_UR_SEQN, ur_seqn),
+    SIMPLE_IE(PFCP_IE_REMOTE_GTP_U_PEER, remote_gtp_u_peer, "Remote GTP-U Peer"),
+    SIMPLE_IE(PFCP_IE_UR_SEQN, ur_seqn, "UR-SEQN"),
     [PFCP_IE_UPDATE_DUPLICATING_PARAMETERS] =
     {
+      .name = "Update Duplicating Parameters",
       .length = sizeof(pfcp_update_duplicating_parameters_t),
       .size = ARRAY_LEN(pfcp_update_duplicating_parameters_group),
       .group = pfcp_update_duplicating_parameters_group,
     },
-    SIMPLE_IE_FREE(PFCP_IE_ACTIVATE_PREDEFINED_RULES, activate_predefined_rules),
-    SIMPLE_IE_FREE(PFCP_IE_DEACTIVATE_PREDEFINED_RULES, deactivate_predefined_rules),
-    SIMPLE_IE(PFCP_IE_FAR_ID, far_id),
-    SIMPLE_IE(PFCP_IE_QER_ID, qer_id),
-    SIMPLE_IE(PFCP_IE_OCI_FLAGS, oci_flags),
-    SIMPLE_IE(PFCP_IE_SX_ASSOCIATION_RELEASE_REQUEST, sx_association_release_request),
-    SIMPLE_IE(PFCP_IE_GRACEFUL_RELEASE_PERIOD, graceful_release_period),
-    SIMPLE_IE(PFCP_IE_PDN_TYPE, pdn_type),
-    SIMPLE_IE(PFCP_IE_FAILED_RULE_ID, failed_rule_id),
-    SIMPLE_IE(PFCP_IE_TIME_QUOTA_MECHANISM, time_quota_mechanism),
-    SIMPLE_IE_FREE(PFCP_IE_USER_PLANE_IP_RESOURCE_INFORMATION, user_plane_ip_resource_information),
-    SIMPLE_IE(PFCP_IE_USER_PLANE_INACTIVITY_TIMER, user_plane_inactivity_timer),
+    SIMPLE_IE_FREE(PFCP_IE_ACTIVATE_PREDEFINED_RULES, activate_predefined_rules,
+		   "Activate Predefined Rules"),
+    SIMPLE_IE_FREE(PFCP_IE_DEACTIVATE_PREDEFINED_RULES, deactivate_predefined_rules,
+		   "Deactivate Predefined Rules"),
+    SIMPLE_IE(PFCP_IE_FAR_ID, far_id, "FAR ID"),
+    SIMPLE_IE(PFCP_IE_QER_ID, qer_id, "QER ID"),
+    SIMPLE_IE(PFCP_IE_OCI_FLAGS, oci_flags, "OCI Flags"),
+    SIMPLE_IE(PFCP_IE_SX_ASSOCIATION_RELEASE_REQUEST, sx_association_release_request,
+	      "Sx Association Release Request"),
+    SIMPLE_IE(PFCP_IE_GRACEFUL_RELEASE_PERIOD, graceful_release_period,
+	      "Graceful Release Period"),
+    SIMPLE_IE(PFCP_IE_PDN_TYPE, pdn_type, "PDN Type"),
+    SIMPLE_IE(PFCP_IE_FAILED_RULE_ID, failed_rule_id, "Failed Rule ID"),
+    SIMPLE_IE(PFCP_IE_TIME_QUOTA_MECHANISM, time_quota_mechanism, "Time Quota Mechanism"),
+    SIMPLE_IE_FREE(PFCP_IE_USER_PLANE_IP_RESOURCE_INFORMATION,
+		   user_plane_ip_resource_information, "User Plane IP Resource Information"),
+    SIMPLE_IE(PFCP_IE_USER_PLANE_INACTIVITY_TIMER, user_plane_inactivity_timer,
+	      "User Plane Inactivity Timer"),
     [PFCP_IE_AGGREGATED_URRS] =
     {
+      .name = "Aggregated URRs",
       .length = sizeof(pfcp_aggregated_urrs_t),
       .mandatory = (BIT(AGGREGATED_URRS_AGGREGATED_URR_ID) |
 		    BIT(AGGREGATED_URRS_MULTIPLIER)),
       .size = ARRAY_LEN(pfcp_aggregated_urrs_group),
       .group = pfcp_aggregated_urrs_group,
     },
-    SIMPLE_IE(PFCP_IE_MULTIPLIER, multiplier),
-    SIMPLE_IE(PFCP_IE_AGGREGATED_URR_ID, aggregated_urr_id),
-    SIMPLE_IE(PFCP_IE_SUBSEQUENT_VOLUME_QUOTA, subsequent_volume_quota),
-    SIMPLE_IE(PFCP_IE_SUBSEQUENT_TIME_QUOTA, subsequent_time_quota),
-    SIMPLE_IE(PFCP_IE_RQI, rqi),
-    SIMPLE_IE(PFCP_IE_QFI, qfi),
-    SIMPLE_IE(PFCP_IE_QUERY_URR_REFERENCE, query_urr_reference),
-    SIMPLE_IE(PFCP_IE_ADDITIONAL_USAGE_REPORTS_INFORMATION, additional_usage_reports_information),
+    SIMPLE_IE(PFCP_IE_MULTIPLIER, multiplier, "Multiplier"),
+    SIMPLE_IE(PFCP_IE_AGGREGATED_URR_ID, aggregated_urr_id, "Aggregated URR ID"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_VOLUME_QUOTA, subsequent_volume_quota,
+	      "Subsequent Volume Quota"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_TIME_QUOTA, subsequent_time_quota, "Subsequent Time Quota"),
+    SIMPLE_IE(PFCP_IE_RQI, rqi, "RQI"),
+    SIMPLE_IE(PFCP_IE_QFI, qfi, "QFI"),
+    SIMPLE_IE(PFCP_IE_QUERY_URR_REFERENCE, query_urr_reference, "Query URR Reference"),
+    SIMPLE_IE(PFCP_IE_ADDITIONAL_USAGE_REPORTS_INFORMATION,
+	      additional_usage_reports_information, "Additional Usage Reports Information"),
     [PFCP_IE_CREATE_TRAFFIC_ENDPOINT] =
     {
+      .name = "Create Traffic Endpoint",
       .length = sizeof(pfcp_create_traffic_endpoint_t),
       .mandatory = BIT(CREATE_TRAFFIC_ENDPOINT_TRAFFIC_ENDPOINT_ID),
       .size = ARRAY_LEN(pfcp_create_traffic_endpoint_group),
@@ -5168,6 +5202,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_CREATED_TRAFFIC_ENDPOINT] =
     {
+      .name = "Created Traffic Endpoint",
       .length = sizeof(pfcp_created_traffic_endpoint_t),
       .mandatory = BIT(CREATED_TRAFFIC_ENDPOINT_TRAFFIC_ENDPOINT_ID),
       .size = ARRAY_LEN(pfcp_created_traffic_endpoint_group),
@@ -5175,6 +5210,7 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_UPDATE_TRAFFIC_ENDPOINT] =
     {
+      .name = "Update Traffic Endpoint",
       .length = sizeof(pfcp_update_traffic_endpoint_t),
       .mandatory = BIT(UPDATE_TRAFFIC_ENDPOINT_TRAFFIC_ENDPOINT_ID),
       .size = ARRAY_LEN(pfcp_update_traffic_endpoint_group),
@@ -5182,47 +5218,97 @@ static struct pfcp_ie_def group_specs[] =
     },
     [PFCP_IE_REMOVE_TRAFFIC_ENDPOINT] =
     {
+      .name = "Remove Traffic Endpoint",
       .length = sizeof(pfcp_remove_traffic_endpoint_t),
       .mandatory = BIT(REMOVE_TRAFFIC_ENDPOINT_TRAFFIC_ENDPOINT_ID),
       .size = ARRAY_LEN(pfcp_remove_traffic_endpoint_group),
       .group = pfcp_remove_traffic_endpoint_group,
     },
-    SIMPLE_IE(PFCP_IE_TRAFFIC_ENDPOINT_ID, traffic_endpoint_id),
+    SIMPLE_IE(PFCP_IE_TRAFFIC_ENDPOINT_ID, traffic_endpoint_id, "Traffic Endpoint ID"),
     [PFCP_IE_ETHERNET_PACKET_FILTER] =
     {
+      .name = "Ethernet Packet Filter",
       .length = sizeof(pfcp_ethernet_packet_filter_t),
       .size = ARRAY_LEN(pfcp_ethernet_packet_filter_group),
       .group = pfcp_ethernet_packet_filter_group,
     },
     [PFCP_IE_MAC_ADDRESS] = {
+      .name = "MAC address",
       .length = sizeof(pfcp_mac_address_t),
       .format = format_pfcp_mac_address,
       .decode = decode_pfcp_mac_address,
       .encode = encode_pfcp_mac_address,
     },
-    SIMPLE_IE(PFCP_IE_C_TAG, c_tag),
-    SIMPLE_IE(PFCP_IE_S_TAG, s_tag),
-    SIMPLE_IE(PFCP_IE_ETHERTYPE, ethertype),
-    SIMPLE_IE(PFCP_IE_PROXYING, proxying),
-    SIMPLE_IE(PFCP_IE_ETHERNET_FILTER_ID, ethernet_filter_id),
-    SIMPLE_IE(PFCP_IE_ETHERNET_FILTER_PROPERTIES, ethernet_filter_properties),
-    SIMPLE_IE(PFCP_IE_SUGGESTED_BUFFERING_PACKETS_COUNT, suggested_buffering_packets_count),
-    SIMPLE_IE(PFCP_IE_USER_ID, user_id),
-    SIMPLE_IE(PFCP_IE_ETHERNET_PDU_SESSION_INFORMATION, ethernet_pdu_session_information),
+    SIMPLE_IE(PFCP_IE_C_TAG, c_tag, "C-TAG"),
+    SIMPLE_IE(PFCP_IE_S_TAG, s_tag, "S-TAG"),
+    SIMPLE_IE(PFCP_IE_ETHERTYPE, ethertype, "Ethertype"),
+    SIMPLE_IE(PFCP_IE_PROXYING, proxying, "Proxying"),
+    SIMPLE_IE(PFCP_IE_ETHERNET_FILTER_ID, ethernet_filter_id, "Ethernet Filter ID"),
+    SIMPLE_IE(PFCP_IE_ETHERNET_FILTER_PROPERTIES, ethernet_filter_properties,
+	      "Ethernet Filter Properties"),
+    SIMPLE_IE(PFCP_IE_SUGGESTED_BUFFERING_PACKETS_COUNT, suggested_buffering_packets_count,
+	      "Suggested Buffering Packets Count"),
+    SIMPLE_IE(PFCP_IE_USER_ID, user_id, "User ID"),
+    SIMPLE_IE(PFCP_IE_ETHERNET_PDU_SESSION_INFORMATION, ethernet_pdu_session_information,
+	      "Ethernet PDU Session Information"),
     [PFCP_IE_ETHERNET_TRAFFIC_INFORMATION] =
     {
+      .name = "Ethernet Traffic Information",
       .length = sizeof(pfcp_ethernet_traffic_information_t),
       .size = ARRAY_LEN(pfcp_ethernet_traffic_information_group),
       .group = pfcp_ethernet_traffic_information_group,
     },
-    SIMPLE_IE_FREE(PFCP_IE_MAC_ADDRESSES_DETECTED, mac_addresses_detected),
-    SIMPLE_IE_FREE(PFCP_IE_MAC_ADDRESSES_REMOVED, mac_addresses_removed),
-    SIMPLE_IE(PFCP_IE_ETHERNET_INACTIVITY_TIMER, ethernet_inactivity_timer),
+    SIMPLE_IE_FREE(PFCP_IE_MAC_ADDRESSES_DETECTED, mac_addresses_detected,
+		   "MAC Addresses Detected"),
+    SIMPLE_IE_FREE(PFCP_IE_MAC_ADDRESSES_REMOVED, mac_addresses_removed,
+		   "MAC Addresses Removed"),
+    SIMPLE_IE(PFCP_IE_ETHERNET_INACTIVITY_TIMER, ethernet_inactivity_timer,
+	      "Ethernet Inactivity Timer"),
+  };
+
+static struct pfcp_ie_def vendor_tp_specs[] =
+  {
+   SIMPLE_IE(PFCP_IE_TP_PACKET_MEASUREMENT, tp_packet_measurement, "TP: Packet Measurement"),
+   SIMPLE_IE_FREE(PFCP_IE_TP_BUILD_ID, tp_build_id, "TP: Build Identifier"),
+   SIMPLE_IE(PFCP_IE_TP_NOW, tp_now, "TP: Now"),
+   SIMPLE_IE(PFCP_IE_TP_START_TIME, tp_start_time, "TP: Start Time"),
+   SIMPLE_IE(PFCP_IE_TP_END_TIME, tp_end_time, "TP: Start Time"),
   };
 
 /**********************************************************/
 
+u8 *
+format_pfcp_ie (u8 * s, va_list * args)
+{
+  pfcp_ie_t *ie = va_arg (*args, pfcp_ie_t *);
+  u16 type = clib_net_to_host_u16 (ie->type);
 
+  if (type & 0x8000)
+    {
+      pfcp_ie_vendor_t *vie = (pfcp_ie_vendor_t *)ie;
+      u16 vendor = clib_net_to_host_u16 (vie->vendor);
+
+      type &= ~0x8000;
+
+      if (vendor == VENDOR_TRAVELPING &&
+	  type < ARRAY_LEN (vendor_tp_specs) && vendor_tp_specs[type].name)
+	{
+	  return format (s, "IE: %s (%d:%d), Length: %d.",
+			 vendor_tp_specs[type].name, vendor, type,
+			 clib_net_to_host_u16 (ie->length));
+	}
+      else
+	return format (s, "IE: %d:%d, Length: %d.", vendor, type,
+		       clib_net_to_host_u16 (ie->length));
+    }
+
+  if (type < ARRAY_LEN (tgpp_specs) && tgpp_specs[type].name)
+    return format (s, "IE: %s (%d), Length: %d.",
+		   tgpp_specs[type].name, type, clib_net_to_host_u16 (ie->length));
+  else
+    return format (s, "IE: %d, Length: %d.", type,
+		   clib_net_to_host_u16 (ie->length));
+}
 
 /**********************************************************/
 
@@ -5285,6 +5371,11 @@ static struct pfcp_group_ie_def pfcp_association_setup_request_group[] =
       .is_array = true,
       .offset = offsetof(pfcp_association_setup_request_t, user_plane_ip_resource_information)
     },
+    [ASSOCIATION_SETUP_REQUEST_TP_BUILD_ID] = {
+      .type = PFCP_IE_TP_BUILD_ID,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_association_setup_request_t, tp_build_id)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_association_setup_response_group[] =
@@ -5313,6 +5404,11 @@ static struct pfcp_group_ie_def pfcp_association_setup_response_group[] =
       .type = PFCP_IE_USER_PLANE_IP_RESOURCE_INFORMATION,
       .is_array = true,
       .offset = offsetof(pfcp_association_setup_response_t, user_plane_ip_resource_information)
+    },
+    [ASSOCIATION_SETUP_RESPONSE_TP_BUILD_ID] = {
+      .type = PFCP_IE_TP_BUILD_ID,
+      .vendor = VENDOR_TRAVELPING,
+      .offset = offsetof(pfcp_association_setup_response_t, tp_build_id)
     },
   };
 
@@ -5945,6 +6041,21 @@ get_ie_spec (const pfcp_ie_t * ie, const struct pfcp_ie_def *def)
   return NULL;
 }
 
+static const struct pfcp_ie_def *
+get_ie_def (const struct pfcp_group_ie_def *item)
+{
+  switch (item->vendor)
+    {
+    case 0:
+      return &tgpp_specs[item->type];
+
+    case VENDOR_TRAVELPING:
+      return &vendor_tp_specs[item->type];
+    }
+
+  return NULL;
+}
+
 static int decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 			 struct pfcp_group *grp, pfcp_offending_ie_t ** err);
 
@@ -5952,9 +6063,6 @@ static int
 decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p,
 	   pfcp_offending_ie_t ** err)
 {
-#if CLIB_DEBUG > 0
-  uword id = def - group_specs;
-#endif
   int r;
 
   if (def->size != 0)
@@ -5962,7 +6070,7 @@ decode_ie (const struct pfcp_ie_def *def, u8 * ie, u16 length, void *p,
   else
     {
       if ((r = def->decode (ie, length, p)) == 0)
-	pfcp_debug ("PFCP: %s: %U.", ie_desc[id], def->format, p);
+	pfcp_debug ("PFCP: %s: %U.", def->name, def->format, p);
 
       return r;
     }
@@ -5999,12 +6107,15 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
   while (r == 0 && pos < len)
     {
       pfcp_ie_t *ie = (pfcp_ie_t *) & p[pos];
-      u16 length = ntohs (ie->length);
       const struct pfcp_group_ie_def *item;
+      const struct pfcp_ie_def *ie_def;
+      u16 length = ntohs (ie->length);
+      i16 type = ntohs (ie->type);
 
       pfcp_debug ("%U", format_pfcp_ie, ie);
 
-      if (pos + length >= len)
+      pos += 4;
+      if (pos + length > len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
       item = get_ie_spec (ie, grp_def);
@@ -6016,26 +6127,48 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 	}
 
       int id = item - grp_def->group;
-      const struct pfcp_ie_def *ie_def = &group_specs[ntohs (ie->type)];
+
+      if (type & 0x8000)
+	{
+	  pfcp_ie_vendor_t *vie = (pfcp_ie_vendor_t *)ie;
+	  u16 vendor =  ntohs (vie->vendor);
+
+	  pos += 2;
+	  length -= 2;
+	  type &= ~0x8000;
+
+	  switch (vendor) {
+	  case VENDOR_TRAVELPING:
+	    ie_def = &vendor_tp_specs[type];
+	    break;
+	  default:
+	    vec_add1 (grp->ies, ie);
+	    goto next;
+	  }
+	}
+      else
+	{
+	  ie_def = &tgpp_specs[type];
+	}
 
       u8 *v = ((u8 *) grp) + item->offset;
 
       if (item->is_array)
-	r = decode_vector_ie (ie_def, (u8 *) (ie + 1), length, v, err);
+	r = decode_vector_ie (ie_def, p + pos, length, v, err);
       else
 	{
 	  if (ISSET_BIT (grp->fields, id))
 	    /* duplicate IE */
 	    vec_add1 (grp->ies, ie);
 	  else
-	    r = decode_ie (ie_def, (u8 *) (ie + 1), length, v, err);
+	    r = decode_ie (ie_def, p + pos, length, v, err);
 	}
 
       if (r == 0)
 	SET_BIT (grp->fields, id);
 
     next:
-      pos += length + 4;
+      pos += length;
     }
 
   if ((grp->fields & grp_def->mandatory) != grp_def->mandatory)
@@ -6051,9 +6184,10 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 	  if (!(missing & 1))
 	    continue;
 
-	  pfcp_debug ("Missing IE Type: %s, %u",
-		      ie_desc[grp_def->group[i].type],
-		      grp_def->group[i].type);
+#if CLIB_DEBUG > 0
+	  const struct pfcp_ie_def *ie_def = get_ie_def (&grp_def->group[i]);
+#endif
+	  pfcp_debug ("Missing IE Type: %s, %u", ie_def->name, grp_def->group[i].type);
 	  vec_add1(*err, grp_def->group[i].type);
 	}
 
@@ -6080,20 +6214,26 @@ static int
 encode_ie (const struct pfcp_group_ie_def *item,
 	   const struct pfcp_ie_def *def, u8 * v, u8 ** vec)
 {
-#if CLIB_DEBUG > 0
-  uword id = def - group_specs;
-#endif
   int hdr = _vec_len (*vec);
   int r = 0;
 
-  set_ie_hdr_type (*vec, item->type, hdr);
-  _vec_len (*vec) += sizeof (pfcp_ie_t);
+  if (item->vendor == 0)
+    {
+      set_ie_hdr_type (*vec, item->type, hdr);
+      _vec_len (*vec) += sizeof (pfcp_ie_t);
+    }
+  else
+    {
+      set_ie_vendor_hdr_type (*vec, 0x8000 | item->type, item->vendor, hdr);
+      set_ie_vendor_hdr_vendor (*vec, item->vendor, hdr);
+      _vec_len (*vec) += sizeof (pfcp_ie_vendor_t);
+    }
 
   if (def->size != 0)
     r = encode_group (def, (struct pfcp_group *) v, vec);
   else
     {
-      pfcp_debug ("PFCP: %s: %U.", ie_desc[id], def->format, v);
+      pfcp_debug ("PFCP: %s: %U.", def->name, def->format, v);
       r = def->encode (v, vec);
     }
 
@@ -6134,7 +6274,7 @@ encode_group (const struct pfcp_ie_def *def, struct pfcp_group *grp,
   for (int i = 0; i < def->size; i++)
     {
       const struct pfcp_group_ie_def *item = &def->group[i];
-      const struct pfcp_ie_def *ie_def = &group_specs[item->type];
+      const struct pfcp_ie_def *ie_def;
       u8 *v = ((u8 *) grp) + item->offset;
 
       if (item->type == 0)
@@ -6142,6 +6282,10 @@ encode_group (const struct pfcp_ie_def *def, struct pfcp_group *grp,
 
       if (!ISSET_BIT (grp->fields, i))
 	continue;
+
+      ie_def = get_ie_def(item);
+      if (!ie_def)
+	  continue;
 
       if (item->is_array)
 	r = encode_vector_ie (item, ie_def, v, vec);
@@ -6192,7 +6336,7 @@ free_group (const struct pfcp_ie_def *def, struct pfcp_group *grp)
   for (int i = 0; i < def->size; i++)
     {
       const struct pfcp_group_ie_def *item = &def->group[i];
-      const struct pfcp_ie_def *ie_def = &group_specs[item->type];
+      const struct pfcp_ie_def *ie_def = get_ie_def(item);
       u8 *v = ((u8 *) grp) + item->offset;
 
       if (item->type == 0)
