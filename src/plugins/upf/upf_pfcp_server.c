@@ -945,6 +945,10 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 
       sxsm->now = unix_time_now ();
 
+      /* run the timing wheel first, to that the internal base for new and updated timers
+       * is set to now */
+      expired = TW (tw_timer_expire_timers_vec) (&sxsm->timer, sxsm->now, expired);
+
       switch (event_type)
 	{
 	case ~0:		/* timeout */
@@ -1017,14 +1021,6 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	  break;
 	}
 
-      /*
-         gtp_debug ("advancing wheel, now is %lu", now);
-         gtp_debug ("tw_timer_expire_timers_vec (%p, %lu, %p);", &sx->timer, now, expired);
-       */
-
-      expired = TW (tw_timer_expire_timers_vec) (&sxsm->timer, sxsm->now, expired);
-      //gtp_debug ("Expired %d elements", vec_len (expired));
-
       for (int i = 0; i < vec_len (expired); i++)
 	{
 	  switch (expired[i] >> 24)
@@ -1068,16 +1064,8 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	    }
 	}
 
-      if (expired)
-	{
-	  _vec_len (expired) = 0;
-	}
-
-      if (event_data)
-	{
-	  _vec_len (event_data) = 0;
-	}
-      // vec_free (event_data);
+      vec_reset_length (expired);
+      vec_reset_length (event_data);
     }
 
   return (0);
