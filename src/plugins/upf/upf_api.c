@@ -107,11 +107,10 @@ static void vl_api_upf_app_ip_rule_add_del_t_handler
   (vl_api_upf_app_ip_rule_add_del_t * mp)
 {
   vl_api_upf_app_ip_rule_add_del_reply_t *rmp = NULL;
-  upf_rule_args_t args = { };
   upf_main_t *sm = &upf_main;
   int rv = 0;
 
-  rv = upf_rule_add_del (sm, mp->app, mp->id, (int) (mp->is_add), &args);
+  rv = upf_rule_add_del (sm, mp->app, mp->id, (int) (mp->is_add), NULL);
 
   REPLY_MACRO (VL_API_UPF_APP_IP_RULE_ADD_DEL_REPLY);
 }
@@ -121,14 +120,10 @@ static void vl_api_upf_app_l7_rule_add_del_t_handler
   (vl_api_upf_app_l7_rule_add_del_t * mp)
 {
   vl_api_upf_app_l7_rule_add_del_reply_t *rmp = NULL;
-  upf_rule_args_t args = { };
   upf_main_t *sm = &upf_main;
   int rv = 0;
 
-  args.l7_proto = mp->protocol;
-  args.host = mp->host;
-  args.path = mp->path;
-  rv = upf_rule_add_del (sm, mp->app, mp->id, (int) (mp->is_add), &args);
+  rv = upf_rule_add_del (sm, mp->app, mp->id, (int) (mp->is_add), mp->regex);
 
   REPLY_MACRO (VL_API_UPF_APP_L7_RULE_ADD_DEL_REPLY);
 }
