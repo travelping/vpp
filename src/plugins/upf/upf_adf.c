@@ -91,15 +91,8 @@ upf_adf_create_update_db (upf_adf_app_t * app)
   /* *INDENT-OFF* */
   hash_foreach(rule_index, index, app->rules_by_id,
   ({
-     regex_t regex = NULL;
      rule = pool_elt_at_index(app->rules, index);
-
-     vec_add(regex, ".*\\Q", 4);
-     vec_append(regex, rule->host);
-     vec_add(regex, "\\E.*\\Q", 6);
-     vec_append(regex, rule->path);
-     vec_add(regex, "\\E.*", 4);
-     vec_add1(regex, 0);
+     regex_t regex = vec_dup(rule->regex);
 
      adf_debug("app id: %u, regex: %s", app - gtm->upf_apps, regex);
 
@@ -349,7 +342,10 @@ upf_adf_url_test_command_fn (vlib_main_t * vm,
     }
 
   r = upf_adf_lookup (id, url, vec_len (url));
-  vlib_cli_output (vm, "Matched Result: %u", r);
+  if (~0 == r)
+    vlib_cli_output (vm, "No matched found");
+  else
+    vlib_cli_output (vm, "Matched Result Index: %u", r);
 
 done:
   vec_free (url);
@@ -375,7 +371,6 @@ upf_adf_show_db_command_fn (vlib_main_t * vm,
   unformat_input_t _line_input, *line_input = &_line_input;
   clib_error_t *error = NULL;
   u8 *name = NULL;
-  regex_t *expressions = NULL;
   upf_main_t *sm = &upf_main;
   uword *p = NULL;
   upf_adf_entry_t *e;
@@ -413,7 +408,7 @@ upf_adf_show_db_command_fn (vlib_main_t * vm,
   e = pool_elt_at_index (upf_adf_db, app->db_index);
   for (int i = 0; i < vec_len (e->expressions); i++)
     {
-      vlib_cli_output (vm, "regex: %v", expressions[i]);
+      vlib_cli_output (vm, "regex: %s", e->expressions[i]);
     }
 
 done:
@@ -435,8 +430,7 @@ VLIB_CLI_COMMAND (upf_adf_show_db_command, static) =
 /* Action function shared between message handler and debug CLI */
 
 static int
-vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
-		       upf_rule_args_t * args);
+vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add, regex_t regex);
 
 static int vnet_upf_app_add_del (u8 * name, u32 flags, u8 add);
 
@@ -451,12 +445,11 @@ upf_app_add_del (upf_main_t * sm, u8 * name, u32 flags, int add)
 }
 
 int
-upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
-		  int add, upf_rule_args_t * args)
+upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id, int add, u8 * regex)
 {
   int rv = 0;
 
-  rv = vnet_upf_rule_add_del (name, id, add, args);
+  rv = vnet_upf_rule_add_del (name, id, add, regex);
 
   return rv;
 }
@@ -597,8 +590,7 @@ VLIB_CLI_COMMAND (upf_app_add_del_command, static) =
 /* *INDENT-ON* */
 
 static int
-vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
-		       upf_rule_args_t * args)
+vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add, regex_t regex)
 {
   upf_main_t *sm = &upf_main;
   uword *p = NULL;
@@ -625,9 +617,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
       pool_get (app->rules, rule);
       memset (rule, 0, sizeof (*rule));
       rule->id = rule_index;
-      rule->l7_proto = args->l7_proto;
-      rule->host = vec_dup (args->host);
-      rule->path = vec_dup (args->path);
+      rule->regex = vec_dup(regex);
 
       hash_set (app->rules_by_id, rule_index, rule - app->rules);
     }
@@ -637,8 +627,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add,
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
       rule = pool_elt_at_index (app->rules, p[0]);
-      vec_free (rule->host);
-      vec_free (rule->path);
+      vec_free (rule->regex);
       hash_unset (app->rules_by_id, rule_index);
       pool_put (app->rules, rule);
     }
@@ -657,14 +646,11 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   clib_error_t *error = NULL;
+  regex_t regex = NULL;
   u8 *app_name = NULL;
   u32 rule_index = 0;
-  upf_rule_args_t r;
   int rv = 0;
   int add = 1;
-
-  memset(&r, 0, sizeof(r));
-  r.l7_proto = ~0;
 
   /* Get a line of input. */
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -683,24 +669,8 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 	    {
 	      add = 1;
 
-	      if (unformat
-		  (line_input, "ip dst %U", unformat_ip46_address, &r.dst_ip,
-		   IP46_TYPE_ANY))
-		break;
-	      else
-		if (unformat
-		    (line_input, "ip src %U", unformat_ip46_address, &r.src_ip,
-		     IP46_TYPE_ANY))
-		break;
-	      else if (unformat (line_input, "l7 http host %_%v%_", &r.host))
+	      if (unformat (line_input, "l7 regex %_%s%_", &regex))
 		{
-		  r.l7_proto = UPF_ADR_PROTO_HTTP;
-		  if (unformat (line_input, "path %_%v%_", &r.path))
-		    break;
-		}
-	      else if (unformat (line_input, "l7 https sni %_%v%_", &r.host))
-		{
-		  r.l7_proto = UPF_ADR_PROTO_HTTPS;
 		  break;
 		}
 	      else
@@ -725,7 +695,7 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
 	}
     }
 
-  rv = vnet_upf_rule_add_del (app_name, rule_index, add, &r);
+  rv = vnet_upf_rule_add_del (app_name, rule_index, add, regex);
   switch (rv)
     {
     case 0:
@@ -749,8 +719,7 @@ upf_application_rule_add_del_command_fn (vlib_main_t * vm,
     }
 
 done:
-  vec_free (r.host);
-  vec_free (r.path);
+  vec_free (regex);
   vec_free (app_name);
   unformat_free (line_input);
 
@@ -761,8 +730,8 @@ done:
 VLIB_CLI_COMMAND (upf_application_rule_add_del_command, static) =
 {
   .path = "upf application",
-  .short_help = "upf application <name> rule <id> (add | del) [ip src <ip> | dst <ip>] "
-  "[l7 http host <regex> path <path> | [l7 https sni <regex>]",
+  .short_help = "upf application <name> rule <id> (add | del) "
+  "[l7 regex <regex>]",
   .function = upf_application_rule_add_del_command_fn,
 };
 /* *INDENT-ON* */
@@ -774,22 +743,8 @@ format_upf_adr (u8 * s, va_list * args)
 
   s = format (s, "rule %u", rule->id);
 
-  switch (rule->l7_proto) {
-  case UPF_ADR_PROTO_HTTP:
-    s = format (s, " l7 http");
-    break;
-  case UPF_ADR_PROTO_HTTPS:
-    s = format (s, " l7 https");
-    break;
-  default:
-    s = format (s, " unknown (%u)", rule->l7_proto);
-    break;
-  }
-
-  if (rule->host)
-    s = format (s, " host '%v'", rule->host);
-  if (rule->path)
-    s = format (s, " path '%v'", rule->path);
+  if (rule->regex)
+    s = format (s, " regex '%s'", rule->regex);
 
   return s;
 }

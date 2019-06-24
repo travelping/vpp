@@ -51,9 +51,7 @@ autoreply define upf_app_l7_rule_add_del {
 
   u8 app[64];
   u32 id;
-  u8 protocol;
-  u8 host[256];
-  u8 path[256];
+  u8 regex[1024];
   u8 is_add;
 };
 
