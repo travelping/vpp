@@ -463,7 +463,7 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
       }
 
     adf_debug ("Scanning %p, db_id %u\n", pdr, pdr->pdi.adr.db_id);
-    if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url)) == 0)
+    if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url), NULL) == 0)
       adr = pdr;
   }
   vnet_buffer (b)->gtpu.pdr_idx = adr - active->pdr;

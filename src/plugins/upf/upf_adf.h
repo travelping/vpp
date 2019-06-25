@@ -51,7 +51,7 @@ CLIB_PACKED (struct tls_client_hello_hdr {
   u8 random[32];  /* gmt_unix_time + random_bytes[28] */
 });
 
-int upf_adf_lookup (u32 db_index, u8 * str, uint16_t length);
+int upf_adf_lookup (u32 db_index, u8 * str, uint16_t length, u32 * id);
 int upf_app_add_del (upf_main_t * sm, u8 * name, u32 flags, int add);
 int upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
 		      int add, u8  * regex);
