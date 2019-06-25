@@ -708,7 +708,7 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
       // start timer.....
 
       interval = t->period * TW_CLOCKS_PER_SECOND -
-	ceil ((now - t->base) * TW_CLOCKS_PER_SECOND);
+	floor ((now - t->base) * TW_CLOCKS_PER_SECOND);
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, interval);
 
@@ -1033,8 +1033,6 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		if (pool_is_free_index (gtm->sessions, si))
 		  continue;
 
-		gtp_debug ("wheel current tick: %u",
-			   sxsm->timer.current_tick);
 		sx = pool_elt_at_index (gtm->sessions, si);
 		upf_pfcp_session_urr_timer (sx, sxsm->now);
 	      }
