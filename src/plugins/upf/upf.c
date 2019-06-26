@@ -16,6 +16,7 @@
  * limitations under the License.
  */
 
+#include <math.h>
 #include <vnet/vnet.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
@@ -32,6 +33,8 @@
 /* Action function shared between message handler and debug CLI */
 #include <upf/flowtable.h>
 #include <upf/upf_adf.h>
+
+#include <vppinfra/tw_timer_1t_3w_1024sl_ov.h>
 
 int
 upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable)
@@ -1321,6 +1324,379 @@ VLIB_CLI_COMMAND (upf_show_assoc_command, static) =
   .short_help =
   "show upf association",
   .function = upf_show_assoc_command_fn,
+};
+/* *INDENT-ON* */
+
+
+#define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
+#define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
+
+typedef struct {
+  u32 period;
+  u32 handle;
+  u32 round;
+  f64 init;
+  f64 base;
+  f64 expected;
+} upf_tt_t;
+
+static upf_tt_t * upf_tt = NULL;
+static TWT (tw_timer_wheel) upf_tt_timer;
+
+static f64 min_late =  1.0;
+static f64 max_late =  0.0;
+
+static void
+upf_validate_timer (vlib_main_t * vm, TWT (tw_timer_wheel) * tw)
+{
+#if 0
+  int i, j;
+  tw_timer_wheel_slot_t *ts;
+  TWT (tw_timer) * t, *head;
+  u32 next_index;
+  u64 expected_tick = ~0;
+  int expected_wheel, expected_slot;
+  u64 expected_expires;
+  u64 first_expires;
+
+  for (i = 0; i < TW_TIMER_WHEELS; i++)
+    {
+      for (j = 0; j < TW_SLOTS_PER_RING; j++)
+	{
+	  ts = &tw->w[i][j];
+	  head = pool_elt_at_index (tw->timers, ts->head_index);
+	  next_index = head->next;
+
+	  while (next_index != ts->head_index)
+	    {
+	      t = pool_elt_at_index (tw->timers, next_index);
+	      if (t->expected_tick < expected_tick)
+		{
+		  expected_tick = t->expected_tick;
+		  expected_wheel = i;
+		  expected_slot = j;
+		}
+	      next_index = t->next;
+	    }
+	}
+    }
+
+  expected_expires = expected_tick - tw->current_tick;
+  first_expires = TW (tw_timer_first_expires_in_ticks) (tw);
+
+  if (first_expires > expected_expires)
+    vlib_cli_output (vm, "First: %u, Expected: %u @ (%u, %u), Fast %u, Slow %u, Glacier %u\n",
+		     first_expires, expected_expires,
+		     expected_wheel, expected_slot,
+		     tw->current_index[TW_TIMER_RING_FAST],
+		     tw->current_index[TW_TIMER_RING_SLOW],
+		     tw->current_index[TW_TIMER_RING_GLACIER]);
+#endif
+}
+
+static void
+upf_test_timer_start (f64 now, upf_tt_t * t)
+{
+  u32 interval;
+
+  now = upf_tt_timer.last_run_time;
+
+  ++t->round;
+  t->expected = t->base + t->period;
+  interval = t->period * TW_CLOCKS_PER_SECOND -
+    floor ((now - t->base) * TW_CLOCKS_PER_SECOND);
+  interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
+  t->handle = TW (tw_timer_start) (&upf_tt_timer, t - upf_tt, 0, interval);
+}
+
+static f64
+upf_test_timer_fn (vlib_main_t * vm, f64 now, int new)
+{
+  u32 ticks_until_expiration;
+  u32 *expired = NULL;
+  upf_tt_t * t;
+
+  /* run the timing wheel first, to that the internal base for new and updated timers
+   * is set to now */
+  expired = TW (tw_timer_expire_timers_vec) (&upf_tt_timer, now, expired);
+  upf_validate_timer(vm, &upf_tt_timer);
+
+  if (new)
+    {
+      pool_get (upf_tt, t);
+      memset (t, 0, sizeof (*t));
+      t->period = 1800;
+      t->init = now;
+      t->base = now;
+
+      upf_test_timer_start (now, t);
+    }
+
+  for (int i = 0; i < vec_len (expired); i++)
+    {
+      f64 late;
+
+      t = pool_elt_at_index (upf_tt, expired[i]);
+      late = now - t->expected;
+
+      min_late = fmin(min_late, late);
+      max_late = fmax(max_late, late);
+
+      if (now < t->expected)
+	{
+	  vlib_cli_output (vm, "Timer %8u @ %3u too early by %.53f secs\n",
+			   expired[i], t->round, t->expected - now);
+	}
+      //else if (late > 0.05)
+      else if (late > 0.05)
+	{
+	  vlib_cli_output (vm, "Timer %8u @ %3u too late by %.53f secs\n",
+			   expired[i], t->round, late);
+	}
+
+      t->base += t->period;
+      upf_test_timer_start (now, t);
+    }
+
+  vec_reset_length (expired);
+
+  ticks_until_expiration =
+    TW (tw_timer_first_expires_in_ticks) (&upf_tt_timer);
+  /* min 1 tick wait */
+  ticks_until_expiration = clib_max (ticks_until_expiration, 1);
+  /* sleep max 1s */
+  ticks_until_expiration =
+    clib_min (ticks_until_expiration, TW_CLOCKS_PER_SECOND);
+
+  return (f64) ticks_until_expiration * TW_SECS_PER_CLOCK;
+}
+
+static clib_error_t *
+upf_test_timer_command_fn (vlib_main_t * vm,
+			   unformat_input_t * main_input,
+			   vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  f64 timer_interval = TW_SECS_PER_CLOCK;
+  f64 now = unix_time_now ();
+  clib_error_t *error = NULL;
+  f64 scale = 1.0;
+  f64 base = 0.5;
+  upf_tt_t * t;
+  f64 next;
+  u32 i;
+
+  if (unformat_user (main_input, unformat_line_input, line_input))
+    {
+      while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+	{
+	  if (unformat (line_input, "base %f", &base))
+	    ;
+	  else if (unformat (line_input, "scale %f", &scale))
+	    ;
+	  else
+	    {
+	      error = unformat_parse_error (line_input);
+	      unformat_free (line_input);
+	      goto done;
+	    }
+	}
+
+      unformat_free (line_input);
+    }
+
+  TW (tw_timer_wheel_init) (&upf_tt_timer, NULL,
+			    TW_SECS_PER_CLOCK /* 10ms timer interval */ , ~0);
+  upf_tt_timer.last_run_time = now;
+
+  next = now;
+  /* run for 2h (7200 secs, every 10ms) */
+  for (i = 1; i < 172000 * 100; i++)
+    {
+      /*jitter 5ms .. 15ms */
+      now += timer_interval * (base + drand48() * scale);
+      if (next <= now || (i % 100) == 1)
+	{
+	  next = now + upf_test_timer_fn (vm, now, (i % 100) == 1);
+	}
+    }
+  for (i = 1; i < 7200 * 100; i++)
+    {
+      /*jitter 5ms .. 15ms */
+      now += timer_interval * (base + drand48() * scale);
+      if (next <= now)
+	next = now + upf_test_timer_fn (vm, now, 0);
+    }
+
+  vlib_cli_output (vm, "Latency min %.8f, max %.8f\n", min_late, max_late);
+
+  pool_foreach (t, upf_tt,
+  ({
+    if (t->expected < now)
+      vlib_cli_output (vm, "Timer failed to fire, late %0.8f\n", now - t->expected);
+  }));
+
+ done:
+  return error;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_test_timer_command, static) =
+{
+  .path = "upf test timer",
+  .short_help =
+  "upf test timer",
+  .function = upf_test_timer_command_fn,
+};
+
+/* *INDENT-ON* */
+static clib_error_t *
+upf_test_float_command_fn (vlib_main_t * vm,
+			  unformat_input_t * main_input,
+			  vlib_cli_command_t * cmd)
+{
+  u32 i;
+  f64 last_run_time = unix_time_now ();
+  f64 timer_interval = TW_SECS_PER_CLOCK;
+
+  for (i = 1; i < 7200 * 100; i++)
+    {
+      last_run_time += timer_interval;
+      if (last_run_time != (i * timer_interval))
+       printf("%08u, lrt: %.24f, ti: %.24f, diff: %.24f\n",
+	      i, last_run_time, i * timer_interval,
+	      last_run_time - i * timer_interval);
+    }
+
+  return NULL;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_test_float_command, static) =
+{
+  .path = "upf test float",
+  .short_help =
+  "upf test float",
+  .function = upf_test_float_command_fn,
+};
+/* *INDENT-ON* */
+
+static clib_error_t *
+upf_test_urr_command_fn (vlib_main_t * vm,
+			  unformat_input_t * main_input,
+			  vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  clib_error_t *error = NULL;
+  f64 now = unix_time_now ();
+  f64 base = unix_time_now ();
+  u32 period = 1800;
+  u32 interval;
+
+  if (unformat_user (main_input, unformat_line_input, line_input))
+    {
+      while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+	{
+	  if (unformat (line_input, "now %f", &now))
+	    ;
+	  else if (unformat (line_input, "base %f", &base))
+	    ;
+	  else if (unformat (line_input, "period %u", &period))
+	    ;
+	  else
+	    {
+	      error = unformat_parse_error (line_input);
+	      unformat_free (line_input);
+	      goto done;
+	    }
+	}
+
+      unformat_free (line_input);
+    }
+
+  interval = period * TW_CLOCKS_PER_SECOND -
+    ceil ((now - base) * TW_CLOCKS_PER_SECOND);
+  interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
+
+  vlib_cli_output (vm, "now = %.6f\n", now);
+  vlib_cli_output (vm, "base = %.6f\n", base);
+  vlib_cli_output (vm, "TW_CLOCKS_PER_SECOND = %.6f\n", TW_CLOCKS_PER_SECOND);
+  vlib_cli_output (vm, "now - base = %.6f\n", now - base);
+  vlib_cli_output (vm, "(now - base) * TW_CLOCKS_PER_SECOND = %.6f\n",
+		   (now - base) * TW_CLOCKS_PER_SECOND);
+  vlib_cli_output (vm, "ceil((now - base) * TW_CLOCKS_PER_SECOND) = %.6f\n",
+		   ceil((now - base) * TW_CLOCKS_PER_SECOND));
+
+  vlib_cli_output (vm, "Interval %u ticks, %.6f secs\n",
+		   interval, interval * TW_SECS_PER_CLOCK);
+
+ done:
+  return error;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_test_urr_command, static) =
+{
+  .path = "upf test urr",
+  .short_help =
+  "upf test urr",
+  .function = upf_test_urr_command_fn,
+};
+/* *INDENT-ON* */
+
+static clib_error_t *
+upf_test_duration_command_fn (vlib_main_t * vm,
+			  unformat_input_t * main_input,
+			  vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  clib_error_t *error = NULL;
+  f64 now = unix_time_now ();
+  f64 start = unix_time_now ();
+  f64 end;
+  u64 duration;
+
+  if (unformat_user (main_input, unformat_line_input, line_input))
+    {
+      while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+	{
+	  if (unformat (line_input, "now %f", &now))
+	    ;
+	  else if (unformat (line_input, "start %f", &start))
+	    ;
+	  else
+	    {
+	      error = unformat_parse_error (line_input);
+	      unformat_free (line_input);
+	      goto done;
+	    }
+	}
+
+      unformat_free (line_input);
+    }
+
+  duration = trunc(now - start);
+  end = start + duration;
+
+  vlib_cli_output (vm, "now = %.6f\n", now);
+  vlib_cli_output (vm, "start = %.6f\n", start);
+  vlib_cli_output (vm, "now - start = %.6f\n", now - start);
+  vlib_cli_output (vm, "trunc(now - start) = %u\n", duration);
+
+  vlib_cli_output (vm, "Duration %u secs\n", duration);
+  vlib_cli_output (vm, "end = %.6f\n", end);
+
+ done:
+  return error;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_test_duration_command, static) =
+{
+  .path = "upf test duration",
+  .short_help =
+  "upf test duration",
+  .function = upf_test_duration_command_fn,
 };
 /* *INDENT-ON* */
 
