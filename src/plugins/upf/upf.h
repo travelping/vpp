@@ -406,6 +406,7 @@ typedef struct
 {
   f64 base;
   u32 period;			/* relative duration in seconds */
+  f64 expected;
   u32 handle;
 } urr_time_t;
 

@@ -36,7 +36,6 @@
 #define RESPONSE_TIMEOUT 30
 
 #define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
-#define TW_JITTER 10e-4                        /*  1ms */
 #define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
 
 #if CLIB_DEBUG > 0
@@ -686,6 +685,7 @@ upf_pfcp_session_stop_urr_time (urr_time_t * t)
       // stop timer ....
       TW (tw_timer_stop) (&sx->timer, t->handle);
       t->handle = ~0;
+      t->expected = 0;
     }
 }
 
@@ -707,6 +707,7 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
 
       // start timer.....
 
+      t->expected = t->base + t->period;
       interval = t->period * TW_CLOCKS_PER_SECOND -
 	floor ((now - t->base) * TW_CLOCKS_PER_SECOND);
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
@@ -738,6 +739,7 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
       u64 ticks;
 
       // start timer.....
+      t->expected = t->base;
       ticks = ceil ((t->base - now) * TW_CLOCKS_PER_SECOND) + 1;
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, ticks);
 
@@ -750,12 +752,12 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
 static void
 upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 {
-  gtp_debug ("upf_pfcp_session_urr_timer (%p, %u, %.3f, %.4f", sx, now);
-
   pfcp_session_report_request_t req;
   upf_main_t *gtm = &upf_main;
   struct rules *active;
   upf_urr_t *urr;
+
+  gtp_debug ("upf_pfcp_session_urr_timer (%p, %u, %.4f)", sx, sx - gtm->sessions, now);
 
   active = sx_get_rules (sx, SX_ACTIVE);
 
@@ -769,28 +771,21 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   {
     u32 trigger = 0;
 
-#define urr_diff_with_jitter(V, NOW, JITTER)				\
-    trunc(((NOW) - (V).base - (f64)(V).period + (JITTER)) * TW_CLOCKS_PER_SECOND)
-
 #define urr_check(V, NOW)				\
-    urr_check_with_jitter((V), (NOW), TW_JITTER)
-
-#define urr_check_with_jitter(V, NOW, JITTER)				\
-    (((V).base != 0) && ((V).period != 0) &&				\
-     (urr_diff_with_jitter((V), (NOW), (JITTER)) >= 0))
+    (((V).base != 0) && ((V).period != 0) &&		\
+     ((V).expected != 0) && (V).expected < (NOW))
 
 #define URR_COND_TIME(t, time)			\
     (t).period != 0 ? time : 0
 #define URR_DEBUG_HEADER						\
-    "Rule       | period   | expire at               | in secs   | ticks     | corrected | handle     | check result\n"
-#define URR_DEUBG_LINE "%-10s | %8lu | %U | %9.3f | %9.3f | %9.3f | 0x%08x | %u\n"
+    "Rule       | period   | expire at               | in secs   | ticks     | handle     | check result\n"
+#define URR_DEUBG_LINE "%-10s | %8lu | %U | %9.3f | %9.3f | 0x%08x | %u\n"
 #define URR_DEBUG_VALUES(Label, t)					\
     (Label), (t).period,						\
       /* VPP does not support ISO dates... */				\
       format_time_float, 0, (t).base + (f64)(t).period,			\
-      URR_COND_TIME(t, ((f64)(t).period) - (now - (t).base)),		\
-      URR_COND_TIME(t, (now - (t).base - (t).period) * TW_CLOCKS_PER_SECOND), \
-      URR_COND_TIME(t, urr_diff_with_jitter((t), now, TW_JITTER)),	\
+      URR_COND_TIME(t, ((t).expected - now)),				\
+      URR_COND_TIME(t, ((t).expected - now) * TW_CLOCKS_PER_SECOND),	\
       (t).handle, urr_check(t, now)
 
     gtp_debug ("URR: %p, Id: %u", urr, urr->id);
@@ -813,6 +808,21 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	  trigger |= USAGE_REPORT_TRIGGER_PERIODIC_REPORTING;
 
 	urr->measurement_period.base += urr->measurement_period.period;
+	if ((urr->measurement_period.base + urr->measurement_period.period) < now)
+	  {
+	    clib_warning ("WARNING: URR Measurement Period wrong, Session 0x%08x\n"
+			  URR_DEBUG_HEADER
+			  URR_DEUBG_LINE,
+			  sx->cp_seid,
+			  URR_DEBUG_VALUES ("Period", urr->measurement_period));
+#if CLIB_DEBUG > 0
+	    ASSERT ((urr->measurement_period.base + urr->measurement_period.period) < now);
+#endif
+	    while ((urr->measurement_period.base + urr->measurement_period.period) < now)
+	      {
+		urr->measurement_period.base += urr->measurement_period.period;
+	      }
+	  }
 
 	/* rearm Measurement Period */
 	upf_pfcp_session_start_stop_urr_time
@@ -914,6 +924,17 @@ upf_server_send_heartbeat (u32 node_idx)
 
 }
 
+static int
+timer_id_cmp (void *a1, void *a2)
+{
+  u32 *n1 = a1;
+  u32 *n2 = a2;
+
+  if (*n1 < *n2) return -1;
+  else if (*n1 == *n2) return 0;
+  else return 1;
+}
+
 static uword
 sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 {
@@ -921,6 +942,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
   uword event_type, *event_data = 0;
   upf_main_t *gtm = &upf_main;
   u32 *expired = NULL;
+  u32 last_expired;
 
   sxsm->timer.last_run_time =
     sxsm->now = unix_time_now ();
@@ -1021,11 +1043,18 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 	  break;
 	}
 
+      vec_sort_with_function (expired, timer_id_cmp);
+      last_expired = ~0;
+
       for (int i = 0; i < vec_len (expired); i++)
 	{
 	  switch (expired[i] >> 24)
 	    {
 	    case 0 ... 0x7f:
+	      if (last_expired == expired[i])
+		continue;
+	      last_expired = expired[i];
+
 	      {
 		const u32 si = expired[i] & 0x7FFFFFFF;
 		upf_session_t *sx;
