@@ -2254,12 +2254,12 @@ handle_session_establishment_request (sx_msg_t * req,
 			      &resp.failed_rule_id)) != 0)
     goto out_send_resp;
 
-  gtp_debug ("%U", format_sx_session, sess, SX_PENDING, /*debug*/ 1);
-
   r = sx_update_apply (sess);
   gtp_debug ("Appy: %d\n", r);
 
   sx_update_finish (sess);
+
+  gtp_debug ("%U", format_sx_session, sess, SX_ACTIVE, /*debug*/ 1);
 
 out_send_resp:
   if (r == 0)
