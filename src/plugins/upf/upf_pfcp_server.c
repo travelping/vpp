@@ -18,6 +18,7 @@
 */
 
 #include <math.h>
+#include <inttypes.h>
 
 #include <vnet/ip/ip.h>
 #include <vnet/udp/udp.h>
@@ -676,17 +677,25 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 }
 
 void
-upf_pfcp_session_stop_urr_time (urr_time_t * t)
+upf_pfcp_session_stop_urr_time (urr_time_t * t, const f64 now)
 {
   sx_server_main_t *sx = &sx_server_main;
 
-  if (t->handle != ~0)
+  if (t->handle != ~0 && t->expected > now)
     {
-      // stop timer ....
+      /* The timer wheel stop expired timers automatically. We don't map
+       * expired timers to their urr_time_t structure, therefore the handle
+       * might already be reused.
+       * Only stop the timer if we are sure that it can not possibly have
+       * expired yet.
+       * Failing to stop a timer is now a problem. The timer will fire, but
+       * the URR scan woun't find any expired URRs.
+       */
       TW (tw_timer_stop) (&sx->timer, t->handle);
-      t->handle = ~0;
-      t->expected = 0;
     }
+
+  t->handle = ~0;
+  t->expected = 0;
 }
 
 void
@@ -699,7 +708,7 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
   const f64 now = sx->timer.last_run_time;
 
   if (t->handle != ~0)
-    upf_pfcp_session_stop_urr_time (t);
+    upf_pfcp_session_stop_urr_time (t, now);
 
   if (t->period != 0 && start_it)
     {
@@ -714,11 +723,12 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, interval);
 
       gtp_debug
-	("starting URR timer %u, now is %.3f, base is %.3f, expire in %lu ticks,"
-	 " alternate %.4f, %.4f, clib_now %.4f, current tick: %u", si, now,
-	 t->base, interval, ((t->base + (f64) interval) - now) * TW_CLOCKS_PER_SECOND,
-	 ((t->base + interval) - now) * TW_CLOCKS_PER_SECOND, unix_time_now (),
-	 sx->timer.current_tick);
+	("starting URR timer on sidx %u, handle 0x%08x: "
+	 "now is %.4f, base is %.4f, expire in %lu ticks "
+	 " @ %.4f (%U), clib_now %.4f, current tick: %u",
+	 si, t->handle, now, t->base, interval,
+	 t->expected, format_time_float, 0, t->expected,
+	 unix_time_now (), sx->timer.current_tick);
     }
 }
 
@@ -732,7 +742,7 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
   f64 now = sx->timer.last_run_time;
 
   if (t->handle != ~0)
-    upf_pfcp_session_stop_urr_time (t);
+    upf_pfcp_session_stop_urr_time (t, now);
 
   if (t->base != 0 && t->base > now)
     {
@@ -744,8 +754,9 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, ticks);
 
       gtp_debug
-	("starting URR absolute timer %u, now is %.3f, base is %.3f, expire in %lu ticks\n",
-	 si, now, t->base, ticks);
+	("starting URR absolute timer on sidx %u, handle 0x%08x: "
+	 "now is %.4f, base is %.4f, expire in %lu ticks @ %.4f\n",
+	 si, t->handle, now, t->base, ticks, t->expected);
     }
 }
 
@@ -757,7 +768,8 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   struct rules *active;
   upf_urr_t *urr;
 
-  gtp_debug ("upf_pfcp_session_urr_timer (%p, %u, %.4f)", sx, sx - gtm->sessions, now);
+  gtp_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)",
+	     sx, sx->cp_seid, sx - gtm->sessions, now);
 
   active = sx_get_rules (sx, SX_ACTIVE);
 
@@ -778,12 +790,15 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 #define URR_COND_TIME(t, time)			\
     (t).period != 0 ? time : 0
 #define URR_DEBUG_HEADER						\
-    "Rule       | period   | expire at               | in secs   | ticks     | handle     | check result\n"
-#define URR_DEUBG_LINE "%-10s | %8lu | %U | %9.3f | %9.3f | 0x%08x | %u\n"
+    "Rule       | base                                | period   | expire at               | in secs              | ticks     | handle     | check result\n"
+#define URR_DEUBG_LINE "%-10s | %U (%9.3f) | %8lu | %U | %9.3f, %9.3f | %9.3f | 0x%08x | %u\n"
 #define URR_DEBUG_VALUES(Label, t)					\
-    (Label), (t).period,						\
-      /* VPP does not support ISO dates... */				\
+    (Label),								\
+      format_time_float, 0, (t).base,					\
+      URR_COND_TIME(t, ((t).base - now)),				\
+      (t).period,							\
       format_time_float, 0, (t).base + (f64)(t).period,			\
+      URR_COND_TIME(t, (((t).base + (f64)(t).period) - now)),		\
       URR_COND_TIME(t, ((t).expected - now)),				\
       URR_COND_TIME(t, ((t).expected - now) * TW_CLOCKS_PER_SECOND),	\
       (t).handle, urr_check(t, now)
@@ -810,10 +825,10 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	urr->measurement_period.base += urr->measurement_period.period;
 	if ((urr->measurement_period.base + urr->measurement_period.period) < now)
 	  {
-	    clib_warning ("WARNING: URR Measurement Period wrong, Session 0x%08x\n"
+	    clib_warning ("WARNING: URR %p, Measurement Period wrong, Session 0x%016" PRIx64 ", URR: %u\n"
 			  URR_DEBUG_HEADER
 			  URR_DEUBG_LINE,
-			  sx->cp_seid,
+			  urr, sx->cp_seid, urr->id,
 			  URR_DEBUG_VALUES ("Period", urr->measurement_period));
 #if CLIB_DEBUG > 0
 	    ASSERT ((urr->measurement_period.base + urr->measurement_period.period) < now);
@@ -834,14 +849,14 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	if (urr->triggers & REPORTING_TRIGGER_TIME_THRESHOLD)
 	  trigger |= USAGE_REPORT_TRIGGER_TIME_THRESHOLD;
 
-	upf_pfcp_session_stop_urr_time (&urr->time_threshold);
+	upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
       }
     if (urr_check (urr->time_quota, now))
       {
 	if (urr->triggers & REPORTING_TRIGGER_TIME_QUOTA)
 	  trigger |= USAGE_REPORT_TRIGGER_TIME_QUOTA;
 
-	upf_pfcp_session_stop_urr_time (&urr->time_quota);
+	upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
 	urr->time_quota.period = 0;
 	urr->status |= URR_OVER_QUOTA;
       }
@@ -870,7 +885,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
 	clib_spinlock_unlock (&sx->lock);
 
-	upf_pfcp_session_stop_urr_time (&urr->monitoring_time);
+	upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
 
 	urr->usage_before_monitoring_time.start_time = urr->start_time;
 	urr->start_time += trunc(now - urr->start_time);
@@ -884,6 +899,88 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
   pfcp_free_msg (PFCP_SESSION_REPORT_REQUEST, &req.grp);
 }
+
+#if CLIB_DEBUG > 0
+
+static void
+upf_validate_session_timer (upf_session_t *sx)
+{
+  f64 now = unix_time_now ();
+  struct rules *r;
+  upf_urr_t *urr;
+  int error = 0;
+
+#define urr_check(V, NOW)	(~0 != (V).handle)
+
+  r = sx_get_rules (sx, SX_PENDING);
+  vec_foreach (urr, r->urr)
+    {
+      if (!urr_check(urr->measurement_period, now) &&
+	  !urr_check(urr->monitoring_time, now) &&
+	  !urr_check(urr->time_threshold, now) &&
+	  !urr_check(urr->time_quota, now))
+	continue;
+
+      error++;
+      clib_warning ("WARNING: Pending URR %p with active timer handler, Session 0x%016" PRIx64 ", URR: %u\n"
+		    URR_DEBUG_HEADER
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE,
+		    urr, sx->cp_seid, urr->id,
+		    URR_DEBUG_VALUES ("Period", urr->measurement_period),
+		    URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
+		    URR_DEBUG_VALUES ("Quota", urr->time_quota),
+		    URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
+    }
+#undef urr_check
+
+#define urr_check(V, NOW)			\
+  (((V).handle != ~0) && (V).expected < ((NOW) - 1))
+
+  r = sx_get_rules (sx, SX_ACTIVE);
+  vec_foreach (urr, r->urr)
+    {
+      if (!urr_check (urr->measurement_period, now) &&
+	  !urr_check (urr->monitoring_time, now) &&
+	  !urr_check (urr->time_threshold, now) &&
+	  !urr_check (urr->time_quota, now))
+	continue;
+
+      error++;
+      clib_warning ("WARNING: Active URR %p with expired timer, Session 0x%016" PRIx64 ", URR: %u\n"
+		    URR_DEBUG_HEADER
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE
+		    URR_DEUBG_LINE,
+		    urr, sx->cp_seid, urr->id,
+		    URR_DEBUG_VALUES ("Period", urr->measurement_period),
+		    URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
+		    URR_DEBUG_VALUES ("Quota", urr->time_quota),
+		    URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
+    }
+#undef urr_check
+
+  ASSERT (error == 0);
+}
+
+static void
+upf_validate_session_timers ()
+{
+  upf_main_t *gtm = &upf_main;
+  upf_session_t *sx = NULL;
+
+  /* *INDENT-OFF* */
+  pool_foreach (sx, gtm->sessions,
+  ({
+    upf_validate_session_timer (sx);
+  }));
+  /* *INDENT-ON* */
+}
+
+#endif
 
 void
 upf_pfcp_server_stop_timer (u32 handle)
@@ -1093,6 +1190,10 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 
       vec_reset_length (expired);
       vec_reset_length (event_data);
+
+#if CLIB_DEBUG > 0
+      upf_validate_session_timers ();
+#endif
     }
 
   return (0);

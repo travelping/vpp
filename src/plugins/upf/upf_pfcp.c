@@ -879,6 +879,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
 {
   struct rules *active = sx_get_rules (sx, SX_ACTIVE);
   sx_server_main_t *sxsm = &sx_server_main;
+  const f64 now = sxsm->timer.last_run_time;
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
   ip46_address_fib_t *ue_dst_ip;
@@ -907,10 +908,10 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   /* stop all timers */
   vec_foreach (urr, active->urr)
   {
-    upf_pfcp_session_stop_urr_time (&urr->measurement_period);
-    upf_pfcp_session_stop_urr_time (&urr->monitoring_time);
-    upf_pfcp_session_stop_urr_time (&urr->time_threshold);
-    upf_pfcp_session_stop_urr_time (&urr->time_quota);
+    upf_pfcp_session_stop_urr_time (&urr->measurement_period, now);
+    upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
+    upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
+    upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
   }
 
   if (drop_msgs)
@@ -1805,10 +1806,10 @@ sx_update_apply (upf_session_t * sx)
 	if (!new_urr)
 	  {
 	    /* stop all timers */
-	    upf_pfcp_session_stop_urr_time (&urr->measurement_period);
-	    upf_pfcp_session_stop_urr_time (&urr->monitoring_time);
-	    upf_pfcp_session_stop_urr_time (&urr->time_threshold);
-	    upf_pfcp_session_stop_urr_time (&urr->time_quota);
+	    upf_pfcp_session_stop_urr_time (&urr->measurement_period, now);
+	    upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
+	    upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
+	    upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
 
 	    continue;
 	  }
@@ -2185,9 +2186,8 @@ format_urr_time (u8 * s, va_list * args)
 
   return format (s, "%20" PRIu64 " secs @ %U, in %9.3f secs, handle 0x%08x",
 		 t->period,
-		 /* VPP does not support ISO dates... */
-		 format_time_float, 0, t->base + (f64) t->period,
-		 ((f64) t->period) - (now - t->base), t->handle);
+		 format_time_float, 0, t->expected,
+		 t->expected - now, t->handle);
 }
 
 static u8 *
@@ -2280,8 +2280,8 @@ format_sx_session (u8 * s, va_list * args)
 	      &sx->up_address, IP46_TYPE_ANY, sx);
 
   if (debug)
-    s = format (s, "  Pointer: %p\n  PDR: %p\n  FAR: %p\n",
-		sx, rules->pdr, rules->far);
+    s = format (s, "  SIdx: %u\n  Pointer: %p\n  PDR: %p\n  FAR: %p\n",
+		sx - gtm->sessions, sx, rules->pdr, rules->far);
 
   s = format (s, "  Sx Association: %u\n",
 	      sx->assoc.node);
@@ -2375,12 +2375,15 @@ format_sx_session (u8 * s, va_list * args)
 
   vec_foreach (urr, rules->urr)
   {
+      if (debug)
+	s = format (s, "URR: %u @ %p\n", urr->id, urr);
+      else
+	s = format (s, "URR: %u\n", urr->id);
+
       /* *INDENT-OFF* */
-      s = format (s, "URR: %u\n"
-		  "  Measurement Method: %04x == %U\n"
+      s = format (s, "  Measurement Method: %04x == %U\n"
 		  "  Reporting Triggers: %04x == %U\n"
 		  "  Status: %d == %U\n",
-		  urr->id,
 		  urr->methods, format_flags, (u64)urr->methods, urr_method_flags,
 		  urr->triggers, format_flags, (u64)urr->triggers, urr_trigger_flags,
 		  urr->status, format_flags, (u64)urr->status, urr_status_flags);
