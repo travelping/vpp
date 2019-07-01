@@ -16,6 +16,18 @@
  * limitations under the License.
  */
 
+#include <stdio.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/ptrace.h>
+#include <sys/user.h>
+#include <sys/prctl.h>
+#include <errno.h>
+
 #include <math.h>
 #include <vnet/vnet.h>
 #include <vnet/plugin/plugin.h>
@@ -1719,6 +1731,150 @@ VLIB_CLI_COMMAND (upf_show_flows_command, static) =
   .path = "show upf flows",
   .short_help = "show upf flows",
   .function = upf_show_flows_command_fn,
+};
+/* *INDENT-ON* */
+
+static clib_error_t *
+upf_test_watch_point_command_fn (vlib_main_t * vm,
+			  unformat_input_t * main_input,
+			  vlib_cli_command_t * cmd)
+{
+  load_balance_main.lbm_to_counters.counters = NULL;
+  vec_validate (load_balance_main.lbm_to_counters.counters, 1);
+
+  return NULL;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_test_watch_point_command, static) =
+{
+  .path = "upf test watch",
+  .short_help =
+  "upf test watch",
+  .function = upf_test_watch_point_command_fn,
+};
+/* *INDENT-ON* */
+
+extern int errno;
+
+enum {
+	BREAK_EXEC = 0x0,
+	BREAK_WRITE = 0x1,
+	BREAK_READWRITE = 0x3,
+};
+
+enum {
+	BREAK_ONE = 0x0,
+	BREAK_TWO = 0x1,
+	BREAK_FOUR = 0x3,
+	BREAK_EIGHT = 0x2,
+};
+
+#define ENABLE_BREAKPOINT(x)       (0x1 << ((x) * 2))
+#define BREAKPOINT_TYPE(x, type)   ((type) << (16 + ((x) * 4)))
+#define BREAKPOINT_WIDTH(x, width) ((width) << (18 + ((x) * 4)))
+
+/*
+ * This function fork()s a child that will use
+ * ptrace to set a hardware breakpoint for
+ * memory r/w at _addr_. When the breakpoint is
+ * hit, then _handler_ is invoked in a signal-
+ * handling context.
+ */
+static int
+install_breakpoint(void *addr, int bpno, void (*handler)(int)) {
+	pid_t child = 0;
+	uint32_t bp =
+		ENABLE_BREAKPOINT(bpno) |
+		BREAKPOINT_TYPE(bpno, BREAK_WRITE) |
+		BREAKPOINT_WIDTH(bpno, BREAK_FOUR);
+	pid_t parent = getpid();
+	int child_status = 0;
+
+	if (!(child = fork()))
+	{
+		int parent_status = 0;
+		printf("in child\n");
+
+		if (ptrace(PTRACE_ATTACH, parent, NULL, NULL))
+		{
+			printf("attach: %m\n");
+			_Exit(1);
+		}
+
+		while (!WIFSTOPPED(parent_status))
+			waitpid(parent, &parent_status, 0);
+
+		/*
+		 * set the breakpoint address.
+		 */
+		if (ptrace(PTRACE_POKEUSER, parent, offsetof(struct user, u_debugreg[bpno]), addr))
+		{
+			printf("set breakpoint address: %m\n");
+			_exit(1);
+		}
+
+		/*
+		 * set parameters for when the breakpoint should be triggered.
+		 */
+		if (ptrace(PTRACE_POKEUSER, parent, offsetof(struct user, u_debugreg[7]), bp))
+		{
+			printf("set breakpoint condition: %m\n");
+			_exit(1);
+		}
+
+		if (ptrace(PTRACE_DETACH, parent, NULL, NULL))
+			_exit(1);
+
+		_exit(0);
+	}
+
+	waitpid(child, &child_status, 0);
+
+	signal(SIGTRAP, handler);
+
+	if (WIFEXITED(child_status) && !WEXITSTATUS(child_status))
+		return 1;
+
+	return 0;
+}
+
+#if 0
+/*
+ * This function will disable a breakpoint by
+ * invoking install_breakpoint is a 0x0 _addr_
+ * and no handler function. See comments above
+ * for implementation details.
+ */
+static int
+disable_breakpoint(int bpno)
+{
+	return install_breakpoint(0x0, bpno, NULL);
+}
+#endif
+
+void handle_breakpoint(int s)
+{
+  printf("handler_breakpoint ...\n");
+  abort ();
+}
+
+static clib_error_t *
+upf_arm_watch_point_command_fn (vlib_main_t * vm,
+			  unformat_input_t * main_input,
+			  vlib_cli_command_t * cmd)
+{
+  install_breakpoint (&load_balance_main.lbm_to_counters.counters, 0, handle_breakpoint);
+  return NULL;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_arm_watch_point_command, static) =
+{
+  .path = "upf arm watch",
+  .short_help =
+  "upf arm watch",
+  .function = upf_arm_watch_point_command_fn,
 };
 /* *INDENT-ON* */
 
