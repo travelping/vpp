@@ -430,11 +430,16 @@ static void
 request_t1_expired (u32 id)
 {
   sx_server_main_t *sxsm = &sx_server_main;
-  sx_msg_t *msg = sx_msg_pool_elt_at_index (sxsm, id);
   upf_main_t *gtm = &upf_main;
+  sx_msg_t *msg;
 
+  if (sx_msg_pool_is_free_index (sxsm, id))
+    /* msg already processed, overlap of timeout and late answer */
+    return;
+
+  msg = sx_msg_pool_elt_at_index (sxsm, id);
   gtp_debug ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
-		msg->n1);
+	     msg->n1);
 
   if (--msg->n1 != 0)
     {
