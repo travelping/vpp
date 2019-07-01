@@ -152,6 +152,12 @@ sx_msg_pool_put (sx_server_main_t * sxsm, sx_msg_t *m )
   pool_put (sxsm->msg_pool, m);
 }
 
+static inline int
+sx_msg_pool_is_free_index (sx_server_main_t * sxsm, u32 index)
+{
+  return pool_is_free_index (sxsm->msg_pool, index);
+}
+
 static inline sx_msg_t *
 sx_msg_pool_elt_at_index (sx_server_main_t * sxsm, u32 index)
 {
