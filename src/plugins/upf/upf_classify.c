@@ -230,22 +230,51 @@ upf_adr_try_tls (u16 port, u8 *p, word length)
 
   while (len > 4)
     {
-      u16 ext_type = clib_net_to_host_unaligned_mem_u16((u16 *)data);
-      u16 ext_len = clib_net_to_host_unaligned_mem_u16((u16 *)(data + 2));
+      u16 ext_type, ext_len, sni_len, name_len;
 
-      clib_warning("TLS Hello Extension: %u, %u", ext_type, ext_len);
+      ext_type = clib_net_to_host_unaligned_mem_u16((u16 *)data);
+      ext_len = clib_net_to_host_unaligned_mem_u16((u16 *)(data + 2));
 
-      if (ext_type == TLS_EXT_SNI && ext_len != 0)
+      gtp_debug("TLS Hello Extension: %u, %u", ext_type, ext_len);
+
+      if (ext_type != TLS_EXT_SNI)
+	goto skip_extension;
+
+      if (ext_len < 5 || ext_len + 4 > len)
 	{
-	  vec_add (url, "https://", strlen ("https://"));
-	  vec_add (url, data + 4, ext_len);
-	  if (port != 443)
-	    url = format (url, ":%u", port);
-	  vec_add1 (url, '/');
-
-	  return url;
+	  gtp_debug ("invalid extension len: %u (%u)", ext_len, len);
+	  goto skip_extension;
 	}
 
+      sni_len = clib_net_to_host_unaligned_mem_u16((u16 *)(data + 4));
+      if (sni_len != ext_len - 2)
+	{
+	  gtp_debug ("invalid SNI extension len: %u != %u", sni_len, ext_len - 2);
+	  goto skip_extension;
+	}
+
+      if (*(data + 6) != 0)
+	{
+	  gtp_debug ("invalid SNI name type: %u", *(data + 6));
+	  goto skip_extension;
+	}
+
+      name_len = clib_net_to_host_unaligned_mem_u16((u16 *)(data + 7));
+      if (name_len != sni_len - 3)
+	{
+	  gtp_debug ("invalid server name len: %u != %u", name_len, sni_len - 3);
+	  goto skip_extension;
+	}
+
+      vec_add (url, "https://", strlen ("https://"));
+      vec_add (url, data + 9, name_len);
+      if (port != 443)
+	url = format (url, ":%u", port);
+      vec_add1 (url, '/');
+
+	return url;
+
+    skip_extension:
       len -= ext_len + 4;
       data += ext_len + 4;
     }
