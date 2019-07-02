@@ -237,7 +237,7 @@ upf_adr_try_tls (u16 port, u8 *p, word length)
 
       if (ext_type == TLS_EXT_SNI && ext_len != 0)
 	{
-	  vec_add (url, "https://", sizeof ("https://"));
+	  vec_add (url, "https://", strlen ("https://"));
 	  vec_add (url, data + 4, ext_len);
 	  if (port != 443)
 	    url = format (url, ":%u", port);
@@ -299,7 +299,7 @@ upf_adr_try_http (u16 port, u8 *p, word len)
   if (len <= 0)
     return NULL;
 
-  vec_add (url, "http://", sizeof ("http://"));
+  vec_add (url, "http://", strlen ("http://"));
   vec_add (url, host, len);
   if (port != 80)
     url = format (url, ":%u", port);
