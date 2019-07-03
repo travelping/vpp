@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <upf/upf.h>
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 #define adf_debug clib_warning
 #else
 #define adf_debug(...)				\

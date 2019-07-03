@@ -37,9 +37,7 @@
 #include "upf_pfcp.h"
 #include "upf_pfcp_api.h"
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 0
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 2
 #define gtp_debug clib_warning
 #else
 #define gtp_debug(...)				\

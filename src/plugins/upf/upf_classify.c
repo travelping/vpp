@@ -29,9 +29,7 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 1
-#if (CLIB_DEBUG > 0)
+#if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
 #define gtp_debug(...)				\

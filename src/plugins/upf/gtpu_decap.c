@@ -20,7 +20,7 @@
 #include <upf/upf.h>
 #include <upf/upf_pfcp.h>
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
 #define gtp_debug(...)				\

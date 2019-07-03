@@ -24,9 +24,7 @@
 #include "flowtable.h"
 #include "flowtable_tcp.h"
 
-//#undef CLIB_DEBUG
-//#define CLIB_DEBUG 1
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 #define flow_debug clib_warning
 #else
 #define flow_debug(...)				\
