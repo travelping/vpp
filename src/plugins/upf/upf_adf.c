@@ -63,7 +63,7 @@ upf_adf_cleanup_db_entry (upf_adf_entry_t * entry)
 static int
 upf_adf_create_update_db (upf_adf_app_t * app)
 {
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
   upf_main_t *gtm = &upf_main;
 #endif
   upf_adf_entry_t *entry = NULL;

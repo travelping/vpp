@@ -72,11 +72,14 @@ flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 	{
 	  u32 f_index = vec_pop (fmt->flow_cache);
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 	  clib_warning("releasing flow %p, index %u",
 		       pool_elt_at_index (fm->flows, f_index), f_index);
+#endif
+#if CLIB_DEBUG > 0
 	  ASSERT (pool_elt_at_index (fm->flows, f_index)->cpu_index == cpu_index);
 #endif
+
 	  pool_put_index (fm->flows, f_index);
 	}
       fm->flows_cpt -= FLOW_CACHE_SZ;
@@ -409,7 +412,7 @@ format_flow (u8 * s, va_list * args)
 	      flow->pdr_id[is_reverse],
 	      flow->pdr_id[is_reverse ^ FT_REVERSE],
 	      app_name, flow->lifetime);
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
   s = format (s, ", cpu %u", flow->cpu_index);
 #endif
   return s;

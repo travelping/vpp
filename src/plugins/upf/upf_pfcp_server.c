@@ -39,7 +39,7 @@
 #define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
 #define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #define urr_debug_out(format, args...)				\
   _clib_error (CLIB_ERROR_WARNING, NULL, 0, format, ## args)
@@ -905,7 +905,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   pfcp_free_msg (PFCP_SESSION_REPORT_REQUEST, &req.grp);
 }
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 10
 
 static void
 upf_validate_session_timer (upf_session_t *sx)
@@ -1196,7 +1196,10 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
       vec_reset_length (expired);
       vec_reset_length (event_data);
 
-#if CLIB_DEBUG > 0
+      flush_ip_lookup_tx_frames (vm, 0);
+      flush_ip_lookup_tx_frames (vm, 1);
+
+#if CLIB_DEBUG > 10
       upf_validate_session_timers ();
 #endif
     }

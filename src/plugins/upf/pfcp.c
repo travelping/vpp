@@ -37,7 +37,7 @@
 
 #include "pfcp.h"
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 #define pfcp_debug clib_warning
 #else
 #define pfcp_debug(...)				\
@@ -6184,7 +6184,7 @@ decode_group (u8 * p, int len, const struct pfcp_ie_def *grp_def,
 	  if (!(missing & 1))
 	    continue;
 
-#if CLIB_DEBUG > 0
+#if CLIB_DEBUG > 1
 	  const struct pfcp_ie_def *ie_def = get_ie_def (&grp_def->group[i]);
 #endif
 	  pfcp_debug ("Missing IE Type: %s, %u", ie_def->name, grp_def->group[i].type);
