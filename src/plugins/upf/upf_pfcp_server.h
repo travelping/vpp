@@ -61,6 +61,7 @@ typedef struct
   u32 timer;
   u32 n1;
   u32 t1;
+  u8 is_valid_pool_item;
 
   union
   {
@@ -84,6 +85,8 @@ typedef struct
 
   TWT (tw_timer_wheel) timer;
   sx_msg_t *msg_pool;
+  u32 * msg_pool_cache;
+  u32 * msg_pool_free;
   uword *request_q;
   mhash_t response_q;
 
@@ -133,9 +136,39 @@ clib_error_t *sx_server_main_init (vlib_main_t * vm);
 static inline void
 init_sx_msg (sx_msg_t * m)
 {
+  u8 is_valid_pool_item = m->is_valid_pool_item;
+
   memset (m, 0, sizeof (*m));
+  m->is_valid_pool_item = is_valid_pool_item;
   m->pfcp_endpoint = ~0;
   m->node = ~0;
+}
+
+static inline void
+sx_msg_pool_init (sx_server_main_t * sxsm)
+{
+  vec_alloc (sxsm->msg_pool_cache, 128);
+  vec_alloc (sxsm->msg_pool_free, 128);
+
+}
+
+static inline void
+sx_msg_pool_loop_start (sx_server_main_t * sxsm)
+{
+  /* move enough entries from free to cache,
+     so that cache has max 128 entries */
+  while (vec_len (sxsm->msg_pool_cache) < 128 &&
+	 vec_len (sxsm->msg_pool_free) != 0)
+    {
+      vec_add1 (sxsm->msg_pool_cache, vec_pop (sxsm->msg_pool_free));
+    }
+
+  if (vec_len (sxsm->msg_pool_free) != 0)
+    {
+      for (int i = 0; i < vec_len (sxsm->msg_pool_free); i++)
+	pool_put_index (sxsm->msg_pool, sxsm->msg_pool_free[i]);
+      vec_reset_length (sxsm->msg_pool_free);
+    }
 }
 
 static inline sx_msg_t *
@@ -143,27 +176,49 @@ sx_msg_pool_get (sx_server_main_t * sxsm)
 {
   sx_msg_t * m;
 
-  pool_get_aligned_zero (sxsm->msg_pool, m, CLIB_CACHE_LINE_BYTES);
+  if (vec_len (sxsm->msg_pool_cache) != 0)
+    {
+      u32 index = vec_pop (sxsm->msg_pool_cache);
+
+      m = pool_elt_at_index (sxsm->msg_pool, index);
+      init_sx_msg (m);
+    }
+  else
+    {
+      pool_get_aligned_zero (sxsm->msg_pool, m, CLIB_CACHE_LINE_BYTES);
+    }
+
+  m->is_valid_pool_item = 1;
   return m;
 }
 
 static inline void
-sx_msg_pool_put (sx_server_main_t * sxsm, sx_msg_t *m )
+sx_msg_pool_put (sx_server_main_t * sxsm, sx_msg_t * m)
 {
+  ASSERT (m->is_valid_pool_item);
+
   vec_free (m->data);
-  pool_put (sxsm->msg_pool, m);
+  m->is_valid_pool_item = 0;
+  vec_add1 (sxsm->msg_pool_free, m - sxsm->msg_pool);
 }
 
 static inline int
 sx_msg_pool_is_free_index (sx_server_main_t * sxsm, u32 index)
 {
-  return pool_is_free_index (sxsm->msg_pool, index);
+  if (!pool_is_free_index (sxsm->msg_pool, index))
+    {
+      sx_msg_t * m = pool_elt_at_index (sxsm->msg_pool, index);
+      return !m->is_valid_pool_item;
+    }
+  return 0;
 }
 
 static inline sx_msg_t *
 sx_msg_pool_elt_at_index (sx_server_main_t * sxsm, u32 index)
 {
-  return pool_elt_at_index (sxsm->msg_pool, index);
+  sx_msg_t * m = pool_elt_at_index (sxsm->msg_pool, index);
+  ASSERT (m->is_valid_pool_item);
+  return m;
 }
 
 static inline u32

@@ -239,9 +239,7 @@ sx_release_association (upf_node_assoc_t * n)
   upf_main_t *gtm = &upf_main;
   u32 node_id = n - gtm->nodes;
   u32 idx = n->sessions;
-  u32 *msgs = NULL;
   sx_msg_t *msg;
-  u32 *m;
 
   switch (n->node_id.type)
     {
@@ -277,19 +275,14 @@ sx_release_association (upf_node_assoc_t * n)
   /* *INDENT-OFF* */
   pool_foreach (msg, sxsm->msg_pool,
   ({
-    if (msg->node == node_id)
-      vec_add1(msgs, sx_msg_get_index(sxsm, msg));
-  }));
-  /* *INDENT-ON* */
-
-  vec_foreach (m, msgs)
-  {
-    msg = sx_msg_pool_elt_at_index (sxsm, *m);
+    if (!msg->is_valid_pool_item || msg->node != node_id)
+      continue;
     hash_unset (sxsm->request_q, msg->seq_no);
     mhash_unset (&sxsm->response_q, msg->request_key, NULL);
     upf_pfcp_server_stop_timer (msg->timer);
     sx_msg_pool_put (sxsm, msg);
-  }
+  }));
+  /* *INDENT-ON* */
 }
 
 static void
@@ -915,26 +908,21 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   if (drop_msgs)
     {
       u32 si = sx - gtm->sessions;
-      u32 *msgs = NULL;
       sx_msg_t *msg;
-      u32 *m;
 
       /* *INDENT-OFF* */
       pool_foreach (msg, sxsm->msg_pool,
       ({
-	if (msg->session_index == si)
-	  vec_add1(msgs, sx_msg_get_index(sxsm, msg));
+	if (!msg->is_valid_pool_item || msg->session_index != si)
+	  continue;
+
+	hash_unset (sxsm->request_q, msg->seq_no);
+	mhash_unset (&sxsm->response_q, msg->request_key, NULL);
+	upf_pfcp_server_stop_timer (msg->timer);
+	sx_msg_pool_put (sxsm, msg);
       }));
       /* *INDENT-ON* */
 
-      vec_foreach (m, msgs)
-	{
-	  msg = sx_msg_pool_elt_at_index (sxsm, *m);
-	  hash_unset (sxsm->request_q, msg->seq_no);
-	  mhash_unset (&sxsm->response_q, msg->request_key, NULL);
-	  upf_pfcp_server_stop_timer (msg->timer);
-	  sx_msg_pool_put (sxsm, msg);
-	}
     }
 
   return 0;
