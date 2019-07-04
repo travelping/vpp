@@ -82,10 +82,12 @@ typedef struct
   ip46_address_t address;
   f64 now;
 
-    TWT (tw_timer_wheel) timer;
+  TWT (tw_timer_wheel) timer;
   sx_msg_t *msg_pool;
   uword *request_q;
   mhash_t response_q;
+
+  vlib_frame_t * ip_lookup_tx_frames[2];
 
   vlib_main_t *vlib_main;
 } sx_server_main_t;

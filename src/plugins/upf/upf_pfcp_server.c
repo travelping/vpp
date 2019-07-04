@@ -70,14 +70,34 @@ sx_server_main_t sx_server_main;
 #define MAX_HDRS_LEN    100	/* Max number of bytes for headers */
 
 static void
+flush_ip_lookup_tx_frames (vlib_main_t *vm, int is_ip4)
+{
+  sx_server_main_t *sxsm = &sx_server_main;
+  vlib_frame_t *f;
+  u32 next_index;
+
+  f = sxsm->ip_lookup_tx_frames[!is_ip4];
+  if (!f || f->n_vectors == 0)
+    return;
+
+  /* Send to IP lookup */
+  next_index = is_ip4 ? ip4_lookup_node.index : ip6_lookup_node.index;
+
+  vlib_put_frame_to_node (vm, next_index, f);
+  sxsm->ip_lookup_tx_frames[!is_ip4] = 0;
+}
+
+static void
 upf_pfcp_send_data (sx_msg_t * msg)
 {
+  sx_server_main_t *sxsm = &sx_server_main;
   vlib_main_t *vm = vlib_get_main ();
   vlib_buffer_t *b0 = 0;
   u32 to_node_index;
   vlib_frame_t *f;
   u32 bi0 = ~0;
   u32 *to_next;
+  int is_ip4;
   u8 *data0;
 
   if (vlib_buffer_alloc (vm, &bi0, 1) != 1)
@@ -99,7 +119,8 @@ upf_pfcp_send_data (sx_msg_t * msg)
   b0->current_length = _vec_len (msg->data);
 
   vlib_buffer_push_udp (b0, msg->lcl.port, msg->rmt.port, 1);
-  if (ip46_address_is_ip4 (&msg->rmt.address))
+  is_ip4 = ip46_address_is_ip4 (&msg->rmt.address);
+  if (is_ip4)
     {
       vlib_buffer_push_ip4 (vm, b0, &msg->lcl.address.ip4,
 			    &msg->rmt.address.ip4, IP_PROTOCOL_UDP, 1);
@@ -118,12 +139,20 @@ upf_pfcp_send_data (sx_msg_t * msg)
   vnet_buffer (b0)->sw_if_index[VLIB_RX] = 0;
   vnet_buffer (b0)->sw_if_index[VLIB_TX] = msg->fib_index;
 
-  f = vlib_get_frame_to_node (vm, to_node_index);
-  to_next = vlib_frame_vector_args (f);
-  to_next[0] = bi0;
-  f->n_vectors = 1;
+  f = sxsm->ip_lookup_tx_frames[!is_ip4];
+  if (!f)
+    {
+      f = vlib_get_frame_to_node (vm, to_node_index);
+      ASSERT (f);
+      sxsm->ip_lookup_tx_frames[!is_ip4] = f;
+    }
 
-  vlib_put_frame_to_node (vm, to_node_index, f);
+  to_next = vlib_frame_vector_args (f);
+  to_next[f->n_vectors] = bi0;
+  f->n_vectors += 1;
+
+  if (f->n_vectors == VLIB_FRAME_SIZE)
+    flush_ip_lookup_tx_frames (vm, is_ip4);
 }
 
 static int
