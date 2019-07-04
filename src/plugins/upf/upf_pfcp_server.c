@@ -452,28 +452,32 @@ enqueue_request (sx_msg_t * msg, u32 n1, u32 t1)
   msg->t1 = t1;
 
   hash_set (sxsm->request_q, msg->seq_no, id);
-  msg->timer = upf_pfcp_server_start_timer (PFCP_SERVER_T1, id, msg->t1);
+  msg->timer = upf_pfcp_server_start_timer (PFCP_SERVER_T1, msg->seq_no, msg->t1);
 }
 
 static void
-request_t1_expired (u32 id)
+request_t1_expired (u32 seq_no)
 {
   sx_server_main_t *sxsm = &sx_server_main;
   upf_main_t *gtm = &upf_main;
   sx_msg_t *msg;
+  uword *p;
 
-  if (sx_msg_pool_is_free_index (sxsm, id))
-    /* msg already processed, overlap of timeout and late answer */
-    return;
+  p = hash_get (sxsm->request_q, seq_no);
+  gtp_debug ("Msg Seq No: %u, %p, idx %u\n", seq_no, p, p ? p[0] : ~0);
+  if (!p)
+     /* msg already processed, overlap of timeout and late answer */
+     return;
 
-  msg = sx_msg_pool_elt_at_index (sxsm, id);
+  msg = sx_msg_pool_elt_at_index (sxsm, p[0]);
   gtp_debug ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
 	     msg->n1);
 
   if (--msg->n1 != 0)
     {
       gtp_debug ("resend...\n");
-      msg->timer = upf_pfcp_server_start_timer (PFCP_SERVER_T1, id, msg->t1);
+      msg->timer = upf_pfcp_server_start_timer (PFCP_SERVER_T1, msg->seq_no, msg->t1);
+
       upf_pfcp_send_data (msg);
     }
   else
@@ -722,7 +726,7 @@ upf_pfcp_session_stop_urr_time (urr_time_t * t, const f64 now)
        * might already be reused.
        * Only stop the timer if we are sure that it can not possibly have
        * expired yet.
-       * Failing to stop a timer is now a problem. The timer will fire, but
+       * Failing to stop a timer is not a problem. The timer will fire, but
        * the URR scan woun't find any expired URRs.
        */
       TW (tw_timer_stop) (&sx->timer, t->handle);
@@ -1075,6 +1079,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
   u32 *expired = NULL;
   u32 last_expired;
 
+  sx_msg_pool_init (sxsm);
   sxsm->timer.last_run_time =
     sxsm->now = unix_time_now ();
 
@@ -1096,6 +1101,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
       (void) vlib_process_wait_for_event_or_clock (vm, timeout);
       event_type = vlib_process_get_events (vm, &event_data);
 
+      sx_msg_pool_loop_start (sxsm);
       sxsm->now = unix_time_now ();
 
       /* run the timing wheel first, to that the internal base for new and updated timers
