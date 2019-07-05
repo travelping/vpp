@@ -663,6 +663,8 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 			       upf_event_urr_data_t * uev, f64 now)
 {
   pfcp_session_report_request_t req;
+  upf_main_t *gtm = &upf_main;
+  u32 si = sx - gtm->sessions;
   upf_event_urr_data_t * ev;
   struct rules *active;
   upf_urr_t *urr;
@@ -688,8 +690,16 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
       continue;
 
     if (ev->trigger & URR_START_OF_TRAFFIC)
-      build_usage_report (sx, ue, urr, USAGE_REPORT_TRIGGER_START_OF_TRAFFIC,
-			  now, &req.usage_report);
+      {
+	build_usage_report (sx, ue, urr, USAGE_REPORT_TRIGGER_START_OF_TRAFFIC,
+			    now, &req.usage_report);
+
+	if (urr->traffic_timer.handle == ~0)
+	  {
+	    upf_pfcp_session_start_stop_urr_time
+	      (si, &urr->traffic_timer, 1);
+	  }
+      }
   }
 
   vec_foreach (urr, active->urr)
@@ -813,6 +823,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 {
   pfcp_session_report_request_t req;
   upf_main_t *gtm = &upf_main;
+  u32 si = sx - gtm->sessions;
   struct rules *active;
   upf_urr_t *urr;
 
@@ -866,8 +877,6 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
     if (urr_check (urr->measurement_period, now))
       {
-	u32 si = sx - gtm->sessions;
-
 	if (urr->triggers & REPORTING_TRIGGER_PERIODIC_REPORTING)
 	  {
 	    trigger |= USAGE_REPORT_TRIGGER_PERIODIC_REPORTING;
@@ -917,6 +926,31 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
 	urr->time_quota.period = 0;
 	urr->status |= URR_OVER_QUOTA;
+      }
+
+    if (urr_check (urr->traffic_timer, now))
+      {
+	upf_urr_traffic_t **expired = NULL;
+	upf_urr_traffic_t *tt = NULL;
+
+	/* *INDENT-OFF* */
+	pool_foreach (tt, urr->traffic,
+	({
+	  if (tt->first_seen + 60 < now)
+	    vec_add1 (expired, tt);
+	}));
+	/* *INDENT-ON* */
+
+	for (int i = 0; i < vec_len(expired); i++)
+	  {
+	    hash_unset_mem_free (&urr->traffic_by_ue, &expired[i]->ip);
+	    pool_put (urr->traffic, expired[i]);
+	  }
+	vec_free(expired);
+
+	if (pool_elts (urr->traffic) != 0)
+	  upf_pfcp_session_start_stop_urr_time
+	    (si, &urr->traffic_timer, 1);
       }
 
 #undef urr_check
