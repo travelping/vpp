@@ -1640,7 +1640,9 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
 
     create->measurement_period.handle =
       create->monitoring_time.handle =
-      create->time_threshold.handle = create->time_quota.handle = ~0;
+      create->time_threshold.handle =
+      create->time_quota.handle =
+      create->traffic_timer.handle = ~0;
 
     create->id = urr->urr_id;
     create->methods = urr->measurement_method;
