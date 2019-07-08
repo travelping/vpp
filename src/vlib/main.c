@@ -145,6 +145,11 @@ vlib_frame_alloc_to_node (vlib_main_t * vm, u32 to_node_index,
       f = clib_mem_alloc_aligned_no_fail (n, VLIB_FRAME_ALIGN);
     }
 
+  ASSERT (clib_mem_is_heap_object (f));
+  if ((u8 *)f < (u8 *)vm->heap_aligned_base)
+    clib_panic ("frame pointer %p below heap_aligned_base %p\n",
+		f, vm->heap_aligned_base);
+
   /* Poison frame when debugging. */
   if (CLIB_DEBUG > 0)
     clib_memset (f, 0xfe, n);
