@@ -1742,14 +1742,22 @@ sx_update_apply (upf_session_t * sx)
 
       vec_foreach (send_em, active->send_end_marker)
       {
-	upf_far_t *far;
 	upf_far_t r = {.id = send_em->far_id };
+	upf_far_t *far;
+	int is_ip4;
+	u32 bi;
 
 	if (!(far = vec_bsearch (&r, pending->far, sx_far_id_compare)))
 	  continue;
 
+	is_ip4 =
+	  ! !(far->forward.outer_header_creation.
+	      description & OUTER_HEADER_CREATION_IP4);
+
 	gtp_debug ("TODO: send_end_marker for FAR %d", far->id);
-	gtpu_send_end_marker (send_em->fib_index, send_em->dpoi_index, &far->forward);
+	bi = gtpu_end_marker (send_em->fib_index, send_em->dpoi_index,
+			      far->forward.rewrite, is_ip4);
+	upf_ip_lookup_tx (bi, is_ip4);
       }
       vec_free (active->send_end_marker);
     }

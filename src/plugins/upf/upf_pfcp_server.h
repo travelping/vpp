@@ -133,6 +133,8 @@ void upf_pfcp_handle_input (vlib_main_t * vm, vlib_buffer_t * b, int is_ip4);
 
 clib_error_t *sx_server_main_init (vlib_main_t * vm);
 
+void upf_ip_lookup_tx (u32 bi, int is_ip4);
+
 static inline void
 init_sx_msg (sx_msg_t * m)
 {
