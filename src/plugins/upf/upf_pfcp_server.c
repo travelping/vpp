@@ -87,16 +87,42 @@ flush_ip_lookup_tx_frames (vlib_main_t *vm, int is_ip4)
   sxsm->ip_lookup_tx_frames[!is_ip4] = 0;
 }
 
-static void
-upf_pfcp_send_data (sx_msg_t * msg)
+void upf_ip_lookup_tx (u32 bi, int is_ip4)
 {
   sx_server_main_t *sxsm = &sx_server_main;
   vlib_main_t *vm = vlib_get_main ();
-  vlib_buffer_t *b0 = 0;
   u32 to_node_index;
   vlib_frame_t *f;
-  u32 bi0 = ~0;
   u32 *to_next;
+
+  if (~0 == bi)
+    return;
+
+  to_node_index = is_ip4 ?
+    ip4_lookup_node.index : ip6_lookup_node.index;
+
+  f = sxsm->ip_lookup_tx_frames[!is_ip4];
+  if (!f)
+    {
+      f = vlib_get_frame_to_node (vm, to_node_index);
+      ASSERT (f);
+      sxsm->ip_lookup_tx_frames[!is_ip4] = f;
+    }
+
+  to_next = vlib_frame_vector_args (f);
+  to_next[f->n_vectors] = bi;
+  f->n_vectors += 1;
+
+  if (f->n_vectors == VLIB_FRAME_SIZE)
+    flush_ip_lookup_tx_frames (vm, is_ip4);
+}
+
+static void
+upf_pfcp_send_data (sx_msg_t * msg)
+{
+  vlib_main_t *vm = vlib_get_main ();
+  vlib_buffer_t *b0 = 0;
+  u32 bi0 = ~0;
   int is_ip4;
   u8 *data0;
 
@@ -124,7 +150,6 @@ upf_pfcp_send_data (sx_msg_t * msg)
     {
       vlib_buffer_push_ip4 (vm, b0, &msg->lcl.address.ip4,
 			    &msg->rmt.address.ip4, IP_PROTOCOL_UDP, 1);
-      to_node_index = ip4_lookup_node.index;
     }
   else
     {
@@ -133,26 +158,12 @@ upf_pfcp_send_data (sx_msg_t * msg)
 	vlib_buffer_push_ip6 (vm, b0, &msg->lcl.address.ip6,
 			      &msg->rmt.address.ip6, IP_PROTOCOL_UDP);
       vnet_buffer (b0)->l3_hdr_offset = (u8 *) ih - b0->data;
-      to_node_index = ip6_lookup_node.index;
     }
 
   vnet_buffer (b0)->sw_if_index[VLIB_RX] = 0;
   vnet_buffer (b0)->sw_if_index[VLIB_TX] = msg->fib_index;
 
-  f = sxsm->ip_lookup_tx_frames[!is_ip4];
-  if (!f)
-    {
-      f = vlib_get_frame_to_node (vm, to_node_index);
-      ASSERT (f);
-      sxsm->ip_lookup_tx_frames[!is_ip4] = f;
-    }
-
-  to_next = vlib_frame_vector_args (f);
-  to_next[f->n_vectors] = bi0;
-  f->n_vectors += 1;
-
-  if (f->n_vectors == VLIB_FRAME_SIZE)
-    flush_ip_lookup_tx_frames (vm, is_ip4);
+  upf_ip_lookup_tx (bi0, is_ip4);
 }
 
 static int

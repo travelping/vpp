@@ -58,24 +58,20 @@ typedef enum
 } upf_encap_next_t;
 
 #ifndef CLIB_MARCH_VARIANT
-void
-gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward)
+u32
+gtpu_end_marker (u32 fib_index, u32 dpoi_index, u8 * rewrite, int is_ip4)
 {
   upf_main_t *gtm = &upf_main;
   vlib_main_t *vm = gtm->vlib_main;
   u32 bi = 0;
   vlib_buffer_t *p0;
-  u8 is_ip4;
   ip4_gtpu_header_t *gtpu4;
   ip6_gtpu_header_t *gtpu6;
   u16 new_l0;
   ip_csum_t sum0;
-  vlib_frame_t *f;
-  u32 *to_next;
-  u32 next_index;
 
   if (vlib_buffer_alloc (vm, &bi, 1) != 1)
-    return;
+    return ~0;
 
   p0 = vlib_get_buffer (vm, bi);
   VLIB_BUFFER_TRACE_TRAJECTORY_INIT (p0);
@@ -83,15 +79,11 @@ gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward
   vnet_buffer (p0)->sw_if_index[VLIB_TX] = fib_index;
   vnet_buffer (p0)->ip.adj_index[VLIB_TX] = dpoi_index;
 
-  is_ip4 =
-    ! !(forward->outer_header_creation.
-	description & OUTER_HEADER_CREATION_IP4);
-
   if (is_ip4)
     {
       gtpu4 = vlib_buffer_get_current (p0);
       p0->current_length = sizeof (*gtpu4);
-      memcpy (gtpu4, forward->rewrite, vec_len (forward->rewrite));
+      memcpy (gtpu4, rewrite, vec_len (rewrite));
 
       /* Fix the IP4 checksum and length */
       sum0 = gtpu4->ip4.checksum;
@@ -110,8 +102,6 @@ gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward
       /* Fix GTPU length */
       gtpu4->gtpu.type = GTPU_TYPE_END_MARKER;
       gtpu4->gtpu.length = 0;
-
-      next_index = ip4_lookup_node.index;
     }
   else				/* ip6 path */
     {
@@ -119,7 +109,7 @@ gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward
 
       gtpu6 = vlib_buffer_get_current (p0);
       p0->current_length = sizeof (*gtpu6);
-      memcpy (gtpu6, forward->rewrite, vec_len (forward->rewrite));
+      memcpy (gtpu6, rewrite, vec_len (rewrite));
 
       /* Fix IP6 payload length */
       new_l0 =
@@ -139,16 +129,9 @@ gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward
       /* Fix GTPU length */
       gtpu6->gtpu.type = GTPU_TYPE_END_MARKER;
       gtpu6->gtpu.length = 0;
-
-      next_index = ip6_lookup_node.index;
     }
 
-  /* Enqueue the packet right now */
-  f = vlib_get_frame_to_node (vm, next_index);
-  to_next = vlib_frame_vector_args (f);
-  to_next[0] = bi;
-  f->n_vectors = 1;
-  vlib_put_frame_to_node (vm, next_index, f);
+  return bi;
 }
 #endif
 

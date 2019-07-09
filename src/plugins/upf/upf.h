@@ -769,7 +769,7 @@ typedef struct
 
 int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 u8 *format_upf_encap_trace (u8 * s, va_list * args);
-void gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward);
+u32 gtpu_end_marker (u32 fib_index, u32 dpoi_index, u8 * rewrite, int is_ip4);
 
 #endif /* __included_upf_h__ */
 
