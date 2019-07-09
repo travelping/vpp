@@ -833,6 +833,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	      gtp_debug ("NWI: %v (%d)", pdr->pdi.network_instance,
 			 vec_len (pdr->pdi.network_instance));
 	    failed_rule_id->id = pdr->pdr_id;
+	    r = -1;
 	    vec_pop (rules->pdr);
 	    break;
 	  }
@@ -850,6 +851,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	   {
 	   gtp_debug("PDR: %d, TEID not within configure partition\n", pdr->pdr_id);
 	   failed_rule_id->id = pdr->pdr_id;
+	   r = -1;
 	   vec_pop (rules->pdr);
 	   break;
 	   }
@@ -998,6 +1000,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 		gtp_debug ("PDR: %d, PDI for unknown network instance\n",
 			   pdr->pdr_id);
 		failed_rule_id->id = pdr->pdr_id;
+		r = -1;
 		break;
 	      }
 	    update->pdi.nwi = nwi - gtm->nwis;
@@ -1136,8 +1139,9 @@ handle_remove_pdr (upf_session_t * sx, pfcp_remove_pdr_t * remove_pdr,
   {
     if ((r = sx_delete_pdr (sx, pdr->pdr_id)) != 0)
       {
-	gtp_debug ("Failed to add PDR %d\n", pdr->pdr_id);
+	gtp_debug ("Failed to remove PDR %d\n", pdr->pdr_id);
 	failed_rule_id->id = pdr->pdr_id;
+	r = -1;
 	break;
       }
   }
@@ -1354,6 +1358,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 		  ("FAR: %d, Parameter with unknown network instance\n",
 		   far->far_id);
 		failed_rule_id->id = far->far_id;
+		r = -1;
 		vec_pop (rules->far);
 		break;
 	      }
@@ -1396,6 +1401,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
 		   far->far_id, is_ip4 ? 4 : 6);
 		failed_rule_id->id = far->far_id;
+		r = -1;
 		vec_pop (rules->far);
 		break;
 	      }
@@ -1408,6 +1414,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
 		   create->forward.table_id);
 		failed_rule_id->id = far->far_id;
+		r = -1;
 		vec_pop (rules->far);
 		break;
 	      }
@@ -1485,6 +1492,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 		      ("FAR: %d, Update Parameter with unknown network instance\n",
 		       far->far_id);
 		    failed_rule_id->id = far->far_id;
+		    r = -1;
 		    break;
 		  }
 		update->forward.table_id = nwi->table_id;
@@ -1536,6 +1544,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
 		   far->far_id, is_ip4 ? 4 : 6);
 		failed_rule_id->id = far->far_id;
+		r = -1;
 		break;
 	      }
 
@@ -1548,6 +1557,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
 		   update->forward.table_id);
 		failed_rule_id->id = far->far_id;
+		r = -1;
 		break;
 	      }
 
@@ -1592,6 +1602,7 @@ handle_remove_far (upf_session_t * sx, pfcp_remove_far_t * remove_far,
       {
 	gtp_debug ("Failed to add FAR %d\n", far->far_id);
 	failed_rule_id->id = far->far_id;
+	r = -1;
 	break;
       }
   }
@@ -1835,6 +1846,7 @@ handle_remove_urr (upf_session_t * sx, pfcp_remove_urr_t * remove_urr,
       {
 	gtp_debug ("Failed to add URR %d\n", urr->urr_id);
 	failed_rule_id->id = urr->urr_id;
+	r = -1;
 	break;
       }
   }
@@ -1999,6 +2011,7 @@ handle_remove_qer (upf_session_t * sx, pfcp_remove_qer_t * remove_qer,
       {
 	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
 	failed_rule_id->id = qer->qer_id;
+	r = -1;
 	break;
       }
   }
