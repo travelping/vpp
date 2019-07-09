@@ -53,7 +53,7 @@ sx_rule_vector_fns (qer)
 
 #undef sx_rule_vector_fns
 
-void sx_send_end_marker (upf_session_t * sx, u16 id);
+void sx_send_end_marker (upf_session_t * sx, u16 far_id);
 
 int sx_update_apply (upf_session_t * sx);
 void sx_update_finish (upf_session_t * sx);
