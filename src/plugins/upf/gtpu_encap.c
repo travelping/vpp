@@ -59,13 +59,12 @@ typedef enum
 
 #ifndef CLIB_MARCH_VARIANT
 void
-gtpu_send_end_marker (upf_far_forward_t * forward)
+gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward)
 {
   upf_main_t *gtm = &upf_main;
   vlib_main_t *vm = gtm->vlib_main;
   u32 bi = 0;
   vlib_buffer_t *p0;
-  upf_peer_t *peer0 = NULL;
   u8 is_ip4;
   ip4_gtpu_header_t *gtpu4;
   ip6_gtpu_header_t *gtpu6;
@@ -81,9 +80,8 @@ gtpu_send_end_marker (upf_far_forward_t * forward)
   p0 = vlib_get_buffer (vm, bi);
   VLIB_BUFFER_TRACE_TRAJECTORY_INIT (p0);
 
-  peer0 = pool_elt_at_index (gtm->peers, forward->peer_idx);
-  vnet_buffer (p0)->sw_if_index[VLIB_TX] = peer0->encap_fib_index;
-  vnet_buffer (p0)->ip.adj_index[VLIB_TX] = peer0->next_dpo.dpoi_index;
+  vnet_buffer (p0)->sw_if_index[VLIB_TX] = fib_index;
+  vnet_buffer (p0)->ip.adj_index[VLIB_TX] = dpoi_index;
 
   is_ip4 =
     ! !(forward->outer_header_creation.

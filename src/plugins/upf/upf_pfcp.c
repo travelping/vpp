@@ -1015,11 +1015,25 @@ sx_rule_vector_fns(qer, ({}))
 /* *INDENT-ON* */
 
 void
-sx_send_end_marker (upf_session_t * sx, u16 id)
+sx_send_end_marker (upf_session_t * sx, u16 far_id)
 {
-  struct rules *rules = sx_get_rules (sx, SX_PENDING);
+  struct rules *active = sx_get_rules (sx, SX_ACTIVE);
+  struct rules *pending = sx_get_rules (sx, SX_PENDING);
+  upf_far_t r = {.id = far_id };
+  upf_main_t *gtm = &upf_main;
+  send_end_marker_t *send_em;
+  upf_peer_t *peer;
+  upf_far_t *far;
 
-  vec_add1 (rules->send_end_marker, id);
+  if (!(far = vec_bsearch (&r, active->far, sx_far_id_compare)))
+    return;
+
+  peer = pool_elt_at_index (gtm->peers, far->forward.peer_idx);
+
+  vec_add2 (pending->send_end_marker, send_em, 1);
+  send_em->far_id = far_id;
+  send_em->fib_index = peer->encap_fib_index;
+  send_em->dpoi_index = peer->next_dpo.dpoi_index;
 }
 
 static int
@@ -1724,18 +1738,18 @@ sx_update_apply (upf_session_t * sx)
 
   if (active->send_end_marker)
     {
-      u16 *send_em;
+      send_end_marker_t *send_em;
 
       vec_foreach (send_em, active->send_end_marker)
       {
 	upf_far_t *far;
-	upf_far_t r = {.id = *send_em };
+	upf_far_t r = {.id = send_em->far_id };
 
 	if (!(far = vec_bsearch (&r, pending->far, sx_far_id_compare)))
 	  continue;
 
 	gtp_debug ("TODO: send_end_marker for FAR %d", far->id);
-	gtpu_send_end_marker (&far->forward);
+	gtpu_send_end_marker (send_em->fib_index, send_em->dpoi_index, &far->forward);
       }
       vec_free (active->send_end_marker);
     }

@@ -372,6 +372,13 @@ typedef struct
   };
 } upf_far_t;
 
+typedef struct
+{
+  u16 far_id;
+  u32 fib_index;
+  u32 dpoi_index;
+} send_end_marker_t;
+
 /* Counter */
 
 #define URR_OK                  0
@@ -533,7 +540,7 @@ typedef struct
     gtpu4_endp_rule_t *v4_teid;
     gtpu6_endp_rule_t *v6_teid;
 
-    u16 *send_end_marker;
+    send_end_marker_t *send_end_marker;
   } rules[2];
 #define SX_ACTIVE  0
 #define SX_PENDING 1
@@ -762,7 +769,7 @@ typedef struct
 
 int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 u8 *format_upf_encap_trace (u8 * s, va_list * args);
-void gtpu_send_end_marker (upf_far_forward_t * forward);
+void gtpu_send_end_marker (u32 fib_index, u32 dpoi_index, upf_far_forward_t * forward);
 
 #endif /* __included_upf_h__ */
 
