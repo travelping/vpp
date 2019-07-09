@@ -470,8 +470,7 @@ request_t1_expired (u32 seq_no)
      return;
 
   msg = sx_msg_pool_elt_at_index (sxsm, p[0]);
-  gtp_debug ("Msg Seq No: %u, %p, idx %u, n1 %u\n", msg->seq_no, msg, id,
-	     msg->n1);
+  gtp_debug ("Msg Seq No: %u, %p, n1 %u\n", msg->seq_no, msg, msg->n1);
 
   if (--msg->n1 != 0)
     {
