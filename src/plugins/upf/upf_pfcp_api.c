@@ -487,27 +487,22 @@ handle_association_setup_request (sx_msg_t * req,
   n = sx_get_association (&msg->request.node_id);
   if (n)
     {
-      if (msg->recovery_time_stamp > n->recovery_time_stamp)
-	sx_release_association (n);
-      else if (msg->recovery_time_stamp == n->recovery_time_stamp)
-	{
-	  r = -1;
-	  /* TODO: handle late resend ???? */
-	  goto out_send_resp;
-	}
-      else if (msg->recovery_time_stamp < n->recovery_time_stamp)
-	{
-	  /* 3GPP TS 23.007, Sect. 19A:
-	   *
-	   * If the value of a Recovery Time Stamp previously stored for a peer is larger
-	   * than the Recovery Time Stamp value received in the Heartbeat Response message
-	   * or the PFCP message, this indicates a possible race condition (newer message
-	   * arriving before the older one). The received Sx node related message and the
-	   * received new Recovery Time Stamp value shall be discarded and an error may
-	   * be logged.
-	   */
-	  return -1;
-	}
+      /* 3GPP TS 23.007, Sect. 19A:
+       *
+       * A PFCP function that receives a PFCP Association Setup Request
+       * shall proceed with:
+       *
+       * - establishing the PFCP association and
+       * - deleting the existing PFCP association and associated PFCP sessions,
+       *   if a PFCP association was already established for the Node ID received
+       *   in the request, regardless of the Recovery Timestamp received in the
+       *   request.
+       *
+       * A PFCP function shall ignore the Recovery Timestamp received in
+       * PFCP Association Setup Response message.
+       *
+       */
+      sx_release_association (n);
     }
 
   n =
@@ -525,7 +520,6 @@ handle_association_setup_request (sx_msg_t * req,
     SET_BIT (resp.grp.fields,
 	     ASSOCIATION_SETUP_RESPONSE_USER_PLANE_IP_RESOURCE_INFORMATION);
 
-out_send_resp:
   if (r == 0)
     {
       n->heartbeat_handle = upf_pfcp_server_start_timer
