@@ -194,6 +194,17 @@ sx_msg_pool_get (sx_server_main_t * sxsm)
   return m;
 }
 
+static inline sx_msg_t *
+sx_msg_pool_add (sx_server_main_t * sxsm, sx_msg_t * m)
+{
+  sx_msg_t * msg;
+
+  msg = sx_msg_pool_get (sxsm);
+  clib_memcpy_fast (msg, m, sizeof(*m));
+  msg->is_valid_pool_item = 1;
+  return msg;
+}
+
 static inline void
 sx_msg_pool_put (sx_server_main_t * sxsm, sx_msg_t * m)
 {
