@@ -1148,9 +1148,7 @@ sx_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 		  {
 		    sx_msg_t *msg;
 
-		    msg = sx_msg_pool_get (sxsm);
-		    *msg = *tx;
-
+		    msg = sx_msg_pool_add (sxsm, tx);
 		    upf_pfcp_server_send_request (msg);
 		  }
 		else
