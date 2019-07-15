@@ -89,7 +89,7 @@ http_redir_send_data (session_t * s, u8 * data)
     {
       int actual_transfer;
 
-      actual_transfer = svm_fifo_enqueue_nowait
+      actual_transfer = svm_fifo_enqueue
 	(s->tx_fifo, bytes_to_send, data + offset);
 
       /* Made any progress? */
@@ -297,8 +297,8 @@ session_rx_request (session_t * s)
   vec_validate (pm->rx_buf[s->thread_index], max_dequeue - 1);
   _vec_len (pm->rx_buf[s->thread_index]) = max_dequeue;
 
-  actual_transfer = svm_fifo_dequeue_nowait (rx_fifo, max_dequeue,
-					     pm->rx_buf[s->thread_index]);
+  actual_transfer = svm_fifo_dequeue (rx_fifo, max_dequeue,
+				      pm->rx_buf[s->thread_index]);
   ASSERT (actual_transfer > 0);
   _vec_len (pm->rx_buf[s->thread_index]) = actual_transfer;
   return 0;
