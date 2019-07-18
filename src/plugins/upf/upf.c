@@ -1339,6 +1339,73 @@ VLIB_CLI_COMMAND (upf_show_assoc_command, static) =
 };
 /* *INDENT-ON* */
 
+static clib_error_t *
+upf_show_bihash_command_fn (vlib_main_t * vm,
+			    unformat_input_t * main_input,
+			    vlib_cli_command_t * cmd)
+{
+  unformat_input_t _line_input, *line_input = &_line_input;
+  clib_error_t *error = NULL;
+  upf_main_t *sm = &upf_main;
+  int verbose = 0;
+  int hash = 0;
+
+  if (!unformat_user (main_input, unformat_line_input, line_input))
+    return 0;
+
+  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
+    {
+      if (unformat (line_input, "detail"))
+	verbose = 1;
+      else if (unformat (line_input, "verbose"))
+	verbose = 2;
+      else if (unformat (line_input, "v4-tunnel-by-key"))
+	hash = 1;
+      else if (unformat (line_input, "v6-tunnel-by-key"))
+	hash = 2;
+      else if (unformat (line_input, "qer-by-id"))
+	hash = 3;
+      else if (unformat (line_input, "peer-index-by-ip"))
+	hash = 4;
+      else
+	{
+	  error = unformat_parse_error (line_input);
+	  goto done;
+	}
+    }
+
+  switch (hash) {
+  case 1:
+    vlib_cli_output (vm, "%U", format_bihash_8_8, &sm->v4_tunnel_by_key, verbose);
+    break;
+  case 2:
+    vlib_cli_output (vm, "%U", format_bihash_24_8, &sm->v6_tunnel_by_key, verbose);
+    break;
+  case 3:
+    vlib_cli_output (vm, "%U", format_bihash_8_8, &sm->qer_by_id, verbose);
+    break;
+  case 4:
+    vlib_cli_output (vm, "%U", format_bihash_24_8, &sm->peer_index_by_ip, verbose);
+    break;
+  default:
+    error = clib_error_return (0, "Please specify an hash...");
+    break;
+  }
+
+ done:
+  unformat_free (line_input);
+  return error;
+}
+
+/* *INDENT-OFF* */
+VLIB_CLI_COMMAND (upf_show_bihash_command, static) =
+{
+  .path = "show upf bihash",
+  .short_help =
+  "show upf bihash <v4-tunnel-by-key | v6-tunnel-by-key | qer-by-id | peer-index-by-ip> [detail|verbose]",
+  .function = upf_show_bihash_command_fn,
+};
+/* *INDENT-ON* */
 
 #define TW_SECS_PER_CLOCK 10e-3                /* 10ms */
 #define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
@@ -1734,6 +1801,40 @@ VLIB_CLI_COMMAND (upf_show_flows_command, static) =
 };
 /* *INDENT-ON* */
 
+static inline u8 *
+format_v4_tunnel_by_key_kvp (u8 * s, va_list * args)
+{
+  clib_bihash_kv_8_8_t *v = va_arg (*args, clib_bihash_kv_8_8_t *);
+  gtpu4_tunnel_key_t *key = (gtpu4_tunnel_key_t *)&v->key;
+
+  s = format (s, "TEID 0x%08x peer %U session idx %u rule idx %u",
+	      key->teid, format_ip4_address, &key->dst,
+	      v->value & 0xffffffff, v->value >> 32);
+  return s;
+}
+
+static inline u8 *
+format_v6_tunnel_by_key_kvp (u8 * s, va_list * args)
+{
+  clib_bihash_kv_24_8_t *v = va_arg (*args, clib_bihash_kv_24_8_t *);
+
+  s = format (s, "TEID 0x%08x peer %U session idx %u rule idx %u",
+	      v->key[2], format_ip6_address, &v->key[0],
+	      v->value & 0xffffffff, v->value >> 32);
+  return s;
+}
+
+static inline u8 *
+format_peer_index_by_ip_kvp (u8 * s, va_list * args)
+{
+  clib_bihash_kv_24_8_t *v = va_arg (*args, clib_bihash_kv_24_8_t *);
+
+  s = format (s, "peer %U fib idx idx %u peer idx %u",
+	      format_ip46_address, &v->key[0], IP46_TYPE_ANY,
+	      v->key[2], v->value);
+  return s;
+}
+
 static clib_error_t *
 upf_test_watch_point_command_fn (vlib_main_t * vm,
 			  unformat_input_t * main_input,
@@ -1900,13 +2001,19 @@ upf_init (vlib_main_t * vm)
   clib_bihash_init_8_8 (&sm->v4_tunnel_by_key,
 			"upf_v4_tunnel_by_key", UPF_MAPPING_BUCKETS,
 			UPF_MAPPING_MEMORY_SIZE);
+  clib_bihash_set_kvp_format_fn_8_8 (&sm->v4_tunnel_by_key,
+				     format_v4_tunnel_by_key_kvp);
   clib_bihash_init_24_8 (&sm->v6_tunnel_by_key,
 			 "upf_v6_tunnel_by_key", UPF_MAPPING_BUCKETS,
 			 UPF_MAPPING_MEMORY_SIZE);
+  clib_bihash_set_kvp_format_fn_24_8 (&sm->v6_tunnel_by_key,
+				      format_v6_tunnel_by_key_kvp);
 
   clib_bihash_init_24_8 (&sm->peer_index_by_ip,
 			 "upf_peer_index_by_ip", UPF_MAPPING_BUCKETS,
 			 UPF_MAPPING_MEMORY_SIZE);
+  clib_bihash_set_kvp_format_fn_24_8 (&sm->peer_index_by_ip,
+				      format_peer_index_by_ip_kvp);
 
   sm->node_index_by_fqdn =
     hash_create_vec ( /* initial length */ 32, sizeof (u8), sizeof (uword));
