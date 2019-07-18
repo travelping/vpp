@@ -71,7 +71,11 @@ typedef struct BV (clib_bihash_value)
   union
   {
     BVT (clib_bihash_kv) kvp[BIHASH_KVP_PER_PAGE];
-    u64 next_free_as_u64;
+    struct {
+      u64 next_free_as_u64;
+      u32 log2_pages;
+      u64 next_free_as_u64_2;
+    };
   };
 } BVT (clib_bihash_value);
 
@@ -272,11 +276,26 @@ static inline void BV (clib_bihash_unlock_bucket)
   b->lock = 0;
 }
 
+static inline int BV (is_bihash_arena) (BVT (clib_bihash) * h, void * p)
+{
+  u8 *hp = (u8 *) (uword) alloc_arena (h);
+  u8 *ep = hp + alloc_arena_size (h);
+
+  return (((u8 *)p >= hp) && ((u8 *)p < ep));
+}
+
+static inline int BV (is_bihash_arena_index) (BVT (clib_bihash) * h, uword idx)
+{
+  return BV (is_bihash_arena) (h, (void *)((uword)alloc_arena (h) + idx));
+}
+
 static inline void *BV (clib_bihash_get_value) (BVT (clib_bihash) * h,
 						uword offset)
 {
   u8 *hp = (u8 *) (uword) alloc_arena (h);
   u8 *vp = hp + offset;
+
+  ASSERT (BV (is_bihash_arena) (h, vp));
 
   return (void *) vp;
 }
@@ -292,6 +311,8 @@ static inline uword BV (clib_bihash_get_offset) (BVT (clib_bihash) * h,
 						 void *v)
 {
   u8 *hp, *vp;
+
+  ASSERT (BV (is_bihash_arena) (h, v));
 
   hp = (u8 *) (uword) alloc_arena (h);
   vp = (u8 *) v;
@@ -358,6 +379,7 @@ static inline int BV (clib_bihash_search_inline_with_hash)
 
   bucket_index = hash & (h->nbuckets - 1);
   b = &h->buckets[bucket_index];
+  ASSERT (BV (is_bihash_arena) (h, b));
 
   if (PREDICT_FALSE (BV (clib_bihash_bucket_is_empty) (b)))
     return -1;
@@ -381,6 +403,7 @@ static inline int BV (clib_bihash_search_inline_with_hash)
 
   for (i = 0; i < limit; i++)
     {
+      ASSERT (BV (is_bihash_arena) (h, &v->kvp[i]));
       if (BV (clib_bihash_key_compare) (v->kvp[i].key, key_result->key))
 	{
 	  *key_result = v->kvp[i];
@@ -452,6 +475,7 @@ static inline int BV (clib_bihash_search_inline_2_with_hash)
 
   bucket_index = hash & (h->nbuckets - 1);
   b = &h->buckets[bucket_index];
+  ASSERT (BV (is_bihash_arena) (h, b));
 
   if (PREDICT_FALSE (BV (clib_bihash_bucket_is_empty) (b)))
     return -1;
@@ -474,6 +498,7 @@ static inline int BV (clib_bihash_search_inline_2_with_hash)
 
   for (i = 0; i < limit; i++)
     {
+      ASSERT (BV (is_bihash_arena) (h, &v->kvp[i]));
       if (BV (clib_bihash_key_compare) (v->kvp[i].key, search_key->key))
 	{
 	  *valuep = v->kvp[i];
