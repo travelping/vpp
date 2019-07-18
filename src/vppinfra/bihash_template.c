@@ -291,10 +291,15 @@ BV (value_alloc) (BVT (clib_bihash) * h, u32 log2_pages)
       goto initialize;
     }
   rv = BV (clib_bihash_get_value) (h, (uword) h->freelists[log2_pages]);
+  ASSERT (rv->next_free_as_u64 == rv->next_free_as_u64_2);
+  ASSERT (rv->log2_pages == log2_pages);
   h->freelists[log2_pages] = rv->next_free_as_u64;
+  ASSERT (BV (is_bihash_arena_index) (h, rv->next_free_as_u64 + sizeof (*rv) * (1 << log2_pages) - 1));
 
 initialize:
   ASSERT (rv);
+  ASSERT (BV (is_bihash_arena) (h, rv));
+  ASSERT (BV (is_bihash_arena) (h, ((u8 *)rv) + sizeof (*rv) * (1 << log2_pages) - 1));
   /*
    * Latest gcc complains that the length arg is zero
    * if we replace (1<<log2_pages) with vec_len(rv).
@@ -309,13 +314,17 @@ BV (value_free) (BVT (clib_bihash) * h, BVT (clib_bihash_value) * v,
 		 u32 log2_pages)
 {
   ASSERT (h->alloc_lock[0]);
-
+  ASSERT (BV (is_bihash_arena) (h, v));
+  ASSERT (BV (is_bihash_arena) (h, ((u8 *)v) + sizeof (*v) * (1 << log2_pages) - 1));
   ASSERT (vec_len (h->freelists) > log2_pages);
 
   if (CLIB_DEBUG > 0)
     clib_memset (v, 0xFE, sizeof (*v) * (1 << log2_pages));
 
-  v->next_free_as_u64 = (u64) h->freelists[log2_pages];
+  v->next_free_as_u64_2 =
+    v->next_free_as_u64 = (u64) h->freelists[log2_pages];
+  v->log2_pages = log2_pages;
+  ASSERT (BV (is_bihash_arena_index) (h, v->next_free_as_u64 + sizeof (*v) * (1 << log2_pages) - 1));
   h->freelists[log2_pages] = (u64) BV (clib_bihash_get_offset) (h, v);
 }
 
@@ -501,6 +510,7 @@ static inline int BV (clib_bihash_add_del_inline)
 
   bucket_index = hash & (h->nbuckets - 1);
   b = &h->buckets[bucket_index];
+  ASSERT (BV (is_bihash_arena) (h, b));
 
   hash >>= h->log2_nbuckets;
 
@@ -554,6 +564,8 @@ static inline int BV (clib_bihash_add_del_inline)
        */
       for (i = 0; i < limit; i++)
 	{
+	  ASSERT (BV (is_bihash_arena) (h, &v->kvp[i]));
+
 	  if (BV (clib_bihash_key_compare) (v->kvp[i].key, add_v->key))
 	    {
 	      /* Add but do not overwrite? */
@@ -575,6 +587,8 @@ static inline int BV (clib_bihash_add_del_inline)
        */
       for (i = 0; i < limit; i++)
 	{
+	  ASSERT (BV (is_bihash_arena) (h, &v->kvp[i]));
+
 	  if (BV (clib_bihash_is_free) (&(v->kvp[i])))
 	    {
 	      /*
@@ -614,6 +628,8 @@ static inline int BV (clib_bihash_add_del_inline)
     {
       for (i = 0; i < limit; i++)
 	{
+	  ASSERT (BV (is_bihash_arena) (h, &v->kvp[i]));
+
 	  /* Found the key? Kill it... */
 	  if (BV (clib_bihash_key_compare) (v->kvp[i].key, add_v->key))
 	    {
@@ -706,6 +722,7 @@ static inline int BV (clib_bihash_add_del_inline)
 
   for (i = 0; i < limit; i++)
     {
+      ASSERT (BV (is_bihash_arena) (h, &new_v->kvp[i]));
       if (BV (clib_bihash_is_free) (&(new_v->kvp[i])))
 	{
 	  clib_memcpy_fast (&(new_v->kvp[i]), add_v, sizeof (*add_v));
