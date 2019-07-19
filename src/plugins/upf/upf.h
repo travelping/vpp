@@ -667,8 +667,20 @@ typedef struct
 #define UPF_ADR_PROTO_HTTP  1
 #define UPF_ADR_PROTO_HTTPS 2
 
-#define UPF_MAPPING_BUCKETS      1024
-#define UPF_MAPPING_MEMORY_SIZE  64 << 20
+/* bihash buckets are cheap, only 8 bytes per bucket */
+#define UPF_MAPPING_BUCKETS      (64 * 1024)
+
+/* 128 MB per hash max memory,
+ *    ~ max. 64k per bucket
+ *    ~ 1024 pages with 4 values each
+ * 8 million entries total.
+ *
+ * A older setting with max 1M entries run out of memory with 200k entries
+ * Pages are grown to contain log2 entries, the memory fragmentation caused
+ * by smaller pages that are keept arround eats significant amount of memory
+ * from bihash.
+ */
+#define UPF_MAPPING_MEMORY_SIZE  (2 << 27)
 
 typedef struct
 {
