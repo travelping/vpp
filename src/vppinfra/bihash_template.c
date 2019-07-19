@@ -812,6 +812,7 @@ u8 *BV (format_bihash) (u8 * s, va_list * args)
   u64 active_elements = 0;
   u64 active_buckets = 0;
   u64 linear_buckets = 0;
+  u64 free_bytes = 0;
   u64 used_bytes;
 
   s = format (s, "Hash table %s\n", h->name ? h->name : (u8 *) "(unnamed)");
@@ -879,6 +880,7 @@ u8 *BV (format_bihash) (u8 * s, va_list * args)
 
   for (i = 0; i < vec_len (h->freelists); i++)
     {
+      u64 bfree = 0;
       u32 nfree = 0;
       BVT (clib_bihash_value) * free_elt;
       u64 free_elt_as_u64 = h->freelists[i];
@@ -890,18 +892,24 @@ u8 *BV (format_bihash) (u8 * s, va_list * args)
 	  free_elt_as_u64 = free_elt->next_free_as_u64;
 	}
 
+      bfree = nfree * (1 << i) * sizeof (BVT (clib_bihash_value));
+      free_bytes += bfree;
+
       if (nfree || verbose)
-	s = format (s, "       [len %d] %u free elts\n", 1 << i, nfree);
+	s = format (s, "       [len %d] %u free elts, %lld b (%lld Mbytes)\n",
+		    1 << i, nfree, bfree, bfree >> 20);
     }
 
   s = format (s, "    %lld linear search buckets\n", linear_buckets);
   used_bytes = alloc_arena_next (h);
   s = format (s,
 	      "    arena: base %llx, next %llx\n"
-	      "           used %lld b (%lld Mbytes) of %lld b (%lld Mbytes)\n",
+	      "           used %lld b (%lld Mbytes) of %lld b (%lld Mbytes)\n"
+	      "           in freelist %lld b (%lld Mbytes)\n",
 	      alloc_arena (h), alloc_arena_next (h),
 	      used_bytes, used_bytes >> 20,
-	      alloc_arena_size (h), alloc_arena_size (h) >> 20);
+	      alloc_arena_size (h), alloc_arena_size (h) >> 20,
+	      free_bytes, free_bytes >> 20);
   return s;
 }
 
