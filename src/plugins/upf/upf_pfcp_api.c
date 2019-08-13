@@ -1687,8 +1687,11 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
 
     if (ISSET_BIT (urr->grp.fields, CREATE_URR_MONITORING_TIME))
       {
+	f64 secs;
+
 	create->update_flags |= SX_URR_UPDATE_MONITORING_TIME;
-	create->monitoring_time.base = urr->monitoring_time;
+	create->monitoring_time.base =
+	  urr->monitoring_time + modf(sx->unix_time_start, &secs);
       }
 
     //TODO: subsequent_volume_threshold;
@@ -1796,8 +1799,11 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
 
     if (ISSET_BIT (urr->grp.fields, UPDATE_URR_MONITORING_TIME))
       {
+	f64 secs;
+
 	update->update_flags |= SX_URR_UPDATE_MONITORING_TIME;
-	update->monitoring_time.base = urr->monitoring_time;
+	update->monitoring_time.base =
+	  urr->monitoring_time + modf(sx->unix_time_start, &secs);
       }
 
     //TODO: subsequent_volume_threshold;
@@ -2049,7 +2055,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 {
   pfcp_usage_report_t *r;
   urr_volume_t volume;
-  u64 duration;
+  u64 start_time, duration;
 
   clib_spinlock_lock (&sess->lock);
 
@@ -2068,7 +2074,8 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       SET_BIT (r->grp.fields, USAGE_REPORT_USAGE_INFORMATION);
       r->usage_information = USAGE_INFORMATION_BEFORE;
 
-      duration = trunc(urr->start_time - urr->usage_before_monitoring_time.start_time);
+      start_time = trunc(urr->usage_before_monitoring_time.start_time);
+      duration = trunc(urr->start_time) - start_time;
 
       if ((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
 		      USAGE_REPORT_TRIGGER_STOP_OF_TRAFFIC)) == 0)
@@ -2076,7 +2083,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 	  SET_BIT (r->grp.fields, USAGE_REPORT_START_TIME);
 	  SET_BIT (r->grp.fields, USAGE_REPORT_END_TIME);
 
-	  r->start_time = trunc(urr->usage_before_monitoring_time.start_time);
+	  r->start_time = start_time;
 	  r->end_time = r->start_time + duration;
 
 	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
@@ -2112,7 +2119,8 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       r->usage_information = USAGE_INFORMATION_AFTER;
     }
 
-  duration = trunc(now - urr->start_time);
+  start_time = trunc(urr->start_time);
+  duration = trunc(now) - start_time;
 
   if ((trigger & (USAGE_REPORT_TRIGGER_START_OF_TRAFFIC |
 		  USAGE_REPORT_TRIGGER_STOP_OF_TRAFFIC)) == 0)
@@ -2120,7 +2128,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       SET_BIT (r->grp.fields, USAGE_REPORT_START_TIME);
       SET_BIT (r->grp.fields, USAGE_REPORT_END_TIME);
 
-      r->start_time = trunc(urr->start_time);
+      r->start_time = start_time;
       r->end_time = r->start_time + duration;
 
       SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
