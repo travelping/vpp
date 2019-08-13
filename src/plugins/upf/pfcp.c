@@ -275,6 +275,8 @@ typedef union {
   u64 _uint;
 } f64_u64_t;
 
+#if 0
+
 #define put_f64(V,I)						\
   do {								\
     *((u64 *)&(V)[_vec_len((V))]) = htobe64(*(u64 *)&(I));	\
@@ -285,6 +287,8 @@ typedef union {
   ({f64_u64_t _V = { ._uint = be64toh(*(u64 *)(V))};	\
     (V) += sizeof(f64);					\
     _V._float; })
+
+#endif
 
 #define get_ip4(IP,V)				\
   do {						\
@@ -629,6 +633,8 @@ encode_timer_ie (void *p, u8 ** vec)
   return 0;
 }
 
+#if 0
+
 static u8 *
 format_f64_time_stamp (u8 * s, va_list * args)
 {
@@ -656,6 +662,53 @@ encode_f64_time_stamp_ie (void *p, u8 ** vec)
   f64 *v = (f64 *) p;
 
   put_f64 (*vec, *v);
+
+  return 0;
+}
+
+#endif
+
+static u8 *
+format_sntp_time_stamp (u8 * s, va_list * args)
+{
+  f64 *v = va_arg (*args, f64 *);
+
+  return format (s, "%U", format_time_float, 0, *v);
+}
+
+static int
+decode_sntp_time_stamp_ie (u8 * data, u16 length, void *p)
+{
+  f64 *v = (f64 *) p;
+
+  if (length != 8)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  *v = get_u32(data);
+  if (*v >= 2208988800ULL)
+    *v -= 2208988800ULL;
+  else
+    *v += 2085978496ULL;
+
+  *v += get_u32(data) / (f64)((u64)1 << 32);
+
+  return 0;
+}
+
+static int
+encode_sntp_time_stamp_ie (void *p, u8 ** vec)
+{
+  f64 *v = (f64 *) p;
+  f64 fraction, seconds;
+
+  fraction = modf(*v, &seconds);
+  if (seconds >= 2085978496ULL)
+    seconds -= 2085978496ULL;
+  else
+    seconds += 2208988800ULL;
+
+  put_u32(*vec, seconds);
+  put_u32(*vec, fraction * (f64)((u64)1 << 32));
 
   return 0;
 }
@@ -3660,18 +3713,17 @@ free_mac_addresses_vec (void *p)
 #define encode_tp_build_id encode_simple_vec_ie
 #define free_tp_build_id free_simple_vec_ie
 
-#define format_tp_now format_f64_time_stamp
-#define decode_tp_now decode_f64_time_stamp_ie
-#define encode_tp_now encode_f64_time_stamp_ie
+#define format_tp_now format_sntp_time_stamp
+#define decode_tp_now decode_sntp_time_stamp_ie
+#define encode_tp_now encode_sntp_time_stamp_ie
 
-#define format_tp_start_time format_f64_time_stamp
-#define decode_tp_start_time decode_f64_time_stamp_ie
-#define encode_tp_start_time encode_f64_time_stamp_ie
+#define format_tp_start_time format_sntp_time_stamp
+#define decode_tp_start_time decode_sntp_time_stamp_ie
+#define encode_tp_start_time encode_sntp_time_stamp_ie
 
-#define format_tp_end_time format_f64_time_stamp
-#define decode_tp_end_time decode_f64_time_stamp_ie
-#define encode_tp_end_time encode_f64_time_stamp_ie
-
+#define format_tp_end_time format_sntp_time_stamp
+#define decode_tp_end_time decode_sntp_time_stamp_ie
+#define encode_tp_end_time encode_sntp_time_stamp_ie
 
 /* Grouped Information Elements */
 
