@@ -685,6 +685,12 @@ I:	bash
 M:	Dave Wallace <dwallacelf@gmail.com>
 F:	extras/bash/
 
+Plugin - AF_XDP Device driver
+I:	af_xdp
+M:	Damjan Marion <damarion@cisco.com>
+M:	Július Milan <julius.milan@pantheon.tech>
+F:	src/plugins/af_xdp/
+
 THE REST
 I:	misc
 C:	Contact vpp-dev Mailing List <vpp-dev@fd.io>
