@@ -765,8 +765,7 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
       // start timer.....
 
       t->expected = t->base + t->period;
-      interval = t->period * TW_CLOCKS_PER_SECOND -
-	floor ((now - t->base) * TW_CLOCKS_PER_SECOND);
+      interval = sx->timer.ticks_per_second * (t->expected - now) + 1;
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, interval);
 
@@ -792,13 +791,14 @@ upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
   if (t->handle != ~0)
     upf_pfcp_session_stop_urr_time (t, now);
 
-  if (t->base != 0 && t->base > now)
+  if (t->base != 0)
     {
-      u64 ticks;
+      i64 ticks;
 
       // start timer.....
       t->expected = t->base;
-      ticks = ceil ((t->base - now) * TW_CLOCKS_PER_SECOND) + 1;
+      ticks = sx->timer.ticks_per_second * (t->expected - now) + 1;
+      ticks = clib_max (ticks, 1);	/* make sure ticks is at least 1 */
       t->handle = TW (tw_timer_start) (&sx->timer, si, 0, ticks);
 
       gtp_debug
