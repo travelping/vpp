@@ -830,6 +830,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   vec_foreach (urr, active->urr)
   {
     u32 trigger = 0;
+    f64 trigger_now = now;
 
 #define urr_check(V, NOW)				\
     (((V).base != 0) && ((V).period != 0) &&		\
@@ -868,7 +869,10 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	u32 si = sx - gtm->sessions;
 
 	if (urr->triggers & REPORTING_TRIGGER_PERIODIC_REPORTING)
-	  trigger |= USAGE_REPORT_TRIGGER_PERIODIC_REPORTING;
+	  {
+	    trigger |= USAGE_REPORT_TRIGGER_PERIODIC_REPORTING;
+	    trigger_now = clib_min (trigger_now, urr->measurement_period.expected);
+	  }
 
 	urr->measurement_period.base += urr->measurement_period.period;
 	if ((urr->measurement_period.base + urr->measurement_period.period) < now)
@@ -895,14 +899,20 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
     if (urr_check (urr->time_threshold, now))
       {
 	if (urr->triggers & REPORTING_TRIGGER_TIME_THRESHOLD)
-	  trigger |= USAGE_REPORT_TRIGGER_TIME_THRESHOLD;
+	  {
+	    trigger |= USAGE_REPORT_TRIGGER_TIME_THRESHOLD;
+	    trigger_now = clib_min (trigger_now, urr->time_threshold.expected);
+	  }
 
 	upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
       }
     if (urr_check (urr->time_quota, now))
       {
 	if (urr->triggers & REPORTING_TRIGGER_TIME_QUOTA)
-	  trigger |= USAGE_REPORT_TRIGGER_TIME_QUOTA;
+	  {
+	    trigger |= USAGE_REPORT_TRIGGER_TIME_QUOTA;
+	    trigger_now = clib_min (trigger_now, urr->time_quota.expected);
+	  }
 
 	upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
 	urr->time_quota.period = 0;
@@ -913,7 +923,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
     if (trigger != 0)
       {
-	build_usage_report (sx, NULL, urr, trigger, now, &req.usage_report);
+	build_usage_report (sx, NULL, urr, trigger, trigger_now, &req.usage_report);
 
 	// clear reporting on the time based triggers, until rearmed by update
 	urr->triggers &= ~(REPORTING_TRIGGER_TIME_THRESHOLD |
