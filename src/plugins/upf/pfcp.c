@@ -3704,6 +3704,404 @@ free_mac_addresses_vec (void *p)
 #define decode_ethernet_inactivity_timer decode_u32_ie
 #define encode_ethernet_inactivity_timer encode_u32_ie
 
+#define format_event_quota format_u32_ie
+#define decode_event_quota decode_u32_ie
+#define encode_event_quota encode_u32_ie
+
+#define format_event_threshold format_u32_ie
+#define decode_event_threshold decode_u32_ie
+#define encode_event_threshold encode_u32_ie
+
+#define format_subsequent_event_quota format_u32_ie
+#define decode_subsequent_event_quota decode_u32_ie
+#define encode_subsequent_event_quota encode_u32_ie
+
+#define format_subsequent_event_threshold format_u32_ie
+#define decode_subsequent_event_threshold decode_u32_ie
+#define encode_subsequent_event_threshold encode_u32_ie
+
+static u8 * format_digit (u8 * s, u8 c)
+{
+  switch (c) {
+  case 0 ... 9:
+    vec_add1 (s, c + '0');
+    break;
+  default:
+    break;
+  }
+  return s;
+}
+
+static u8 *
+format_mccmcn (u8 * s, va_list * args)
+{
+  u8 *v = va_arg (*args, u8 *);
+
+  s = format_digit (s, v[0] & 0x0f);
+  s = format_digit (s, v[0] >> 4);
+  s = format_digit (s, v[1] & 0x0f);
+  vec_add1(s, ':');
+  s = format_digit (s, v[2] & 0x0f);
+  s = format_digit (s, v[2] >> 4);
+  s = format_digit (s, v[1] >> 4);
+
+  return s;
+}
+
+static u8 *
+format_trace_information (u8 * s, va_list * args)
+{
+  pfcp_trace_information_t *v = va_arg (*args, pfcp_trace_information_t *);
+  u8 *i;
+
+  s = format (s, "MCC/MNC:%U,Id:0x%08x,Evs:", format_mccmcn, &v->mccmnc[0], v->trace_id);
+  vec_foreach(i, v->triggering_events)
+    s = format (s, "%02x", *i);
+  s = format (s, ",Depth: %u,If:", v->trace_depth);
+  vec_foreach(i, v->interfaces)
+    s = format (s, "%02x", *i);
+  s = format (s, ",IP: %U",
+	      format_ip46_address, &v->collection_entity, IP46_TYPE_ANY);
+
+  return s;
+}
+
+static int
+decode_trace_information (u8 * data, u16 length, void *p)
+{
+  pfcp_trace_information_t *v = p;
+  u8 len;
+
+  if (length < 8)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  v->mccmnc[0] = get_u8 (data);
+  v->mccmnc[1] = get_u8 (data);
+  v->mccmnc[2] = get_u8 (data);
+
+  v->trace_id = get_u32 (data);
+
+  len = get_u8 (data);
+  length -= 8;
+
+  if (length < len)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  vec_reset_length (v->triggering_events);
+  vec_add (v->triggering_events, data, len);
+  length -= len;
+
+  if (length < 1)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  len = get_u8 (data);
+  length--;
+
+  if (length < len)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  vec_reset_length (v->interfaces);
+  vec_add (v->interfaces, data, len);
+  length -= len;
+
+  if (length < 1)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  len = get_u8 (data);
+  length--;
+
+  if (length < len)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  switch (len) {
+  case 4:
+    get_ip46_ip4 (v->collection_entity, data);
+
+  case 16:
+    get_ip46_ip6 (v->collection_entity, data);
+    break;
+
+  default:
+    return PFCP_CAUSE_INVALID_LENGTH;
+  }
+  length -= len;
+
+  return 0;
+}
+
+static int
+encode_trace_information (void *p, u8 ** vec)
+{
+  pfcp_trace_information_t *v = p;
+
+  put_u8 (*vec, v->mccmnc[0]);
+  put_u8 (*vec, v->mccmnc[1]);
+  put_u8 (*vec, v->mccmnc[2]);
+  put_u32 (*vec, v->trace_id);
+
+  put_u8 (*vec, vec_len (v->triggering_events));
+  vec_append (*vec, v->triggering_events);
+
+  put_u8 (*vec, v->trace_depth);
+
+  put_u8 (*vec, vec_len (v->interfaces));
+  vec_append (*vec, v->interfaces);
+
+  if (ip46_address_is_ip4 (&v->collection_entity))
+    {
+      put_u8 (*vec, 4);
+      put_ip46_ip4 (*vec, v->collection_entity);
+    }
+  else
+    {
+      put_u8 (*vec, 16);
+      put_ip46_ip6 (*vec, v->collection_entity);
+    }
+
+  return 0;
+}
+
+static void
+free_trace_information (void *p)
+{
+  pfcp_trace_information_t *v = p;
+
+  vec_free (v->triggering_events);
+  vec_free (v->interfaces);
+}
+
+#define format_framed_route format_simple_vec_ie
+#define decode_framed_route decode_simple_vec_ie
+#define encode_framed_route encode_simple_vec_ie
+
+#define format_framed_routing format_u8_ie
+#define decode_framed_routing decode_u8_ie
+#define encode_framed_routing encode_u8_ie
+
+#define format_framed_ipv6_route format_simple_vec_ie
+#define decode_framed_ipv6_route decode_simple_vec_ie
+#define encode_framed_ipv6_route encode_simple_vec_ie
+
+#define format_event_time_stamp format_time_stamp
+#define decode_event_time_stamp decode_time_stamp_ie
+#define encode_event_time_stamp encode_time_stamp_ie
+
+#define format_averaging_window format_u32_ie
+#define decode_averaging_window decode_u32_ie
+#define encode_averaging_window encode_u32_ie
+
+#define format_paging_policy_indicator format_u8_ie
+#define decode_paging_policy_indicator decode_u8_ie
+#define encode_paging_policy_indicator encode_u8_ie
+
+#define format_apn_dnn format_simple_vec_ie
+#define decode_apn_dnn decode_simple_vec_ie
+#define encode_apn_dnn encode_simple_vec_ie
+
+static char *tgpp_interface_type[] = {
+  [0] = "S1-U",
+  [1] = "S5/S8-U",
+  [2] = "S4-U",
+  [3] = "S11-U",
+  [4] = "S12-U",
+  [5] = "Gn/Gp-U",
+  [6] = "S2a-U",
+  [7] = "S2b-U",
+  [8] = "eNodeB GTP-U interface for DL data forwarding",
+  [9] = "eNodeB GTP-U interface for UL data forwarding",
+  [10] = "SGW/UPF GTP-U interface for DL data forwarding",
+  [11] = "N3 3GPP Access",
+  [12] = "N3 Trusted Non-3GPP Access",
+  [13] = "N3 Untrusted Non-3GPP Access",
+  [14] = "N3 for data forwarding",
+  [15] = "N9",
+};
+
+static u8 *
+format_tgpp_interface_type (u8 * s, va_list * args)
+{
+  pfcp_tgpp_interface_type_t *v = va_arg (*args, pfcp_tgpp_interface_type_t *);
+
+  return format (s, "%U", format_enum, (u64) *v, tgpp_interface_type,
+		 ARRAY_LEN (tgpp_interface_type));
+}
+
+#define decode_tgpp_interface_type decode_u8_ie
+#define encode_tgpp_interface_type encode_u8_ie
+
+static u8 *
+format_pfcpsrreq_flags (u8 * s, va_list * args)
+{
+  pfcp_pfcpsrreq_flags_t *v = va_arg (*args, pfcp_pfcpsrreq_flags_t *);
+
+  return format (s, "PSDBU:%d", ! !(*v & PFCPSRREQ_PSDBU));
+}
+
+#define decode_pfcpsrreq_flags decode_u8_ie
+#define encode_pfcpsrreq_flags encode_u8_ie
+
+static u8 *
+format_pfcpaureq_flags (u8 * s, va_list * args)
+{
+  pfcp_pfcpaureq_flags_t *v = va_arg (*args, pfcp_pfcpaureq_flags_t *);
+
+  return format (s, "PARPS:%d", ! !(*v & PFCPAUREQ_PARPS));
+}
+
+#define decode_pfcpaureq_flags decode_u8_ie
+#define encode_pfcpaureq_flags encode_u8_ie
+
+#define format_activation_time format_time_stamp
+#define decode_activation_time decode_time_stamp_ie
+#define encode_activation_time encode_time_stamp_ie
+
+#define format_deactivation_time format_time_stamp
+#define decode_deactivation_time decode_time_stamp_ie
+#define encode_deactivation_time encode_time_stamp_ie
+
+#define format_mar_id format_u16_ie
+#define decode_mar_id decode_u16_ie
+#define encode_mar_id encode_u16_ie
+
+static char *steering_functionality[] = {
+  [STEERING_FUNCTIONALITY_ATSSS_LL] = "ATSSS-LL",
+  [STEERING_FUNCTIONALITY_MPTCP] = "MPTCP",
+};
+
+static u8 *
+format_steering_functionality (u8 * s, va_list * args)
+{
+  pfcp_steering_functionality_t *v = va_arg (*args, pfcp_steering_functionality_t *);
+
+  return format (s, "%U", format_enum, (u64) *v, steering_functionality,
+		 ARRAY_LEN (steering_functionality));
+}
+
+#define decode_steering_functionality decode_u8_ie
+#define encode_steering_functionality encode_u8_ie
+
+static char *steering_mode[] = {
+  [STEERING_MODE_ACTIVE_STANDBY] = "Active-Standby",
+  [STEERING_MODE_SMALLEST_DELAY] = "Smallest Delay",
+  [STEERING_MODE_LOAD_BALANCING] = "Load Balancing",
+  [STEERING_MODE_PRIORITY_BASED] = "Priority-based",
+};
+
+static u8 *
+format_steering_mode (u8 * s, va_list * args)
+{
+  pfcp_steering_mode_t *v = va_arg (*args, pfcp_steering_mode_t *);
+
+  return format (s, "%U", format_enum, (u64) *v, steering_mode,
+		 ARRAY_LEN (steering_mode));
+}
+
+#define decode_steering_mode decode_u8_ie
+#define encode_steering_mode encode_u8_ie
+
+#define format_weight format_u8_ie
+#define decode_weight decode_u8_ie
+#define encode_weight encode_u8_ie
+
+static char *priority[] = {
+  [PRIORITY_ACTIVE] = "Active",
+  [PRIORITY_STANDBY] = "Standby",
+  [PRIORITY_HIGH] = "High",
+  [PRIORITY_LOW] = "Low",
+};
+
+static u8 *
+format_priority (u8 * s, va_list * args)
+{
+  pfcp_priority_t *v = va_arg (*args, pfcp_priority_t *);
+
+  return format (s, "%U", format_enum, (u64) *v, priority,
+		 ARRAY_LEN (priority));
+}
+
+#define decode_priority decode_u8_ie
+#define encode_priority encode_u8_ie
+
+#define format_ue_ip_address_pool_identity format_simple_vec_ie
+#define decode_ue_ip_address_pool_identity decode_simple_vec_ie
+#define encode_ue_ip_address_pool_identity encode_simple_vec_ie
+
+static u8 *
+format_alternative_smf_ip_address (u8 * s, va_list * args)
+{
+  pfcp_alternative_smf_ip_address_t *n = va_arg (*args, pfcp_alternative_smf_ip_address_t *);
+
+  switch (n->flags & (ALTERNATIVE_SMF_IP_ADDRESS_V4 | ALTERNATIVE_SMF_IP_ADDRESS_V6))
+    {
+    case ALTERNATIVE_SMF_IP_ADDRESS_V4:
+      s = format (s, "%U", format_ip4_address, &n->ip4);
+      break;
+
+    case ALTERNATIVE_SMF_IP_ADDRESS_V6:
+      s = format (s, "%U", format_ip6_address, &n->ip6);
+      break;
+
+    case (ALTERNATIVE_SMF_IP_ADDRESS_V4 | ALTERNATIVE_SMF_IP_ADDRESS_V6):
+      s =
+	format (s, "%U,%U", format_ip4_address, &n->ip4, format_ip6_address,
+		&n->ip6);
+      break;
+    }
+
+  return s;
+}
+
+static int
+decode_alternative_smf_ip_address (u8 * data, u16 length, void *p)
+{
+  pfcp_alternative_smf_ip_address_t *v = p;
+
+  if (length < 9)
+    return PFCP_CAUSE_INVALID_LENGTH;
+
+  v->flags = get_u8 (data) & 0x03;
+  if (v->flags == 0)
+    {
+      pfcp_debug ("PFCP: Alternative SMF IP Address with unsupported flags: %02x.", v->flags);
+      return -1;
+    }
+
+  if (v->flags & ALTERNATIVE_SMF_IP_ADDRESS_V4)
+    {
+      if (length < 4)
+	return PFCP_CAUSE_INVALID_LENGTH;
+
+      get_ip4 (v->ip4, data);
+      length -= 4;
+    }
+
+  if (v->flags & ALTERNATIVE_SMF_IP_ADDRESS_V6)
+    {
+      if (length < 16)
+	return PFCP_CAUSE_INVALID_LENGTH;
+
+      get_ip6 (v->ip6, data);
+    }
+
+  return 0;
+}
+
+static int
+encode_alternative_smf_ip_address (void *p, u8 ** vec)
+{
+  pfcp_alternative_smf_ip_address_t *v = p;
+
+  put_u8 (*vec, v->flags);
+
+  if (v->flags & ALTERNATIVE_SMF_IP_ADDRESS_V4)
+    put_ip4 (*vec, v->ip4);
+
+  if (v->flags & ALTERNATIVE_SMF_IP_ADDRESS_V6)
+    put_ip6 (*vec, v->ip6);
+
+  return 0;
+}
+
 #define format_tp_packet_measurement format_volume_ie
 #define decode_tp_packet_measurement decode_volume_ie
 #define encode_tp_packet_measurement encode_volume_ie
@@ -3767,6 +4165,18 @@ static struct pfcp_group_ie_def pfcp_create_pdr_group[] =
       .type = PFCP_IE_ACTIVATE_PREDEFINED_RULES,
       .offset = offsetof(pfcp_create_pdr_t, activate_predefined_rules)
     },
+    [CREATE_PDR_ACTIVATION_TIME] = {
+      .type = PFCP_IE_ACTIVATION_TIME,
+      .offset = offsetof(pfcp_create_pdr_t, activation_time)
+    },
+    [CREATE_PDR_DEACTIVATION_TIME] = {
+      .type = PFCP_IE_DEACTIVATION_TIME,
+      .offset = offsetof(pfcp_create_pdr_t, deactivation_time)
+    },
+    [CREATE_PDR_MAR_ID] = {
+      .type = PFCP_IE_MAR_ID,
+      .offset = offsetof(pfcp_create_pdr_t, mar_id)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_pdi_group[] =
@@ -3807,6 +4217,24 @@ static struct pfcp_group_ie_def pfcp_pdi_group[] =
     [PDI_QFI] = {
       .type = PFCP_IE_QFI,
       .offset = offsetof(pfcp_pdi_t, qfi)
+    },
+    [PDI_FRAMED_ROUTE] = {
+      .type = PFCP_IE_FRAMED_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_pdi_t, framed_route)
+    },
+    [PDI_FRAMED_ROUTING] = {
+      .type = PFCP_IE_FRAMED_ROUTING,
+      .offset = offsetof(pfcp_pdi_t, framed_routing)
+    },
+    [PDI_FRAMED_IPV6_ROUTE] = {
+      .type = PFCP_IE_FRAMED_IPV6_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_pdi_t, framed_ipv6_route)
+    },
+    [PDI_SOURCE_INTERFACE_TYPE] = {
+      .type = PFCP_IE_TGPP_INTERFACE_TYPE,
+      .offset = offsetof(pfcp_pdi_t, source_interface_type)
     },
   };
 
@@ -3871,6 +4299,10 @@ static struct pfcp_group_ie_def pfcp_forwarding_parameters_group[] =
     [FORWARDING_PARAMETERS_PROXYING] = {
       .type = PFCP_IE_PROXYING,
       .offset = offsetof(pfcp_forwarding_parameters_t, proxying)
+    },
+    [FORWARDING_PARAMETERS_DESTINATION_INTERFACE_TYPE] = {
+      .type = PFCP_IE_TGPP_INTERFACE_TYPE,
+      .offset = offsetof(pfcp_forwarding_parameters_t, destination_interface_type)
     },
   };
 
@@ -3976,6 +4408,11 @@ static struct pfcp_group_ie_def pfcp_create_urr_group[] =
       .type = PFCP_IE_ETHERNET_INACTIVITY_TIMER,
       .offset = offsetof(pfcp_create_urr_t, ethernet_inactivity_timer)
     },
+    [CREATE_URR_ADDITIONAL_MONITORING_TIME] = {
+      .type = PFCP_IE_ADDITIONAL_MONITORING_TIME,
+      .is_array = true,
+     .offset = offsetof(pfcp_create_urr_t, additional_monitoring_time)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_create_qer_group[] =
@@ -4016,6 +4453,14 @@ static struct pfcp_group_ie_def pfcp_create_qer_group[] =
       .type = PFCP_IE_RQI,
       .offset = offsetof(pfcp_create_qer_t, reflective_qos)
     },
+    [CREATE_QER_PAGING_POLICY_INDICATOR] = {
+      .type = PFCP_IE_PAGING_POLICY_INDICATOR,
+      .offset = offsetof(pfcp_create_qer_t, paging_policy_indicator)
+    },
+    [CREATE_QER_AVERAGING_WINDOW] = {
+      .type = PFCP_IE_AVERAGING_WINDOW,
+      .offset = offsetof(pfcp_create_qer_t, averaging_window)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_created_pdr_group[] =
@@ -4027,6 +4472,10 @@ static struct pfcp_group_ie_def pfcp_created_pdr_group[] =
     [CREATED_PDR_F_TEID] = {
       .type = PFCP_IE_F_TEID,
       .offset = offsetof(pfcp_created_pdr_t, f_teid)
+    },
+    [CREATED_PDR_UE_IP_ADDRESS] = {
+      .type = PFCP_IE_UE_IP_ADDRESS,
+      .offset = offsetof(pfcp_created_pdr_t, ue_ip_address)
     },
   };
 
@@ -4069,6 +4518,14 @@ static struct pfcp_group_ie_def pfcp_update_pdr_group[] =
     [UPDATE_PDR_DEACTIVATE_PREDEFINED_RULES] = {
       .type = PFCP_IE_DEACTIVATE_PREDEFINED_RULES,
       .offset = offsetof(pfcp_update_pdr_t, deactivate_predefined_rules)
+    },
+    [UPDATE_PDR_ACTIVATION_TIME] = {
+      .type = PFCP_IE_ACTIVATION_TIME,
+      .offset = offsetof(pfcp_update_pdr_t, activation_time)
+    },
+    [UPDATE_PDR_DEACTIVATION_TIME] = {
+      .type = PFCP_IE_DEACTIVATION_TIME,
+      .offset = offsetof(pfcp_update_pdr_t, deactivation_time)
     },
   };
 
@@ -4133,6 +4590,10 @@ static struct pfcp_group_ie_def pfcp_update_forwarding_parameters_group[] =
     [UPDATE_FORWARDING_PARAMETERS_LINKED_TRAFFIC_ENDPOINT_ID] = {
       .type = PFCP_IE_TRAFFIC_ENDPOINT_ID,
       .offset = offsetof(pfcp_update_forwarding_parameters_t, linked_traffic_endpoint_id)
+    },
+    [UPDATE_FORWARDING_PARAMETERS_DESTINATION_INTERFACE_TYPE] = {
+      .type = PFCP_IE_TGPP_INTERFACE_TYPE,
+      .offset = offsetof(pfcp_update_forwarding_parameters_t, destination_interface_type)
     },
   };
 
@@ -4281,6 +4742,14 @@ static struct pfcp_group_ie_def pfcp_update_qer_group[] =
     [UPDATE_QER_REFLECTIVE_QOS] = {
       .type = PFCP_IE_RQI,
       .offset = offsetof(pfcp_update_qer_t, reflective_qos)
+    },
+    [UPDATE_QER_PAGING_POLICY_INDICATOR] = {
+      .type = PFCP_IE_PAGING_POLICY_INDICATOR,
+      .offset = offsetof(pfcp_update_qer_t, paging_policy_indicator)
+    },
+    [UPDATE_QER_AVERAGING_WINDOW] = {
+      .type = PFCP_IE_AVERAGING_WINDOW,
+      .offset = offsetof(pfcp_update_qer_t, averaging_window)
     },
   };
 
@@ -4439,6 +4908,11 @@ static struct pfcp_group_ie_def pfcp_usage_report_smr_group[] =
     [USAGE_REPORT_QUERY_URR_REFERENCE] = {
       .type = PFCP_IE_QUERY_URR_REFERENCE,
       .offset = offsetof(pfcp_usage_report_t, query_urr_reference)
+    },
+    [USAGE_REPORT_EVENT_TIME_STAMP] = {
+      .type = PFCP_IE_EVENT_TIME_STAMP,
+      .is_array = true,
+      .offset = offsetof(pfcp_usage_report_t, event_time_stamp)
     },
     [USAGE_REPORT_ETHERNET_TRAFFIC_INFORMATION] = {
       .type = PFCP_IE_ETHERNET_TRAFFIC_INFORMATION,
@@ -4729,6 +5203,20 @@ static struct pfcp_group_ie_def pfcp_create_traffic_endpoint_group[] =
       .type = PFCP_IE_ETHERNET_PDU_SESSION_INFORMATION,
       .offset = offsetof(pfcp_create_traffic_endpoint_t, ethernet_pdu_session_information)
     },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_ROUTE] = {
+      .type = PFCP_IE_FRAMED_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_route)
+    },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_ROUTING] = {
+      .type = PFCP_IE_FRAMED_ROUTING,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_routing)
+    },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_IPV6_ROUTE] = {
+      .type = PFCP_IE_FRAMED_IPV6_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_ipv6_route)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_created_traffic_endpoint_group[] =
@@ -4740,6 +5228,10 @@ static struct pfcp_group_ie_def pfcp_created_traffic_endpoint_group[] =
     [CREATED_TRAFFIC_ENDPOINT_F_TEID] = {
       .type = PFCP_IE_F_TEID,
       .offset = offsetof(pfcp_created_traffic_endpoint_t, f_teid)
+    },
+    [CREATED_TRAFFIC_ENDPOINT_UE_IP_ADDRESS] = {
+      .type = PFCP_IE_UE_IP_ADDRESS,
+      .offset = offsetof(pfcp_created_traffic_endpoint_t, ue_ip_address)
     },
   };
 
@@ -4760,6 +5252,20 @@ static struct pfcp_group_ie_def pfcp_update_traffic_endpoint_group[] =
     [UPDATE_TRAFFIC_ENDPOINT_UE_IP_ADDRESS] = {
       .type = PFCP_IE_UE_IP_ADDRESS,
       .offset = offsetof(pfcp_update_traffic_endpoint_t, ue_ip_address)
+    },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_ROUTE] = {
+      .type = PFCP_IE_FRAMED_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_route)
+    },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_ROUTING] = {
+      .type = PFCP_IE_FRAMED_ROUTING,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_routing)
+    },
+    [UPDATE_TRAFFIC_ENDPOINT_FRAMED_IPV6_ROUTE] = {
+      .type = PFCP_IE_FRAMED_IPV6_ROUTE,
+      .is_array = true,
+      .offset = offsetof(pfcp_update_traffic_endpoint_t, framed_ipv6_route)
     },
   };
 
@@ -4813,6 +5319,134 @@ static struct pfcp_group_ie_def pfcp_ethernet_traffic_information_group[] =
     [ETHERNET_TRAFFIC_INFORMATION_MAC_ADDRESSES_REMOVED] = {
       .type = PFCP_IE_MAC_ADDRESSES_REMOVED,
       .offset = offsetof(pfcp_ethernet_traffic_information_t, mac_addresses_removed)
+    },
+  };
+
+static struct pfcp_group_ie_def pfcp_additional_monitoring_time_group[] =
+  {
+    [ADDITIONAL_MONITORING_TIME_MONITORING_TIME] = {
+      .type = PFCP_IE_MONITORING_TIME,
+      .offset = offsetof(pfcp_additional_monitoring_time_t, monitoring_time)
+    },
+    [ADDITIONAL_MONITORING_TIME_SUBSEQUENT_VOLUME_THRESHOLD] = {
+      .type = PFCP_IE_SUBSEQUENT_VOLUME_THRESHOLD,
+      .offset = offsetof(pfcp_additional_monitoring_time_t, subsequent_volume_threshold)
+    },
+    [ADDITIONAL_MONITORING_TIME_SUBSEQUENT_TIME_THRESHOLD] = {
+      .type = PFCP_IE_SUBSEQUENT_TIME_THRESHOLD,
+      .offset = offsetof(pfcp_additional_monitoring_time_t, subsequent_time_threshold)
+    },
+    [ADDITIONAL_MONITORING_TIME_SUBSEQUENT_VOLUME_QUOTA] = {
+      .type = PFCP_IE_SUBSEQUENT_VOLUME_QUOTA,
+      .offset = offsetof(pfcp_additional_monitoring_time_t, subsequent_volume_quota)
+    },
+    [ADDITIONAL_MONITORING_TIME_SUBSEQUENT_TIME_QUOTA] = {
+      .type = PFCP_IE_SUBSEQUENT_TIME_QUOTA,
+      .offset = offsetof(pfcp_additional_monitoring_time_t, subsequent_time_quota)
+    },
+  };
+
+static struct pfcp_group_ie_def pfcp_create_mar_group[] =
+  {
+    [CREATE_MAR_MAR_ID] = {
+      .type = PFCP_IE_MAR_ID,
+      .offset = offsetof(pfcp_create_mar_t, mar_id)
+    },
+    [CREATE_MAR_STEERING_FUNCTIONALITY] = {
+      .type = PFCP_IE_STEERING_FUNCTIONALITY,
+      .offset = offsetof(pfcp_create_mar_t, steering_functionality)
+    },
+    [CREATE_MAR_STEERING_MODE] = {
+      .type = PFCP_IE_STEERING_MODE,
+      .offset = offsetof(pfcp_create_mar_t, steering_mode)
+    },
+    [CREATE_MAR_ACCESS_FORWARDING_ACTION_INFORMATION_1] = {
+      .type = PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_1,
+      .offset = offsetof(pfcp_create_mar_t, access_forwarding_action_information_1)
+    },
+    [CREATE_MAR_ACCESS_FORWARDING_ACTION_INFORMATION_2] = {
+      .type = PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_2,
+      .offset = offsetof(pfcp_create_mar_t, access_forwarding_action_information_2)
+    },
+  };
+
+static struct pfcp_group_ie_def pfcp_access_forwarding_action_information_group[] =
+  {
+    [ACCESS_FORWARDING_ACTION_INFORMATION_FAR_ID] = {
+      .type = PFCP_IE_FAR_ID,
+      .offset = offsetof(pfcp_access_forwarding_action_information_t, far_id)
+    },
+    [ACCESS_FORWARDING_ACTION_INFORMATION_WEIGHT] = {
+      .type = PFCP_IE_WEIGHT,
+      .offset = offsetof(pfcp_access_forwarding_action_information_t, weight)
+    },
+    [ACCESS_FORWARDING_ACTION_INFORMATION_PRIORITY] = {
+      .type = PFCP_IE_PRIORITY,
+      .offset = offsetof(pfcp_access_forwarding_action_information_t, priority)
+    },
+    [ACCESS_FORWARDING_ACTION_INFORMATION_URR_ID] = {
+      .type = PFCP_IE_URR_ID,
+      .offset = offsetof(pfcp_access_forwarding_action_information_t, urr_id)
+    },
+  };
+
+static struct pfcp_group_ie_def pfcp_remove_mar_group[] =
+  {
+    [REMOVE_MAR_MAR_ID] = {
+      .type = PFCP_IE_MAR_ID,
+      .offset = offsetof(pfcp_remove_mar_t, mar_id)
+    },
+   };
+
+static struct pfcp_group_ie_def pfcp_update_mar_group[] =
+  {
+    [UPDATE_MAR_MAR_ID] = {
+      .type = PFCP_IE_MAR_ID,
+      .offset = offsetof(pfcp_update_mar_t, mar_id)
+    },
+    [UPDATE_MAR_STEERING_FUNCTIONALITY] = {
+      .type = PFCP_IE_STEERING_FUNCTIONALITY,
+      .offset = offsetof(pfcp_update_mar_t, steering_functionality)
+    },
+    [UPDATE_MAR_STEERING_MODE] = {
+      .type = PFCP_IE_STEERING_MODE,
+      .offset = offsetof(pfcp_update_mar_t, steering_mode)
+    },
+    [UPDATE_MAR_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_1] = {
+      .type = PFCP_IE_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_1,
+      .offset = offsetof(pfcp_update_mar_t, update_access_forwarding_action_information_1)
+    },
+    [UPDATE_MAR_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_2] = {
+      .type = PFCP_IE_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_2,
+      .offset = offsetof(pfcp_update_mar_t, update_access_forwarding_action_information_2)
+    },
+    [UPDATE_MAR_ACCESS_FORWARDING_ACTION_INFORMATION_1] = {
+      .type = PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_1,
+      .offset = offsetof(pfcp_update_mar_t, access_forwarding_action_information_1)
+    },
+    [UPDATE_MAR_ACCESS_FORWARDING_ACTION_INFORMATION_2] = {
+      .type = PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_2,
+      .offset = offsetof(pfcp_update_mar_t, access_forwarding_action_information_2)
+    },
+  };
+
+static struct pfcp_group_ie_def pfcp_update_access_forwarding_action_information_group[] =
+  {
+    [UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_FAR_ID] = {
+      .type = PFCP_IE_FAR_ID,
+      .offset = offsetof(pfcp_update_access_forwarding_action_information_t, far_id)
+    },
+    [UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_WEIGHT] = {
+      .type = PFCP_IE_WEIGHT,
+      .offset = offsetof(pfcp_update_access_forwarding_action_information_t, weight)
+    },
+    [UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_PRIORITY] = {
+      .type = PFCP_IE_PRIORITY,
+      .offset = offsetof(pfcp_update_access_forwarding_action_information_t, priority)
+    },
+    [UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_URR_ID] = {
+      .type = PFCP_IE_URR_ID,
+      .offset = offsetof(pfcp_update_access_forwarding_action_information_t, urr_id)
     },
   };
 
@@ -5316,6 +5950,86 @@ static struct pfcp_ie_def tgpp_specs[] =
 		   "MAC Addresses Removed"),
     SIMPLE_IE(PFCP_IE_ETHERNET_INACTIVITY_TIMER, ethernet_inactivity_timer,
 	      "Ethernet Inactivity Timer"),
+    [PFCP_IE_ADDITIONAL_MONITORING_TIME] =
+    {
+      .name = "Additional Monitoring Time",
+      .length = sizeof(pfcp_additional_monitoring_time_t),
+      .size = ARRAY_LEN(pfcp_additional_monitoring_time_group),
+      .group = pfcp_additional_monitoring_time_group,
+    },
+    SIMPLE_IE(PFCP_IE_EVENT_QUOTA, event_quota, "Event Quota"),
+    SIMPLE_IE(PFCP_IE_EVENT_THRESHOLD, event_threshold, "Event Threshold"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_EVENT_QUOTA, subsequent_event_quota, "Subsequent Event Quota"),
+    SIMPLE_IE(PFCP_IE_SUBSEQUENT_EVENT_THRESHOLD, subsequent_event_threshold, "Subsequent Event Threshold"),
+    SIMPLE_IE_FREE(PFCP_IE_TRACE_INFORMATION, trace_information, "Trace Information"),
+    SIMPLE_IE(PFCP_IE_FRAMED_ROUTE, framed_route, "Framed Route"),
+    SIMPLE_IE(PFCP_IE_FRAMED_ROUTING, framed_routing, "Framed Routing"),
+    SIMPLE_IE(PFCP_IE_FRAMED_IPV6_ROUTE, framed_ipv6_route, "Framed IPv6 Route"),
+    SIMPLE_IE(PFCP_IE_EVENT_TIME_STAMP, event_time_stamp, "Event Time Stamp"),
+    SIMPLE_IE(PFCP_IE_AVERAGING_WINDOW, averaging_window, "Averaging Window"),
+    SIMPLE_IE(PFCP_IE_PAGING_POLICY_INDICATOR, paging_policy_indicator, "Paging Policy Indicator"),
+    SIMPLE_IE(PFCP_IE_APN_DNN, apn_dnn, "APN/DNN"),
+    SIMPLE_IE(PFCP_IE_TGPP_INTERFACE_TYPE, tgpp_interface_type, "3GPP Interface Type"),
+    SIMPLE_IE(PFCP_IE_PFCPSRREQ_FLAGS, pfcpsrreq_flags, "PFCPSRReq-Flags"),
+    SIMPLE_IE(PFCP_IE_PFCPAUREQ_FLAGS, pfcpaureq_flags, "PFCPAUReq-Flags"),
+    SIMPLE_IE(PFCP_IE_ACTIVATION_TIME, activation_time, "Activation Time"),
+    SIMPLE_IE(PFCP_IE_DEACTIVATION_TIME, deactivation_time, "Deactivation Time"),
+    [PFCP_IE_CREATE_MAR] =
+    {
+      .name = "Create MAR",
+      .length = sizeof(pfcp_create_mar_t),
+      .size = ARRAY_LEN(pfcp_create_mar_group),
+      .group = pfcp_create_mar_group,
+    },
+    [PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_1] =
+    {
+      .name = "Access Forwarding Action Information 1",
+      .length = sizeof(pfcp_access_forwarding_action_information_t),
+      .size = ARRAY_LEN(pfcp_access_forwarding_action_information_group),
+      .group = pfcp_access_forwarding_action_information_group,
+    },
+    [PFCP_IE_ACCESS_FORWARDING_ACTION_INFORMATION_2] =
+    {
+      .name = "Access Forwarding Action Information 2",
+      .length = sizeof(pfcp_access_forwarding_action_information_t),
+      .size = ARRAY_LEN(pfcp_access_forwarding_action_information_group),
+      .group = pfcp_access_forwarding_action_information_group,
+    },
+    [PFCP_IE_REMOVE_MAR] =
+    {
+      .name = "Remove MAR",
+      .length = sizeof(pfcp_remove_mar_t),
+      .size = ARRAY_LEN(pfcp_remove_mar_group),
+      .group = pfcp_remove_mar_group,
+    },
+    [PFCP_IE_UPDATE_MAR] =
+    {
+      .name = "Update MAR",
+      .length = sizeof(pfcp_update_mar_t),
+      .size = ARRAY_LEN(pfcp_update_mar_group),
+      .group = pfcp_update_mar_group,
+    },
+    SIMPLE_IE(PFCP_IE_MAR_ID, mar_id, "MAR ID"),
+    SIMPLE_IE(PFCP_IE_STEERING_FUNCTIONALITY, steering_functionality, "Steering Functionality"),
+    SIMPLE_IE(PFCP_IE_STEERING_MODE, steering_mode, "Steering Mode"),
+    SIMPLE_IE(PFCP_IE_WEIGHT, weight, "Weight"),
+    SIMPLE_IE(PFCP_IE_PRIORITY, priority, "Priority"),
+    [PFCP_IE_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_1] =
+    {
+      .name = "Update Access Forwarding Action Information 1",
+      .length = sizeof(pfcp_update_access_forwarding_action_information_t),
+      .size = ARRAY_LEN(pfcp_update_access_forwarding_action_information_group),
+      .group = pfcp_update_access_forwarding_action_information_group,
+    },
+    [PFCP_IE_UPDATE_ACCESS_FORWARDING_ACTION_INFORMATION_2] =
+    {
+      .name = "Update Access Forwarding Action Information 2",
+      .length = sizeof(pfcp_update_access_forwarding_action_information_t),
+      .size = ARRAY_LEN(pfcp_update_access_forwarding_action_information_group),
+      .group = pfcp_update_access_forwarding_action_information_group,
+    },
+    SIMPLE_IE(PFCP_IE_UE_IP_ADDRESS_POOL_IDENTITY, ue_ip_address_pool_identity, "UE IP address Pool Identity"),
+    SIMPLE_IE(PFCP_IE_ALTERNATIVE_SMF_IP_ADDRESS, alternative_smf_ip_address, "Alternative SMF IP Address"),
   };
 
 static struct pfcp_ie_def vendor_tp_specs[] =
@@ -5428,6 +6142,16 @@ static struct pfcp_group_ie_def pfcp_association_setup_request_group[] =
       .vendor = VENDOR_TRAVELPING,
       .offset = offsetof(pfcp_association_setup_request_t, tp_build_id)
     },
+    [ASSOCIATION_SETUP_REQUEST_UE_IP_ADDRESS_POOL_IDENTITY] = {
+      .type = PFCP_IE_UE_IP_ADDRESS_POOL_IDENTITY,
+      .is_array = true,
+      .offset = offsetof(pfcp_association_setup_request_t, ue_ip_address_pool_identity)
+    },
+    [ASSOCIATION_SETUP_REQUEST_ALTERNATIVE_SMF_IP_ADDRESS] = {
+      .type = PFCP_IE_ALTERNATIVE_SMF_IP_ADDRESS,
+      .is_array = true,
+      .offset = offsetof(pfcp_association_setup_request_t, alternative_smf_ip_address)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_association_setup_response_group[] =
@@ -5490,6 +6214,15 @@ static struct pfcp_group_ie_def pfcp_association_update_request_group[] =
       .type = PFCP_IE_USER_PLANE_IP_RESOURCE_INFORMATION,
       .is_array = true,
       .offset = offsetof(pfcp_association_update_request_t, user_plane_ip_resource_information)
+    },
+    [ASSOCIATION_UPDATE_REQUEST_PFCPAUREQ_FLAGS] = {
+      .type = PFCP_IE_PFCPAUREQ_FLAGS,
+      .offset = offsetof(pfcp_association_update_request_t, pfcpaureq_flags)
+    },
+    [ASSOCIATION_UPDATE_REQUEST_ALTERNATIVE_SMF_IP_ADDRESS] = {
+      .type = PFCP_IE_ALTERNATIVE_SMF_IP_ADDRESS,
+      .is_array = true,
+      .offset = offsetof(pfcp_association_update_request_t, alternative_smf_ip_address)
     },
   };
 
@@ -5607,7 +6340,19 @@ static struct pfcp_group_ie_def pfcp_session_establishment_request_group[] =
       .type = PFCP_IE_USER_ID,
       .offset = offsetof(pfcp_session_establishment_request_t, user_id)
     },
-
+    [SESSION_ESTABLISHMENT_REQUEST_TRACE_INFORMATION] = {
+      .type = PFCP_IE_TRACE_INFORMATION,
+      .offset = offsetof(pfcp_session_establishment_request_t, trace_information)
+    },
+    [SESSION_ESTABLISHMENT_REQUEST_APN_DNN] = {
+      .type = PFCP_IE_APN_DNN,
+      .offset = offsetof(pfcp_session_establishment_request_t, apn_dnn)
+    },
+    [SESSION_ESTABLISHMENT_REQUEST_CREATE_MAR] = {
+      .type = PFCP_IE_CREATE_MAR,
+      .is_array = true,
+      .offset = offsetof(pfcp_session_establishment_request_t, create_mar)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_session_establishment_response_group[] =
@@ -5775,6 +6520,25 @@ static struct pfcp_group_ie_def pfcp_session_modification_request_group[] =
       .type = PFCP_IE_QUERY_URR_REFERENCE,
       .offset = offsetof(pfcp_session_modification_request_t, query_urr_reference)
     },
+    [SESSION_MODIFICATION_REQUEST_TRACE_INFORMATION] = {
+      .type = PFCP_IE_TRACE_INFORMATION,
+      .offset = offsetof(pfcp_session_modification_request_t, trace_information)
+    },
+    [SESSION_MODIFICATION_REQUEST_REMOVE_MAR] = {
+      .type = PFCP_IE_REMOVE_MAR,
+      .is_array = true,
+      .offset = offsetof(pfcp_session_modification_request_t, remove_mar)
+    },
+    [SESSION_MODIFICATION_REQUEST_UPDATE_MAR] = {
+      .type = PFCP_IE_UPDATE_MAR,
+      .is_array = true,
+      .offset = offsetof(pfcp_session_modification_request_t, update_mar)
+    },
+    [SESSION_MODIFICATION_REQUEST_CREATE_MAR] = {
+      .type = PFCP_IE_CREATE_MAR,
+      .is_array = true,
+      .offset = offsetof(pfcp_session_modification_request_t, create_mar)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_session_modification_response_group[] =
@@ -5876,6 +6640,10 @@ static struct pfcp_group_ie_def pfcp_session_report_request_group[] =
       .type = PFCP_IE_ADDITIONAL_USAGE_REPORTS_INFORMATION,
       .offset = offsetof(pfcp_session_report_request_t, additional_usage_reports_information)
     },
+    [SESSION_REPORT_REQUEST_PFCPSRREQ_FLAGS] = {
+      .type = PFCP_IE_PFCPSRREQ_FLAGS,
+      .offset = offsetof(pfcp_session_report_request_t, pfcpsrreq_flags)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_session_report_response_group[] =
@@ -5896,6 +6664,14 @@ static struct pfcp_group_ie_def pfcp_session_report_response_group[] =
     [SESSION_REPORT_RESPONSE_SXSRRSP_FLAGS] = {
       .type = PFCP_IE_SXSRRSP_FLAGS,
       .offset = offsetof(pfcp_session_report_response_t, sxsrrsp_flags)
+    },
+    [SESSION_REPORT_RESPONSE_CP_F_SEID] = {
+      .type = PFCP_IE_F_SEID,
+      .offset = offsetof(pfcp_session_report_response_t, cp_f_seid)
+    },
+    [SESSION_REPORT_RESPONSE_N4_u_F_TEID] = {
+      .type = PFCP_IE_F_TEID,
+      .offset = offsetof(pfcp_session_report_response_t, n4_u_f_teid)
     },
   };
 
