@@ -2163,6 +2163,7 @@ enum
   ASSOCIATION_SETUP_RESPONSE_CP_FUNCTION_FEATURES,
   ASSOCIATION_SETUP_RESPONSE_USER_PLANE_IP_RESOURCE_INFORMATION,
   ASSOCIATION_SETUP_RESPONSE_TP_BUILD_ID,
+  ASSOCIATION_SETUP_RESPONSE_UE_IP_ADDRESS_POOL_IDENTITY,
   ASSOCIATION_SETUP_RESPONSE_LAST =
     ASSOCIATION_SETUP_REQUEST_TP_BUILD_ID
 };
@@ -2178,6 +2179,7 @@ typedef struct
   pfcp_user_plane_ip_resource_information_t
     * user_plane_ip_resource_information;
   pfcp_tp_build_id_t tp_build_id;
+  pfcp_ue_ip_address_pool_identity_t *ue_ip_address_pool_identity;
 } pfcp_association_setup_response_t;
 
 enum
@@ -2189,6 +2191,7 @@ enum
   ASSOCIATION_UPDATE_REQUEST_GRACEFUL_RELEASE_PERIOD,
   ASSOCIATION_UPDATE_REQUEST_USER_PLANE_IP_RESOURCE_INFORMATION,
   ASSOCIATION_UPDATE_REQUEST_PFCPAUREQ_FLAGS,
+  ASSOCIATION_UPDATE_REQUEST_UE_IP_ADDRESS_POOL_IDENTITY,
   ASSOCIATION_UPDATE_REQUEST_ALTERNATIVE_SMF_IP_ADDRESS,
   ASSOCIATION_UPDATE_REQUEST_LAST =
     ASSOCIATION_UPDATE_REQUEST_ALTERNATIVE_SMF_IP_ADDRESS
@@ -2206,6 +2209,7 @@ typedef struct
     pfcp_user_plane_ip_resource_information_t
     * user_plane_ip_resource_information;
   pfcp_pfcpaureq_flags_t pfcpaureq_flags;
+  pfcp_ue_ip_address_pool_identity_t *ue_ip_address_pool_identity;
   pfcp_alternative_smf_ip_address_t *alternative_smf_ip_address;
 } pfcp_association_update_request_t;
 
