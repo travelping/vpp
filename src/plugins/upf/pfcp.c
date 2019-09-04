@@ -6186,6 +6186,11 @@ static struct pfcp_group_ie_def pfcp_association_setup_response_group[] =
       .vendor = VENDOR_TRAVELPING,
       .offset = offsetof(pfcp_association_setup_response_t, tp_build_id)
     },
+    [ASSOCIATION_SETUP_RESPONSE_UE_IP_ADDRESS_POOL_IDENTITY] = {
+      .type = PFCP_IE_UE_IP_ADDRESS_POOL_IDENTITY,
+      .is_array = true,
+      .offset = offsetof(pfcp_association_setup_response_t, ue_ip_address_pool_identity)
+    },
   };
 
 static struct pfcp_group_ie_def pfcp_association_update_request_group[] =
@@ -6218,6 +6223,11 @@ static struct pfcp_group_ie_def pfcp_association_update_request_group[] =
     [ASSOCIATION_UPDATE_REQUEST_PFCPAUREQ_FLAGS] = {
       .type = PFCP_IE_PFCPAUREQ_FLAGS,
       .offset = offsetof(pfcp_association_update_request_t, pfcpaureq_flags)
+    },
+    [ASSOCIATION_UPDATE_REQUEST_UE_IP_ADDRESS_POOL_IDENTITY] = {
+      .type = PFCP_IE_UE_IP_ADDRESS_POOL_IDENTITY,
+      .is_array = true,
+      .offset = offsetof(pfcp_association_update_request_t, ue_ip_address_pool_identity)
     },
     [ASSOCIATION_UPDATE_REQUEST_ALTERNATIVE_SMF_IP_ADDRESS] = {
       .type = PFCP_IE_ALTERNATIVE_SMF_IP_ADDRESS,
