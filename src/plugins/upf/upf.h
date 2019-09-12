@@ -44,10 +44,10 @@
 #define ip4_address_initializer { 0 }
 #define ip6_address_initializer {{ 0 }}
 
-#define BUFFER_HAS_GTP_HDR  (1<<0)
-#define BUFFER_HAS_UDP_HDR  (1<<1)
-#define BUFFER_HAS_IP4_HDR  (1<<2)
-#define BUFFER_HAS_IP6_HDR  (1<<3)
+#define BUFFER_HAS_GTP_HDR  (1<<4)
+#define BUFFER_HAS_UDP_HDR  (1<<5)
+#define BUFFER_HAS_IP4_HDR  (1<<6)
+#define BUFFER_HAS_IP6_HDR  (1<<7)
 #define BUFFER_HDR_MASK     (BUFFER_HAS_GTP_HDR | BUFFER_HAS_UDP_HDR |	\
 			     BUFFER_HAS_IP4_HDR | BUFFER_HAS_IP6_HDR)
 #define BUFFER_GTP_UDP_IP4  (BUFFER_HAS_GTP_HDR | BUFFER_HAS_UDP_HDR |	\
@@ -85,6 +85,13 @@ typedef struct
   u8 pdu_number;
   u8 next_ext_type;
 } gtpu_header_t;
+
+typedef CLIB_PACKED(struct
+{
+  u8 type;
+  u8 len;
+  u16 pad;
+}) gtpu_ext_header_t;
 
 #define GTPU_V1_HDR_LEN   8
 
