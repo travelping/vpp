@@ -141,8 +141,10 @@ STATIC_ASSERT (STRUCT_OFFSET_OF (transport_connection_t, s_index)
 
 /* Warn if size changes. Two cache lines is already generous, hopefully we
  * won't have to outgrow that. */
+#if 0
 STATIC_ASSERT (sizeof (transport_connection_t) <= 128,
 	       "moved into 3rd cache line");
+#endif
 
 #define foreach_transport_proto				\
   _(TCP, "tcp", "T")					\
