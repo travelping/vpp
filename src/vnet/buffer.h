@@ -118,8 +118,8 @@ _(map)						\
 _(map_t)					\
 _(ip_frag)					\
 _(mpls)					        \
-_(tcp)						\
-_(gtpu)
+_(tcp)
+
 
 /*
  * vnet stack buffer opaque array overlay structure.
@@ -347,19 +347,6 @@ typedef struct
       u32 flags;
     } snat;
 
-    /* GTP-U */
-    struct
-    {
-      u32 teid;
-      u32 session_index;
-      u16 ext_hdr_len;
-      u16 data_offset;			/* offset relative to ip hdr */
-      u8 flags;
-      u8 is_reverse;
-      u32 pdr_idx;
-      u32 flow_id;
-    } gtpu;
-
     u32 unused[6];
   };
 } vnet_buffer_opaque_t;
@@ -423,13 +410,6 @@ typedef struct
 #endif
 
       u32 connection_index;
-
-      /* GTP-U */
-      struct
-      {
-	u32 session_index;
-	u32 far_index;
-      } gtpu;
     };
     struct
     {

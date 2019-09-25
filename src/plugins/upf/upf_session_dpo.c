@@ -353,10 +353,10 @@ VLIB_NODE_FN (upf_ip4_session_dpo_node) (vlib_main_t * vm,
 	  b->error = error_node->errors[error0];
 	  calc_checksums (vm, b);
 
-	  vnet_buffer (b)->gtpu.session_index = sidx;
-	  vnet_buffer (b)->gtpu.data_offset = 0;
-	  vnet_buffer (b)->gtpu.teid = 0;
-	  vnet_buffer (b)->gtpu.flags = BUFFER_HAS_IP4_HDR;
+	  upf_buffer_opaque (b)->gtpu.session_index = sidx;
+	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
+	  upf_buffer_opaque (b)->gtpu.teid = 0;
+	  upf_buffer_opaque (b)->gtpu.flags = BUFFER_HAS_IP4_HDR;
 
 	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	    {
@@ -472,10 +472,10 @@ VLIB_NODE_FN (upf_ip6_session_dpo_node) (vlib_main_t * vm,
 	  b->error = error_node->errors[error0];
 	  calc_checksums (vm, b);
 
-	  vnet_buffer (b)->gtpu.session_index = sidx;
-	  vnet_buffer (b)->gtpu.data_offset = 0;
-	  vnet_buffer (b)->gtpu.teid = 0;
-	  vnet_buffer (b)->gtpu.flags = BUFFER_HAS_IP6_HDR;
+	  upf_buffer_opaque (b)->gtpu.session_index = sidx;
+	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
+	  upf_buffer_opaque (b)->gtpu.teid = 0;
+	  upf_buffer_opaque (b)->gtpu.flags = BUFFER_HAS_IP6_HDR;
 
 	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	    {

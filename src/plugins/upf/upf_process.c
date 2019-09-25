@@ -102,8 +102,8 @@ upf_to_proxy (vlib_buffer_t * b, int is_ip4, u32 sidx,
     }
 
   vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index; //sw_if_index;
-  vnet_buffer2 (b)->gtpu.session_index = sidx;
-  vnet_buffer2 (b)->gtpu.far_index = far_idx | 0x80000000;
+  upf_buffer_opaque2 (b)->gtpu.session_index = sidx;
+  upf_buffer_opaque2 (b)->gtpu.far_index = far_idx | 0x80000000;
   vnet_buffer2 (b)->connection_index =
     upf_proxy_session (fib_index, is_ip4) | 0x80000000;
   next = UPF_PROCESS_NEXT_IP_LOCAL;
@@ -174,16 +174,16 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  b = vlib_get_buffer (vm, bi);
 
 	  /* Get next node index and adj index from tunnel next_dpo */
-	  sidx = vnet_buffer (b)->gtpu.session_index;
+	  sidx = upf_buffer_opaque (b)->gtpu.session_index;
 	  sess = pool_elt_at_index (gtm->sessions, sidx);
 
 	  error = 0;
 	  next = UPF_PROCESS_NEXT_DROP;
 	  active = sx_get_rules (sess, SX_ACTIVE);
 
-	  if (PREDICT_TRUE (vnet_buffer (b)->gtpu.pdr_idx != ~0))
+	  if (PREDICT_TRUE (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0))
 	    {
-	      pdr = active->pdr + vnet_buffer (b)->gtpu.pdr_idx;
+	      pdr = active->pdr + upf_buffer_opaque (b)->gtpu.pdr_idx;
 	      far = sx_get_far_by_id (active, pdr->far_id);
 	    }
 
@@ -195,33 +195,33 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	    case 0:	/* GTP-U/UDP/IPv4 */
 	      if (PREDICT_FALSE
-		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_GTP_UDP_IP4))
 		{
 		  next = UPF_PROCESS_NEXT_DROP;
 		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
-	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      vlib_buffer_advance (b, upf_buffer_opaque (b)->gtpu.data_offset);
 	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 
 	    case 1:	/* GTP-U/UDP/IPv6 */
 	      if (PREDICT_FALSE
-		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_GTP_UDP_IP6))
 		{
 		  next = UPF_PROCESS_NEXT_DROP;
 		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
-	      vlib_buffer_advance (b, vnet_buffer (b)->gtpu.data_offset);
+	      vlib_buffer_advance (b, upf_buffer_opaque (b)->gtpu.data_offset);
 	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 
 	    case 2:	/* UDP/IPv4 */
 	      if (PREDICT_FALSE
-		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_UDP_IP4))
 		{
 		  next = UPF_PROCESS_NEXT_DROP;
@@ -236,7 +236,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	    case 3:	/* UDP/IPv6 */
 	      if (PREDICT_FALSE
-		  ((vnet_buffer (b)->gtpu.flags & BUFFER_HDR_MASK) !=
+		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_UDP_IP6))
 		{
 		  next = UPF_PROCESS_NEXT_DROP;
@@ -254,17 +254,17 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  if (~0 != vnet_buffer (b)->gtpu.flow_id)
+	  if (~0 != upf_buffer_opaque (b)->gtpu.flow_id)
 	    {
 	      flow_entry_t *flow;
 
 	      gtp_debug ("flow: %p (%u): %U\n",
-			 fm->flows + vnet_buffer (b)->gtpu.flow_id,
-			 vnet_buffer (b)->gtpu.flow_id,
+			 fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
+			 upf_buffer_opaque (b)->gtpu.flow_id,
 			 format_flow_key,
-			 &(fm->flows + vnet_buffer (b)->gtpu.flow_id)->key);
+			 &(fm->flows + upf_buffer_opaque (b)->gtpu.flow_id)->key);
 
-	      flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
+	      flow = pool_elt_at_index (fm->flows, upf_buffer_opaque (b)->gtpu.flow_id);
 	      if (flow->is_l3_proxy)
 		{
 		  next = upf_to_proxy (b, is_ip4, sidx, ~0, ~0, &error);

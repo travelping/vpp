@@ -342,7 +342,7 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 			   flow_entry_t * flow, struct rules *active,
 			   u8 is_ip4)
 {
-  u32 offs = vnet_buffer (b)->gtpu.data_offset;
+  u32 offs = upf_buffer_opaque (b)->gtpu.data_offset;
   ip4_header_t *ip4 = NULL;
   ip6_header_t *ip6 = NULL;
   upf_pdr_t *adr;
@@ -407,9 +407,9 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
 
   adf_debug ("URL: %v", url);
 
-  adr = vec_elt_at_index (active->pdr, vnet_buffer (b)->gtpu.pdr_idx);
+  adr = vec_elt_at_index (active->pdr, upf_buffer_opaque (b)->gtpu.pdr_idx);
   adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
-	     vnet_buffer (b)->gtpu.pdr_idx);
+	     upf_buffer_opaque (b)->gtpu.pdr_idx);
   src_intf = adr->pdi.src_intf;
 
   /*
@@ -477,7 +477,7 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
       }
 
     if ((pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
-	vnet_buffer (b)->gtpu.teid != pdr->pdi.teid.teid)
+	upf_buffer_opaque (b)->gtpu.teid != pdr->pdi.teid.teid)
       {
 	adf_debug("skip PDR %u for TEID type mismatch\n", pdr->id);
 	continue;
@@ -495,17 +495,17 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
     if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url), NULL) == 0)
       adr = pdr;
   }
-  vnet_buffer (b)->gtpu.pdr_idx = adr - active->pdr;
+  upf_buffer_opaque (b)->gtpu.pdr_idx = adr - active->pdr;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
   adf_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
-	     vnet_buffer (b)->gtpu.pdr_idx);
+	     upf_buffer_opaque (b)->gtpu.pdr_idx);
 
   vec_free (url);
 
 out_next_process:
-  flow->next[vnet_buffer (b)->gtpu.is_reverse] = FT_NEXT_PROCESS;
+  flow->next[upf_buffer_opaque (b)->gtpu.is_reverse] = FT_NEXT_PROCESS;
   return;
 }
 
@@ -517,9 +517,9 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
   upf_pdr_t *adr;
   upf_pdr_t *pdr;
 
-  adr = vec_elt_at_index (active->pdr, vnet_buffer (b)->gtpu.pdr_idx);
+  adr = vec_elt_at_index (active->pdr, upf_buffer_opaque (b)->gtpu.pdr_idx);
   adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
-	     vnet_buffer (b)->gtpu.pdr_idx);
+	     upf_buffer_opaque (b)->gtpu.pdr_idx);
   vec_foreach (pdr, active->pdr)
   {
     if ((pdr->pdi.fields & F_PDI_APPLICATION_ID)
@@ -527,12 +527,12 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
 	&& (pdr->pdi.adr.application_id == flow->application_id))
       adr = pdr;
   }
-  vnet_buffer (b)->gtpu.pdr_idx = adr - active->pdr;
+  upf_buffer_opaque (b)->gtpu.pdr_idx = adr - active->pdr;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
   adf_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
-	     vnet_buffer (b)->gtpu.pdr_idx);
+	     upf_buffer_opaque (b)->gtpu.pdr_idx);
 
   /* switch return traffic to processing node */
   flow->next[flow->is_reverse ^ FT_REVERSE] = FT_NEXT_PROCESS;
@@ -651,10 +651,10 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
   upf_acl_t *acl, *acl_vec;
   u32 teid;
 
-  teid = vnet_buffer (b)->gtpu.teid;
+  teid = upf_buffer_opaque (b)->gtpu.teid;
 
   precedence = active->proxy_precedence;
-  vnet_buffer (b)->gtpu.pdr_idx = active->proxy_pdr_idx;
+  upf_buffer_opaque (b)->gtpu.pdr_idx = active->proxy_pdr_idx;
   flow->is_l3_proxy = (~0 != active->proxy_pdr_idx);
   flow->is_decided = 0;
   next = flow->is_l3_proxy ? UPF_CLASSIFY_NEXT_PROCESS : UPF_CLASSIFY_NEXT_DROP;
@@ -665,10 +665,10 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
   vec_foreach (acl, acl_vec)
   {
     if (acl->precedence < precedence &&
-	upf_acl_classify_one (vm, teid, flow, vnet_buffer (b)->gtpu.is_reverse, is_ip4, acl))
+	upf_acl_classify_one (vm, teid, flow, upf_buffer_opaque (b)->gtpu.is_reverse, is_ip4, acl))
       {
 	precedence = acl->precedence;
-	vnet_buffer (b)->gtpu.pdr_idx = acl->pdr_idx;
+	upf_buffer_opaque (b)->gtpu.pdr_idx = acl->pdr_idx;
 	next = UPF_CLASSIFY_NEXT_PROCESS;
 	flow->is_l3_proxy = 0;
 	flow->is_decided = 1;
@@ -728,22 +728,22 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  b = vlib_get_buffer (vm, bi);
 
 	  /* Get next node index and adj index from tunnel next_dpo */
-	  sidx = vnet_buffer (b)->gtpu.session_index;
+	  sidx = upf_buffer_opaque (b)->gtpu.session_index;
 	  sess = pool_elt_at_index (gtm->sessions, sidx);
 	  active = sx_get_rules (sess, SX_ACTIVE);
 
 	  next = UPF_CLASSIFY_NEXT_PROCESS;
 
 	  gtp_debug ("flow: %p (%u): %U\n",
-		     fm->flows + vnet_buffer (b)->gtpu.flow_id,
-		     vnet_buffer (b)->gtpu.flow_id,
+		     fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
+		     upf_buffer_opaque (b)->gtpu.flow_id,
 		     format_flow_key,
-		     &(fm->flows + vnet_buffer (b)->gtpu.flow_id)->key);
-	  flow = pool_elt_at_index (fm->flows, vnet_buffer (b)->gtpu.flow_id);
+		     &(fm->flows + upf_buffer_opaque (b)->gtpu.flow_id)->key);
+	  flow = pool_elt_at_index (fm->flows, upf_buffer_opaque (b)->gtpu.flow_id);
 
-	  is_reverse = vnet_buffer (b)->gtpu.is_reverse;
+	  is_reverse = upf_buffer_opaque (b)->gtpu.is_reverse;
 	  is_forward = (is_reverse == flow->is_reverse) ? 1 : 0;
-	  vnet_buffer (b)->gtpu.pdr_idx = flow->pdr_id[is_reverse];
+	  upf_buffer_opaque (b)->gtpu.pdr_idx = flow->pdr_id[is_reverse];
 
 	  gtp_debug ("is_rev %u, is_fwd %d, pdr_idx %x\n",
 		     is_reverse, is_forward, flow->pdr_id[is_reverse]);
@@ -760,7 +760,7 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	       - if no match, continue with following PDRs
 	       - if match, mark flow as decided and apply FAR
 	   */
-	  if (vnet_buffer (b)->gtpu.pdr_idx == ~0)
+	  if (upf_buffer_opaque (b)->gtpu.pdr_idx == ~0)
 	    next = upf_acl_classify (vm, b, flow, active, is_ip4);
 	  else if (is_forward)
 	    upf_application_detection (vm, b, flow, active, is_ip4);
@@ -776,9 +776,9 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      flow->next[0] = flow->next[1] = FT_NEXT_PROCESS;
 	    }
 
-	  if (vnet_buffer (b)->gtpu.pdr_idx != ~0)
+	  if (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0)
 	    {
-	      flow->pdr_id[is_reverse] = vnet_buffer (b)->gtpu.pdr_idx;
+	      flow->pdr_id[is_reverse] = upf_buffer_opaque (b)->gtpu.pdr_idx;
 
 	      if (flow->is_l3_proxy)
 		/* bypass flow classification if we decided to proxy */
@@ -813,7 +813,7 @@ upf_classify (vlib_main_t * vm, vlib_node_runtime_t * node,
 		vlib_add_trace (vm, node, b, sizeof (*tr));
 	      tr->session_index = sidx;
 	      tr->cp_seid = sess->cp_seid;
-	      tr->pdr_idx = vnet_buffer (b)->gtpu.pdr_idx;
+	      tr->pdr_idx = upf_buffer_opaque (b)->gtpu.pdr_idx;
 	      tr->next_index = next;
 	      clib_memcpy (tr->packet_data, vlib_buffer_get_current (b),
 			   sizeof (tr->packet_data));
@@ -926,7 +926,7 @@ upf_tdf (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame, int
 		vlib_add_trace (vm, node, b0, sizeof (*tr));
 	      /* tr->session_index = sidx; */
 	      /* tr->cp_seid = sess->cp_seid; */
-	      tr->pdr_idx = vnet_buffer (b0)->gtpu.pdr_idx;
+	      tr->pdr_idx = upf_buffer_opaque (b0)->gtpu.pdr_idx;
 	      tr->next_index = next0;
 	      clib_memcpy (tr->packet_data, vlib_buffer_get_current (b0),
 			   sizeof (tr->packet_data));
