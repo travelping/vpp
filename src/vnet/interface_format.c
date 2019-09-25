@@ -610,20 +610,6 @@ format_vnet_buffer_opaque (u8 * s, va_list * args)
       s = (*helper_fp) (b, s);
     }
 
-  s = format
-    (s, "gtpu.teid: 0x%08x, gtpu.session_index: 0x%x, gtpu.ext_hdr_len: %u, "
-     "gtpu.data_offset: %u, gtpu.flags: 0x%02x, gtpu.is_reverse: %u, "
-     "gtpu.pdr_idx: 0x%x, gtpu.flow_id: 0x%x",
-     (u32) (o->gtpu.teid),
-     (u32) (o->gtpu.session_index),
-     (u32) (o->gtpu.ext_hdr_len),
-     (u32) (o->gtpu.data_offset),
-     (u32) (o->gtpu.flags),
-     (u32) (o->gtpu.is_reverse),
-     (u32) (o->gtpu.pdr_idx),
-     (u32) (o->gtpu.flow_id));
-  vec_add1 (s, '\n');
-
   return s;
 }
 
@@ -665,11 +651,6 @@ format_vnet_buffer_opaque2 (u8 * s, va_list * args)
       helper_fp = im->buffer_opaque2_format_helpers[i];
       s = (*helper_fp) (b, s);
     }
-
-  s = format (s, "gtpu.session_index: 0x%x, gtpu.far_index: 0x%x",
-	      (u32) (o->gtpu.session_index),
-	      (u32) (o->gtpu.far_index));
-  vec_add1 (s, '\n');
 
   return s;
 }

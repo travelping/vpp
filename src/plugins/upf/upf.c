@@ -462,6 +462,42 @@ upf_arm_watch_point_command_fn (vlib_main_t * vm,
   return NULL;
 }
 
+static u8 *
+upf_format_buffer_opaque_helper (const vlib_buffer_t * b, u8 * s)
+{
+  upf_buffer_opaque_t *o = upf_buffer_opaque (b);
+
+  s = format
+    (s, "gtpu.teid: 0x%08x, gtpu.session_index: 0x%x, gtpu.ext_hdr_len: %u, "
+     "gtpu.data_offset: %u, gtpu.flags: 0x%02x, gtpu.is_reverse: %u, "
+     "gtpu.pdr_idx: 0x%x, gtpu.flow_id: 0x%x",
+     (u32) (o->gtpu.teid),
+     (u32) (o->gtpu.session_index),
+     (u32) (o->gtpu.ext_hdr_len),
+     (u32) (o->gtpu.data_offset),
+     (u32) (o->gtpu.flags),
+     (u32) (o->gtpu.is_reverse),
+     (u32) (o->gtpu.pdr_idx),
+     (u32) (o->gtpu.flow_id));
+  vec_add1 (s, '\n');
+
+  return s;
+}
+
+static u8 *
+upf_format_buffer_opaque2_helper (const vlib_buffer_t * b, u8 * s)
+{
+  upf_buffer_opaque2_t *o = upf_buffer_opaque2 (b);
+
+
+  s = format (s, "gtpu.session_index: 0x%x, gtpu.far_index: 0x%x",
+	      (u32) (o->gtpu.session_index),
+	      (u32) (o->gtpu.far_index));
+  vec_add1 (s, '\n');
+
+  return s;
+}
+
 /* *INDENT-OFF* */
 VLIB_CLI_COMMAND (upf_arm_watch_point_command, static) =
 {
@@ -484,6 +520,11 @@ upf_init (vlib_main_t * vm)
   if ((error =
        vlib_call_init_function (vm, upf_proxy_main_init)))
     return error;
+
+  vnet_register_format_buffer_opaque_helper
+    (upf_format_buffer_opaque_helper);
+  vnet_register_format_buffer_opaque2_helper
+    (upf_format_buffer_opaque2_helper);
 
   mhash_init (&sm->pfcp_endpoint_index, sizeof (uword), sizeof (ip46_address_t));
   sm->nwi_index_by_name =

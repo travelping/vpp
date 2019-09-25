@@ -314,24 +314,24 @@ gtpu_input (vlib_main_t * vm,
 	    }
 
 	  hdr_len0 += gtpu_hdr_len0;
-	  vnet_buffer (b0)->gtpu.data_offset = hdr_len0;
-	  vnet_buffer (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
-	  vnet_buffer (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
-	  vnet_buffer (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
-	  vnet_buffer (b0)->gtpu.session_index = session_index0;
-	  vnet_buffer (b0)->gtpu.pdr_idx =
+	  upf_buffer_opaque (b0)->gtpu.data_offset = hdr_len0;
+	  upf_buffer_opaque (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
+	  upf_buffer_opaque (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
+	  upf_buffer_opaque (b0)->gtpu.session_index = session_index0;
+	  upf_buffer_opaque (b0)->gtpu.pdr_idx =
 	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
-	  vnet_buffer (b0)->gtpu.flags |=
+	  upf_buffer_opaque (b0)->gtpu.flags |=
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
-	  vnet_buffer (b0)->gtpu.flow_id = ~0;
+	  upf_buffer_opaque (b0)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
 	  if ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40)
-	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
 	  else
-	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index0 = t0->sw_if_index;
@@ -504,24 +504,24 @@ gtpu_input (vlib_main_t * vm,
 	    }
 
 	  hdr_len1 += gtpu_hdr_len1;
-	  vnet_buffer (b1)->gtpu.data_offset = hdr_len1;
-	  vnet_buffer (b1)->gtpu.ext_hdr_len = gtpu_hdr_len1 - (sizeof (gtpu_header_t) - 4);
-	  vnet_buffer (b1)->gtpu.flags = (gtpu1->ver_flags & GTPU_E_S_PN_BIT);
-	  vnet_buffer (b1)->gtpu.teid = clib_net_to_host_u32 (gtpu1->teid);
-	  vnet_buffer (b1)->gtpu.session_index = session_index1;
-	  vnet_buffer (b1)->gtpu.pdr_idx =
+	  upf_buffer_opaque (b1)->gtpu.data_offset = hdr_len1;
+	  upf_buffer_opaque (b1)->gtpu.ext_hdr_len = gtpu_hdr_len1 - (sizeof (gtpu_header_t) - 4);
+	  upf_buffer_opaque (b1)->gtpu.flags = (gtpu1->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b1)->gtpu.teid = clib_net_to_host_u32 (gtpu1->teid);
+	  upf_buffer_opaque (b1)->gtpu.session_index = session_index1;
+	  upf_buffer_opaque (b1)->gtpu.pdr_idx =
 	    !(sx_get_rules (t1, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index1 : ~0;
-	  vnet_buffer (b1)->gtpu.flags |=
+	  upf_buffer_opaque (b1)->gtpu.flags |=
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
-	  vnet_buffer (b1)->gtpu.flow_id = ~0;
+	  upf_buffer_opaque (b1)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_1 = vlib_buffer_get_current (b1) + hdr_len1;
 	  if ((ip4_1->ip_version_and_header_length & 0xF0) == 0x40)
-	    next1 = (~0 == vnet_buffer (b1)->gtpu.pdr_idx) ?
+	    next1 = (~0 == upf_buffer_opaque (b1)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
 	  else
-	    next1 = (~0 == vnet_buffer (b1)->gtpu.pdr_idx) ?
+	    next1 = (~0 == upf_buffer_opaque (b1)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index1 = t1->sw_if_index;
@@ -747,24 +747,24 @@ gtpu_input (vlib_main_t * vm,
 	    }
 
 	  hdr_len0 += gtpu_hdr_len0;
-	  vnet_buffer (b0)->gtpu.data_offset = hdr_len0;
-	  vnet_buffer (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
-	  vnet_buffer (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
-	  vnet_buffer (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
-	  vnet_buffer (b0)->gtpu.session_index = session_index0;
-	  vnet_buffer (b0)->gtpu.pdr_idx =
+	  upf_buffer_opaque (b0)->gtpu.data_offset = hdr_len0;
+	  upf_buffer_opaque (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
+	  upf_buffer_opaque (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
+	  upf_buffer_opaque (b0)->gtpu.session_index = session_index0;
+	  upf_buffer_opaque (b0)->gtpu.pdr_idx =
 	    !(sx_get_rules (t0, SX_ACTIVE)->flags & SX_CLASSIFY) ? rule_index0 : ~0;
-	  vnet_buffer (b0)->gtpu.flags |=
+	  upf_buffer_opaque (b0)->gtpu.flags |=
 	    (is_ip4) ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
-	  vnet_buffer (b0)->gtpu.flow_id = ~0;
+	  upf_buffer_opaque (b0)->gtpu.flow_id = ~0;
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
 	  if ((ip4_0->ip_version_and_header_length & 0xF0) == 0x40)
-	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP4_FLOW_PROCESS : GTPU_INPUT_NEXT_IP4_PROCESS;
 	  else
-	    next0 = (~0 == vnet_buffer (b0)->gtpu.pdr_idx) ?
+	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
 	  sw_if_index0 = t0->sw_if_index;

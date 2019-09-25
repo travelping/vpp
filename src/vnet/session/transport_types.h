@@ -98,7 +98,18 @@ typedef struct _transport_connection
 
   spacer_t pacer;		/**< Simple transport pacer */
 
-  vnet_buffer_opaque2_t b2;
+  /* TODO:
+   * it might be possible to somewhoe store this in the parent
+   * session or the the conntection in the transport pool...
+   * ... or maybe use the flow table entry?
+   */
+  struct {
+    struct
+    {
+      u32 session_index;
+      u32 far_index;
+    } gtpu;
+  } b2;
 
 #if TRANSPORT_DEBUG
   elog_track_t elog_track;	/**< Event logging */

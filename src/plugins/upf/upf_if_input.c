@@ -131,23 +131,23 @@ VLIB_NODE_FN (upf_if_input_node) (vlib_main_t * vm,
 	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
 	  ASSERT (~0 != sidx);
 
-	  vnet_buffer (b)->gtpu.session_index = sidx;
-	  vnet_buffer (b)->gtpu.flags = 0;
-	  vnet_buffer (b)->gtpu.data_offset = 0;
-	  vnet_buffer (b)->gtpu.ext_hdr_len = 0;
-	  vnet_buffer (b)->gtpu.teid = 0;
+	  upf_buffer_opaque (b)->gtpu.session_index = sidx;
+	  upf_buffer_opaque (b)->gtpu.flags = 0;
+	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
+	  upf_buffer_opaque (b)->gtpu.ext_hdr_len = 0;
+	  upf_buffer_opaque (b)->gtpu.teid = 0;
 	  ip4 = (ip4_header_t *) vlib_buffer_get_current (b);
 
 	  ASSERT (NULL);
 	  if ((ip4->ip_version_and_header_length & 0xF0) == 0x40)
 	    {
 	      next = UPF_IF_INPUT_NEXT_IP4_CLASSIFY;
-	      vnet_buffer (b)->gtpu.flags |= BUFFER_HAS_IP4_HDR;
+	      upf_buffer_opaque (b)->gtpu.flags |= BUFFER_HAS_IP4_HDR;
 	    }
 	  else
 	    {
 	      next = UPF_IF_INPUT_NEXT_IP6_CLASSIFY;
-	      vnet_buffer (b)->gtpu.flags |= BUFFER_HAS_IP6_HDR;
+	      upf_buffer_opaque (b)->gtpu.flags |= BUFFER_HAS_IP6_HDR;
 	    }
 
 	  len = vlib_buffer_length_in_chain (vm, b);

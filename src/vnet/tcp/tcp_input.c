@@ -3323,7 +3323,7 @@ tcp46_listen_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       child0->snd_wl1 = vnet_buffer (b0)->tcp.seq_number;
       child0->snd_wl2 = vnet_buffer (b0)->tcp.ack_number;
 
-      clib_memcpy (&child0->connection.b2, vnet_buffer2 (b0),
+      clib_memcpy (&child0->connection.b2, &vnet_buffer2 (b0)->unused[2],
 		   sizeof (child0->connection.b2));
 
       tcp_connection_init_vars (child0);
