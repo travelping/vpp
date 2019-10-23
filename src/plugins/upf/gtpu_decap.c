@@ -299,8 +299,9 @@ gtpu_input (vlib_main_t * vm,
 	      if (PREDICT_FALSE ((gtpu0->ver_flags & GTPU_E_BIT) != 0))
 		{
 		  gtpu_ext_header_t *ext = ( gtpu_ext_header_t *)&gtpu0->next_ext_type;
+		  u8 *end = vlib_buffer_get_tail (b0);
 
-		  while (ext->type != 0)
+		  while ((u8 *)ext < end && ext->type != 0)
 		    {
 		      /* gtpu_ext_header_t is 4 bytes and the len is in units of 4 */
 		      ext += ext->len * 4 / sizeof (*ext);
@@ -324,6 +325,14 @@ gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b0)->gtpu.flags |=
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 	  upf_buffer_opaque (b0)->gtpu.flow_id = ~0;
+
+	  if (PREDICT_FALSE ((hdr_len0 + sizeof(*ip4_0)) >=
+			     vlib_buffer_length_in_chain (vm, b0)))
+	    {
+	      error0 = GTPU_ERROR_LENGTH_ERROR;
+	      next0 = GTPU_INPUT_NEXT_DROP;
+	      goto trace0;
+	    }
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
@@ -486,11 +495,12 @@ gtpu_input (vlib_main_t * vm,
 	    {
 	      gtpu_hdr_len1 = sizeof (gtpu_header_t);
 
-	      if (PREDICT_FALSE ((gtpu1->ver_flags & GTPU_E_BIT) != 1))
+	      if (PREDICT_FALSE ((gtpu1->ver_flags & GTPU_E_BIT) != 0))
 		{
 		  gtpu_ext_header_t *ext = ( gtpu_ext_header_t *)&gtpu1->next_ext_type;
+		  u8 *end = vlib_buffer_get_tail (b1);
 
-		  while (ext->type != 1)
+		  while ((u8 *)ext < end && ext->type != 0)
 		    {
 		      /* gtpu_ext_header_t is 4 bytes and the len is in units of 4 */
 		      ext += ext->len * 4 / sizeof (*ext);
@@ -514,6 +524,14 @@ gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b1)->gtpu.flags |=
 	    is_ip4 ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 	  upf_buffer_opaque (b1)->gtpu.flow_id = ~0;
+
+	  if (PREDICT_FALSE ((hdr_len1 + sizeof(*ip4_1)) >=
+			     vlib_buffer_length_in_chain (vm, b1)))
+	    {
+	      error1 = GTPU_ERROR_LENGTH_ERROR;
+	      next1 = GTPU_INPUT_NEXT_DROP;
+	      goto trace1;
+	    }
 
 	  /* inner IP header */
 	  ip4_1 = vlib_buffer_get_current (b1) + hdr_len1;
@@ -732,8 +750,9 @@ gtpu_input (vlib_main_t * vm,
 	      if (PREDICT_FALSE ((gtpu0->ver_flags & GTPU_E_BIT) != 0))
 		{
 		  gtpu_ext_header_t *ext = ( gtpu_ext_header_t *)&gtpu0->next_ext_type;
+		  u8 *end = vlib_buffer_get_tail (b0);
 
-		  while (ext->type != 0)
+		  while ((u8 *)ext < end && ext->type != 0)
 		    {
 		      /* gtpu_ext_header_t is 4 bytes and the len is in units of 4 */
 		      ext += ext->len * 4 / sizeof (*ext);
@@ -757,6 +776,14 @@ gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b0)->gtpu.flags |=
 	    (is_ip4) ? BUFFER_GTP_UDP_IP4 : BUFFER_GTP_UDP_IP6;
 	  upf_buffer_opaque (b0)->gtpu.flow_id = ~0;
+
+	  if (PREDICT_FALSE ((hdr_len0 + sizeof(*ip4_0)) >=
+			     vlib_buffer_length_in_chain (vm, b0)))
+	    {
+	      error0 = GTPU_ERROR_LENGTH_ERROR;
+	      next0 = GTPU_INPUT_NEXT_DROP;
+	      goto trace00;
+	    }
 
 	  /* inner IP header */
 	  ip4_0 = vlib_buffer_get_current (b0) + hdr_len0;
