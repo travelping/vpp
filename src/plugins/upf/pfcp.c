@@ -3296,13 +3296,13 @@ format_pfcp_mac_address (u8 * s, va_list * args)
   pfcp_mac_address_t *v = va_arg (*args, pfcp_mac_address_t *);
 
   if (v->flags & F_SOURCE_MAC)
-    s = format (s, "SRC:%U,", format_mac_address, v->src_mac);
+    s = format (s, "SRC:%U,", format_mac_address_t, v->src_mac);
   if (v->flags & F_DESTINATION_MAC)
-    s = format (s, "DST:%U,", format_mac_address, v->dst_mac);
+    s = format (s, "DST:%U,", format_mac_address_t, v->dst_mac);
   if (v->flags & F_UPPER_SOURCE_MAC)
-    s = format (s, "USRC:%U,", format_mac_address, v->upper_src_mac);
+    s = format (s, "USRC:%U,", format_mac_address_t, v->upper_src_mac);
   if (v->flags & F_UPPER_DESTINATION_MAC)
-    s = format (s, "UDST:%U,", format_mac_address, v->upper_dst_mac);
+    s = format (s, "UDST:%U,", format_mac_address_t, v->upper_dst_mac);
 
   if (v->flags)
     _vec_len (s)--;
@@ -3637,7 +3637,7 @@ format_mac_addresses_vec (u8 * s, va_list * args)
   s = format (s, "[");
   vec_foreach (mac, *v)
   {
-    s = format (s, "%U,", format_mac_address, mac);
+    s = format (s, "%U,", format_mac_address_t, mac);
   }
   if (vec_len (*v) != 0)
     _vec_len (s)--;
