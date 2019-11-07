@@ -2,10 +2,8 @@ stages:
   - build
 
 variables:
-  CONTAINER_IMAGE: ergw/vpp
-  CI_REGISTRY: index.docker.io  # container registry URL
-  CI_REGISTRY_IMAGE: https://index.docker.io/v1/
-
+  REGISTRY: "quay.io"
+  CONTAINER_IMAGE: travelping/upf
 
 # build container image
 .build:
@@ -18,12 +16,17 @@ variables:
   script:
     - export CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
     - export CONTAINER_VARIANT=${CI_BUILD_NAME##*:}
-    - export CONTAINER_BASE_NAME=${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
+    - export CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
     - export CONTAINER_COMMIT_SHA=${CONTAINER_BASE_NAME}_${CI_COMMIT_SHA}_${CONTAINER_VARIANT}
     - export CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
     - export DOCKER_HOST="tcp://localhost:2375"
-    - echo "Docker HUB login..."
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD}
+    - |
+      case "$CI_COMMIT_REF_NAME" in
+        stable/* | feature/19* ) export LABELS="";;
+        *)                       export LABELS="--label quay.expires-after=7d";;
+      esac
+    - echo "quay.io login..."
+    - docker login -u ${QUAY_USER_ID} -p ${QUAY_TOKEN} ${REGISTRY}
     - echo "Building the image from $DOCKER_FILE ..."
     - >
       DOCKER_BUILDKIT=1 docker build
@@ -33,6 +36,7 @@ variables:
     - >
       DOCKER_BUILDKIT=1 docker build
       --progress=plain
+      ${LABELS}
       -t ${CONTAINER_COMMIT_SHA}
       -t ${CONTAINER_GIT_DESCRIBE}
       -f ${DOCKER_FILE} .
