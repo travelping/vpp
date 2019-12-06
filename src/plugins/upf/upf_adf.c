@@ -507,7 +507,6 @@ vnet_upf_app_add_del (u8 * name, u32 flags, u8 add)
       if (!p)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
-      hash_unset_mem (sm->upf_app_by_name, name);
       app = pool_elt_at_index (sm->upf_apps, p[0]);
 
       if (upf_adf_adr_ref_count (app->db_index) != 0)
@@ -522,10 +521,12 @@ vnet_upf_app_add_del (u8 * name, u32 flags, u8 add)
       }));
       /* *INDENT-ON* */
 
+      hash_unset_mem (sm->upf_app_by_name, app->name);
       upf_adf_remove (app->db_index);
       vec_free (app->name);
       hash_free (app->rules_by_id);
       pool_free (app->rules);
+      clib_memset (app, 0, sizeof (*app));
       pool_put (sm->upf_apps, app);
     }
 
@@ -650,6 +651,7 @@ vnet_upf_rule_add_del (u8 * app_name, u32 rule_index, u8 add, regex_t regex)
       rule = pool_elt_at_index (app->rules, p[0]);
       vec_free (rule->regex);
       hash_unset (app->rules_by_id, rule_index);
+      clib_memset (rule, 0, sizeof (*rule));
       pool_put (app->rules, rule);
     }
 

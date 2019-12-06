@@ -62,3 +62,57 @@ autoreply define upf_app_flow_timeout_set {
   u8 type;
   u16 default_value;
 };
+
+/*
+  NOTE: details must go before corresponding _dump,
+  or we'll be gettings errors like:
+
+  vl_socket_api_send:133: id out of range: 1301
+*/
+
+define upf_applications_details {
+  u32 context;
+
+  u8 name[64];
+  u32 flags;
+};
+
+define upf_applications_dump {
+  u32 client_index;
+  u32 context;
+};
+
+/* TODO: ip rules aren't implemented yet */
+/*
+define upf_application_ip_rule_details {
+  u32 context;
+  u32 id;
+
+  u8 is_ipv6;
+  u8 src_ip_addr[16];
+  u8 src_ip_prefix_len;
+  u8 dst_ip_addr[16];
+  u8 dst_ip_prefix_len;
+};
+
+define upf_application_ip_rule_dump {
+  u32 client_index;
+  u32 context;
+
+  u8 app[64];
+};
+*/
+
+define upf_application_l7_rule_details {
+  u32 context;
+
+  u32 id;
+  u8 regex[1024];
+};
+
+define upf_application_l7_rule_dump {
+  u32 client_index;
+  u32 context;
+
+  u8 app[64];
+};
