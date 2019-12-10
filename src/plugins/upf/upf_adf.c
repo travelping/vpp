@@ -64,6 +64,18 @@ upf_adf_cleanup_db_entry (upf_adf_entry_t * entry)
 }
 
 static int
+upf_adf_remove (u32 db_index)
+{
+  upf_adf_entry_t *entry = NULL;
+
+  entry = pool_elt_at_index (upf_adf_db, db_index);
+  upf_adf_cleanup_db_entry (entry);
+  pool_put (upf_adf_db, entry);
+
+  return 0;
+}
+
+static int
 upf_adf_create_update_db (upf_adf_app_t * app)
 {
 #if CLIB_DEBUG > 1
@@ -75,6 +87,14 @@ upf_adf_create_update_db (upf_adf_app_t * app)
   u32 index = 0;
   u32 rule_index = 0;
   upf_adr_t *rule = NULL;
+
+  if (!hash_elts(app->rules_by_id)) {
+    if (app->db_index != ~0) {
+      upf_adf_remove(app->db_index);
+      app->db_index = ~0;
+    }
+    return 0;
+  }
 
   if (app->db_index != ~0)
     {
@@ -165,18 +185,6 @@ upf_adf_lookup (u32 db_index, u8 * str, uint16_t length, u32 * id)
 
   if (id)
     *id = args.id;
-
-  return 0;
-}
-
-static int
-upf_adf_remove (u32 db_index)
-{
-  upf_adf_entry_t *entry = NULL;
-
-  entry = pool_elt_at_index (upf_adf_db, db_index);
-  upf_adf_cleanup_db_entry (entry);
-  pool_put (upf_adf_db, entry);
 
   return 0;
 }
@@ -522,7 +530,8 @@ vnet_upf_app_add_del (u8 * name, u32 flags, u8 add)
       /* *INDENT-ON* */
 
       hash_unset_mem (sm->upf_app_by_name, app->name);
-      upf_adf_remove (app->db_index);
+      if (app->db_index != ~0)
+        upf_adf_remove (app->db_index);
       vec_free (app->name);
       hash_free (app->rules_by_id);
       pool_free (app->rules);
