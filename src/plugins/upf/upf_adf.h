@@ -59,6 +59,9 @@ int upf_rule_add_del (upf_main_t * sm, u8 * name, u32 id,
 u32 upf_adf_get_adr_db (u32 application_id);
 void upf_adf_put_adr_db (u32 db_index);
 
+int upf_update_app (upf_main_t * sm, u8 * app_name, u32 num_rules,
+                    u32 * ids, u32 * regex_lengths, u8 ** regexes);
+
 /* perfect hash over the HTTP keywords:
  *   GET
  *   PUT

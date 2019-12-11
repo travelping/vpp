@@ -76,7 +76,8 @@ _(UPF_APP_IP_RULE_ADD_DEL, upf_app_ip_rule_add_del) \
 _(UPF_APP_L7_RULE_ADD_DEL, upf_app_l7_rule_add_del) \
 _(UPF_APP_FLOW_TIMEOUT_SET, upf_app_flow_timeout_set) \
 _(UPF_APPLICATIONS_DUMP, upf_applications_dump) \
-_(UPF_APPLICATION_L7_RULE_DUMP, upf_application_l7_rule_dump)
+_(UPF_APPLICATION_L7_RULE_DUMP, upf_application_l7_rule_dump) \
+_(UPF_UPDATE_APP, upf_update_app)
 
 /* API message handler */
 static void vl_api_upf_enable_disable_t_handler
@@ -86,7 +87,7 @@ static void vl_api_upf_enable_disable_t_handler
   upf_main_t *sm = &upf_main;
   int rv;
 
-  rv = upf_enable_disable (sm, ntohl (mp->sw_if_index),
+  rv = upf_enable_disable (sm, clib_net_to_host_u32 (mp->sw_if_index),
 			   (int) (mp->enable_disable));
 
   REPLY_MACRO (VL_API_UPF_ENABLE_DISABLE_REPLY);
@@ -117,7 +118,7 @@ static void vl_api_upf_app_ip_rule_add_del_t_handler
   u8 *app = format(0, "%s", mp->app);
 
   // TODO: ip rules aren't implemented yet
-  rv = upf_rule_add_del (sm, app, ntohl(mp->id), (int) (mp->is_add), NULL);
+  rv = upf_rule_add_del (sm, app, clib_net_to_host_u32 (mp->id), (int) (mp->is_add), NULL);
 
   vec_free(app);
   REPLY_MACRO (VL_API_UPF_APP_IP_RULE_ADD_DEL_REPLY);
@@ -132,7 +133,7 @@ static void vl_api_upf_app_l7_rule_add_del_t_handler
   int rv = 0;
   u8 *app = format(0, "%s", mp->app), *regex = format(0, "%s", mp->regex);
 
-  rv = upf_rule_add_del (sm, app, ntohl(mp->id), (int) (mp->is_add), regex);
+  rv = upf_rule_add_del (sm, app, clib_net_to_host_u32 (mp->id), (int) (mp->is_add), regex);
 
   vec_free(app);
   vec_free(regex);
@@ -249,6 +250,39 @@ static void vl_api_upf_application_l7_rule_dump_t_handler
   /* *INDENT-ON* */
 
   vec_free(app_name);
+}
+
+/* API message handler */
+static void vl_api_upf_update_app_t_handler
+(vl_api_upf_update_app_t * mp)
+{
+  vl_api_upf_update_app_reply_t *rmp = NULL;
+  upf_main_t *sm = &upf_main;
+  int rv = 0;
+  u8 *app_name = format(0, "%s", mp->app);
+  u32 rule_count = clib_net_to_host_u32(mp->l7_rule_count);
+  u8 *rule_ptr = (u8 *) &mp->l7_rules[0];
+  u32 *ids = vec_new (u32, rule_count);
+  u32 *regex_lengths = vec_new (u32, rule_count);
+  u8 **regexes = vec_new (u8*, rule_count);
+
+  for (u32 n = 0; n < rule_count; n++) {
+    vl_api_upf_l7_rule_t * rule = (vl_api_upf_l7_rule_t *)rule_ptr;
+    u32 regex_length = clib_net_to_host_u32(rule->regex_length);
+    ids[n] = clib_net_to_host_u32(rule->id);
+    regex_lengths[n] = regex_length;
+    regexes[n] = rule->regex;
+    // the regex field in vl_api_upf_l7_rule_t is defined as 'u8 regex[0]'
+    rule_ptr += sizeof(vl_api_upf_l7_rule_t) + regex_length;
+  }
+
+  rv = upf_update_app(sm, app_name, rule_count, ids, regex_lengths, regexes);
+
+  vec_free(ids);
+  vec_free(regex_lengths);
+  vec_free(regexes);
+
+  REPLY_MACRO (VL_API_UPF_UPDATE_APP_REPLY);
 }
 
 /* Set up the API message handling tables */

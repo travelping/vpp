@@ -911,6 +911,55 @@ VLIB_CLI_COMMAND (upf_show_apps_command, static) =
 };
 /* *INDENT-ON* */
 
+
+int
+upf_update_app (upf_main_t * sm, u8 * app_name, u32 num_rules, u32 * ids, u32 * regex_lengths, u8 ** regexes)
+{
+  upf_adf_app_t *app = NULL;
+  uword *p = NULL;
+  upf_adr_t *rule = NULL;
+  u32 index = 0;
+  u32 rule_index = 0;
+  int res = 0;
+
+  p = hash_get_mem (sm->upf_app_by_name, app_name);
+  if (!p)
+    return VNET_API_ERROR_NO_SUCH_ENTRY;
+
+  app = pool_elt_at_index (sm->upf_apps, p[0]);
+
+  if (upf_adf_adr_ref_count (app->db_index) != 0)
+    return VNET_API_ERROR_INSTANCE_IN_USE;
+
+  /* *INDENT-OFF* */
+  hash_foreach(rule_index, index, app->rules_by_id,
+  ({
+    rule = pool_elt_at_index(app->rules, index);
+    vec_free (rule->regex);
+    clib_memset (rule, 0, sizeof (*rule));
+    pool_put_index (app->rules, index);
+  }));
+  /* *INDENT-ON* */
+
+  hash_free (app->rules_by_id);
+  app->rules_by_id = hash_create (num_rules, sizeof (uword));
+
+  for (u32 n = 0; n < num_rules; n++) {
+    pool_get (app->rules, rule);
+    memset (rule, 0, sizeof (*rule));
+    rule->id = ids[n];
+    rule->regex = vec_new (u8, regex_lengths[n]);
+    clib_memcpy_fast (rule->regex, regexes[n], regex_lengths[n]);
+    hash_set (app->rules_by_id, rule->id, rule - app->rules);
+  }
+
+  res = upf_adf_create_update_db (app);
+  if (res < 0)
+    return res;
+
+  return 0;
+}
+
 /*
  * fd.io coding-style-patch-verification: ON
  *

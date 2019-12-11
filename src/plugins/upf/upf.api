@@ -63,6 +63,23 @@ autoreply define upf_app_flow_timeout_set {
   u16 default_value;
 };
 
+/* TODO: use this struct for adding and dumping the rules */
+typedef upf_l7_rule
+{
+  u32 id;
+  u32 regex_length;
+  u8 regex[regex_length];
+};
+
+autoreply define upf_update_app {
+  u32 client_index;
+  u32 context;
+
+  u8 app[64];
+  u32 l7_rule_count;
+  vl_api_upf_l7_rule_t l7_rules[l7_rule_count];
+};
+
 /*
   NOTE: details must go before corresponding _dump,
   or we'll be gettings errors like:
