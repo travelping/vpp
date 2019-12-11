@@ -247,6 +247,8 @@ static void vl_api_upf_application_l7_rule_dump_t_handler
                  send_upf_application_l7_rule_details (reg, rule->id, rule->regex, mp->context);
                }));
   /* *INDENT-ON* */
+
+  vec_free(app_name);
 }
 
 /* Set up the API message handling tables */
