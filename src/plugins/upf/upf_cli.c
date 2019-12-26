@@ -810,7 +810,7 @@ VLIB_CLI_COMMAND (upf_show_gtpu_endpoint_command, static) =
 };
 /* *INDENT-ON* */
 
-static void
+static int
 upf_flows_out_cb (BVT (clib_bihash_kv) * kvp, void *arg)
 {
   flowtable_main_t *fm = &flowtable_main;
@@ -819,6 +819,8 @@ upf_flows_out_cb (BVT (clib_bihash_kv) * kvp, void *arg)
 
   flow = pool_elt_at_index (fm->flows, kvp->value);
   vlib_cli_output (vm, "%U", format_flow, flow);
+
+  return (BIHASH_WALK_CONTINUE);
 }
 
 static clib_error_t *
