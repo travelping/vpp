@@ -577,7 +577,7 @@ static void
 create_api_loopback (vlib_main_t * vm)
 {
   upf_proxy_main_t *pm = &upf_proxy_main;
-  api_main_t *am = &api_main;
+  api_main_t *am = vlibapi_get_main ();
   vl_shmem_hdr_t *shmem_hdr;
 
   shmem_hdr = am->shmem_hdr;
