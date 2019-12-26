@@ -61,8 +61,6 @@ if(HS_FOUND)
 
     INSTALL_HEADERS
     upf.h
-    upf_all_api_h.h
-    upf_msg_enum.h
     pfcp.h
     upf_pfcp.h
     upf_pfcp_api.h

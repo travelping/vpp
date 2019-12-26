@@ -27,57 +27,11 @@
 #include <upf/upf.h>
 #include <upf/upf_adf.h>
 
-/* define message IDs */
-#include <upf/upf_msg_enum.h>
-
-/* define message structures */
-#define vl_typedefs
-#include <upf/upf_all_api_h.h>
-#undef vl_typedefs
-
-/* define generated endian-swappers */
-#define vl_endianfun
-#include <upf/upf_all_api_h.h>
-#undef vl_endianfun
-
-/* instantiate all the print functions we know about */
-#define vl_print(handle, ...) vlib_cli_output (handle, __VA_ARGS__)
-#define vl_printfun
-#include <upf/upf_all_api_h.h>
-#undef vl_printfun
-
-/* Get the API version number */
-#define vl_api_version(n,v) static u32 api_version=(v);
-#include <upf/upf_all_api_h.h>
-#undef vl_api_version
-
-#define vl_msg_name_crc_list
-#include <upf/upf_all_api_h.h>
-#undef vl_msg_name_crc_list
+#include <upf/upf.api_enum.h>
+#include <upf/upf.api_types.h>
 
 #define REPLY_MSG_ID_BASE sm->msg_id_base
 #include <vlibapi/api_helper_macros.h>
-
-/* List of message types that this plugin understands */
-
-static void
-setup_message_id_table (upf_main_t * sm, api_main_t * am)
-{
-#define _(id,n,crc) \
-  vl_msg_api_add_msg_name_crc (am, #n "_" #crc, id + sm->msg_id_base);
-  foreach_vl_msg_name_crc_upf;
-#undef _
-}
-
-#define foreach_upf_plugin_api_msg        \
-_(UPF_ENABLE_DISABLE, upf_enable_disable) \
-_(UPF_APP_ADD_DEL, upf_app_add_del) \
-_(UPF_APP_IP_RULE_ADD_DEL, upf_app_ip_rule_add_del) \
-_(UPF_APP_L7_RULE_ADD_DEL, upf_app_l7_rule_add_del) \
-_(UPF_APP_FLOW_TIMEOUT_SET, upf_app_flow_timeout_set) \
-_(UPF_APPLICATIONS_DUMP, upf_applications_dump) \
-_(UPF_APPLICATION_L7_RULE_DUMP, upf_application_l7_rule_dump) \
-_(UPF_UPDATE_APP, upf_update_app)
 
 /* API message handler */
 static void vl_api_upf_enable_disable_t_handler
@@ -88,7 +42,7 @@ static void vl_api_upf_enable_disable_t_handler
   int rv;
 
   rv = upf_enable_disable (sm, clib_net_to_host_u32 (mp->sw_if_index),
-			   (int) (mp->enable_disable));
+			   (int) (mp->enable));
 
   REPLY_MACRO (VL_API_UPF_ENABLE_DISABLE_REPLY);
 }
@@ -285,30 +239,14 @@ static void vl_api_upf_update_app_t_handler
   REPLY_MACRO (VL_API_UPF_UPDATE_APP_REPLY);
 }
 
-/* Set up the API message handling tables */
+#include <upf/upf.api.c>
+
 static clib_error_t *
 upf_api_hookup (vlib_main_t * vm)
 {
-  upf_main_t *sm = &upf_main;
+  upf_main_t *gtm = &upf_main;
 
-  u8 *name = format (0, "upf_%08x%c", api_version, 0);
-  sm->msg_id_base = vl_msg_api_get_msg_ids
-    ((char *) name, VL_MSG_FIRST_AVAILABLE);
-
-#define _(N,n)                                                  \
-    vl_msg_api_set_handlers((VL_API_##N + sm->msg_id_base),     \
-			   #n,					\
-			   vl_api_##n##_t_handler,              \
-			   vl_noop_handler,                     \
-			   vl_api_##n##_t_endian,               \
-			   vl_api_##n##_t_print,                \
-			   sizeof(vl_api_##n##_t), 1);
-  foreach_upf_plugin_api_msg;
-#undef _
-
-  /* Add our API messages to the global name_crc hash table */
-  setup_message_id_table (sm, &api_main);
-
+  gtm->msg_id_base = setup_message_id_table ();
   return 0;
 }
 
