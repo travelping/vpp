@@ -23,10 +23,12 @@
 
 #include <vppinfra/byte_order.h>
 #include <vlibmemory/api.h>
+#include <vnet/ip/ip_types_api.h>
 
 #include <upf/upf.h>
 #include <upf/upf_adf.h>
 
+#include <vnet/format_fns.h>
 #include <upf/upf.api_enum.h>
 #include <upf/upf.api_types.h>
 

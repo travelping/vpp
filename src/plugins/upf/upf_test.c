@@ -18,6 +18,7 @@
 #include <vat/vat.h>
 #include <vlibapi/api.h>
 #include <vlibmemory/api.h>
+#include <vnet/ip/ip_types_api.h>
 #include <vppinfra/error.h>
 
 uword unformat_sw_if_index (unformat_input_t * input, va_list * args);
@@ -34,6 +35,7 @@ upf_test_main_t upf_test_main;
 #define __plugin_msg_base upf_test_main.msg_id_base
 #include <vlibapi/vat_helper_macros.h>
 
+#include <vnet/format_fns.h>
 #include <upf/upf.api_enum.h>
 #include <upf/upf.api_types.h>
 
