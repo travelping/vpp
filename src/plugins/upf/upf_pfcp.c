@@ -26,6 +26,7 @@
 #include <vnet/ip/ip6_hop_by_hop.h>
 #include <vnet/fib/fib_entry.h>
 #include <vnet/fib/fib_table.h>
+#include <vnet/fib/fib_entry_track.h>
 #include <vnet/fib/ip4_fib.h>
 #include <vnet/fib/ip6_fib.h>
 #include <search.h>
@@ -649,10 +650,11 @@ peer_addr_ref (const upf_far_forward_t * fwd)
   fib_prefix_t tun_dst_pfx;
   fib_prefix_from_ip46_addr (&fwd->outer_header_creation.ip, &tun_dst_pfx);
 
-  p->fib_entry_index = fib_table_entry_special_add
-    (p->encap_fib_index, &tun_dst_pfx, FIB_SOURCE_RR, FIB_ENTRY_FLAG_NONE);
-  p->sibling_index = fib_entry_child_add
-    (p->fib_entry_index, gtm->fib_node_type, p - gtm->peers);
+  p->fib_entry_index = fib_entry_track (p->encap_fib_index,
+					&tun_dst_pfx,
+					gtm->fib_node_type,
+					p - gtm->peers,
+					&p->sibling_index);
   upf_peer_restack_dpo (p);
 
   return p - gtm->peers;
@@ -682,8 +684,7 @@ peer_addr_unref (const upf_far_forward_t * fwd)
 
   clib_bihash_add_del_24_8 (&gtm->peer_index_by_ip, &kv, 0 /* is_add */);
 
-  fib_entry_child_remove (p->fib_entry_index, p->sibling_index);
-  fib_table_entry_delete_index (p->fib_entry_index, FIB_SOURCE_RR);
+  fib_entry_untrack (p->fib_entry_index, p->sibling_index);
   fib_node_deinit (&p->node);
   pool_put (gtm->peers, p);
 
