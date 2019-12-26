@@ -48,6 +48,8 @@
 
 #include <vppinfra/tw_timer_1t_3w_1024sl_ov.h>
 
+static fib_source_t upf_fib_source;
+
 int
 upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable)
 {
@@ -170,7 +172,7 @@ vnet_upf_tdf_ul_table_add_del (u32 vrf, fib_protocol_t fproto, u32 table_id, u8 
       if (~0 == vrf_fib_index)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
-      fib_index = fib_table_find_or_create_and_lock (fproto, table_id, FIB_SOURCE_PLUGIN_LOW);
+      fib_index = fib_table_find_or_create_and_lock (fproto, table_id, upf_fib_source);
 
       vec_validate_init_empty (gtm->tdf_ul_table[fproto], vrf_fib_index, ~0);
       vec_elt (gtm->tdf_ul_table[fproto], vrf_fib_index) = fib_index;
@@ -192,7 +194,7 @@ vnet_upf_tdf_ul_table_add_del (u32 vrf, fib_protocol_t fproto, u32 table_id, u8 
 	return VNET_API_ERROR_NO_SUCH_TABLE;
 
       vec_elt (gtm->tdf_ul_table[fproto], vrf_fib_index) = ~0;
-      fib_table_unlock (fib_index, fproto, FIB_SOURCE_PLUGIN_LOW);
+      fib_table_unlock (fib_index, fproto, upf_fib_source);
 
       return (0);
     }
@@ -219,7 +221,7 @@ upf_tdf_ul_lookup_add_i (u32 tdf_ul_fib_index, const fib_prefix_t * pfx, u32 ue_
    * add the entry to the destination FIB that uses the lookup DPO
    */
   fib_table_entry_special_dpo_add (ue_fib_index, pfx,
-				   FIB_SOURCE_PLUGIN_LOW,
+				   upf_fib_source,
 				   FIB_ENTRY_FLAG_EXCLUSIVE, &dpo);
 
   /*
@@ -236,7 +238,7 @@ upf_tdf_ul_lookup_add_i (u32 tdf_ul_fib_index, const fib_prefix_t * pfx, u32 ue_
 static int
 upf_tdf_ul_lookup_delete (u32 tdf_ul_fib_index, const fib_prefix_t * pfx)
 {
-  fib_table_entry_special_remove (tdf_ul_fib_index, pfx, FIB_SOURCE_PLUGIN_LOW);
+  fib_table_entry_special_remove (tdf_ul_fib_index, pfx, upf_fib_source);
 
   return (0);
 }
@@ -570,6 +572,10 @@ upf_init (vlib_main_t * vm)
 
   sm->upf_app_by_name = hash_create_vec ( /* initial length */ 32,
 					 sizeof (u8), sizeof (uword));
+
+  upf_fib_source = fib_source_allocate ("upf-tdf-route",
+					FIB_SOURCE_PRIORITY_HI,
+					FIB_SOURCE_BH_SIMPLE);
 
   error = flowtable_init (vm);
   if (error)
