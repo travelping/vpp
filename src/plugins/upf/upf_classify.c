@@ -20,6 +20,7 @@
 #include <vppinfra/hash.h>
 #include <vnet/vnet.h>
 #include <vnet/ip/ip.h>
+#include <vnet/ip/ip46_address.h>
 #include <vnet/fib/ip4_fib.h>
 #include <vnet/fib/ip6_fib.h>
 #include <vnet/ethernet/ethernet.h>
@@ -139,12 +140,6 @@ format_upf_tdf_trace (u8 * s, va_list * args)
 	    t->pdr_idx, t->next_index, format_white_space, indent,
 	    format_ip4_header, t->packet_data, sizeof (t->packet_data));
   return s;
-}
-
-always_inline int
-ip4_address_is_equal (const ip4_address_t * a, const ip4_address_t * b)
-{
-  return a->as_u32 == b->as_u32;
 }
 
 always_inline int
