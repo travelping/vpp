@@ -387,7 +387,10 @@ class VppTestCase(unittest.TestCase):
                            "plugins",
                            "{", "plugin", "dpdk_plugin.so", "{", "disable",
                            "}", "plugin", "rdma_plugin.so", "{", "disable",
-                           "}", "plugin", "upf_plugin.so", "{", "disable",
+                           # FIXME: this is a temporary change, need to rename some nodes
+                           # (gtpu4-input, gtpu6-input, ip4-gtpu-bypass, ip6-gtpu-bypass)
+                           # /src/vpp/build-root/install-vpp-native/vpp/bin/vpp[13938]: register_node:379: more than one node named `ip6-gtpu-bypass'
+                           "}", "plugin", "gtpu_plugin.so", "{", "disable",
                            "}", "plugin", "unittest_plugin.so", "{", "enable",
                            "}"] + cls.extra_vpp_plugin_config + ["}", ]
         if cls.extra_vpp_punt_config is not None:
