@@ -1,9 +1,9 @@
 diff --git a/scapy/contrib/pfcp.py b/scapy/contrib/pfcp.py
 new file mode 100644
-index 00000000..1866e248
+index 00000000..1b2f2cb9
 --- /dev/null
 +++ b/scapy/contrib/pfcp.py
-@@ -0,0 +1,2549 @@
+@@ -0,0 +1,2551 @@
 +#! /usr/bin/env python
 +
 +# Copyright (C) 2019 Travelping GmbH <info@travelping.com>
@@ -1027,9 +1027,11 @@ index 00000000..1866e248
 +
 +class IE_QueryURR(IE_Base):
 +    name = "IE Query URR"
-+    fields_desc = [ShortEnumField("ietype", 77, IEType),
-+                   ShortField("length", None),
-+                   ]
++    fields_desc = [
++        ShortEnumField("ietype", 77, IEType),
++        ShortField("length", None),
++        PacketListField("IE_list", [], IE_Dispatcher)
++    ]
 +
 +class IE_UsageReport_SMR(IE_Base):
 +    name = "IE Usage Report (Session Modification Response)"
@@ -2555,10 +2557,10 @@ index 00000000..1866e248
 +bind_layers(PFCP, PFCPSessionReportResponse, message_type=57, S=1)
 diff --git a/test/contrib/pfcp.uts b/test/contrib/pfcp.uts
 new file mode 100644
-index 00000000..a896adfa
+index 00000000..67dc0906
 --- /dev/null
 +++ b/test/contrib/pfcp.uts
-@@ -0,0 +1,541 @@
+@@ -0,0 +1,578 @@
 +% PFCP tests
 +
 +# Type the following command to launch start the tests:
@@ -3049,16 +3051,16 @@ index 00000000..a896adfa
 +              ietype=32771,
 +              enterprise_id="Travelping GmbH",
 +              data=b'\xe1\xb4G\x917\xcb\xd8\x00'),
-+              IE_EnterpriseSpecific(
-+                  ietype=32772,
-+                  enterprise_id="Travelping GmbH",
-+                  data=b'\xe1\xb4G\x877\xcb\xd8\x00'),
-+                  IE_EnterpriseSpecific(
-+                      ietype=32773,
-+                      enterprise_id="Travelping GmbH",
-+                      data=b'\xe1\xb4G\x917\xcb\xd8\x00')
-+          ])
++          IE_EnterpriseSpecific(
++              ietype=32772,
++              enterprise_id="Travelping GmbH",
++              data=b'\xe1\xb4G\x877\xcb\xd8\x00'),
++          IE_EnterpriseSpecific(
++              ietype=32773,
++              enterprise_id="Travelping GmbH",
++              data=b'\xe1\xb4G\x917\xcb\xd8\x00')
 +      ])
++  ])
 +
 +assert bytes(pfcpSRReq2) == pfcpSRReq2Bytes
 +assert bytes(PFCP(pfcpSRReq2Bytes)) == pfcpSRReq2Bytes
@@ -3075,6 +3077,43 @@ index 00000000..a896adfa
 +assert bytes(pfcpSRResp) == pfcpSRRespBytes
 +assert bytes(PFCP(pfcpSRRespBytes)) == pfcpSRRespBytes
 +assert pfcpSRResp.answers(pfcpSRReq1)
++
++= Build and dissect PFCP Session Modification Request
++
++pfcpSMReqBytes = hex_bytes("21340018ffde72125aeb00a300000600004d00080051000400000001")
++pfcpSMReq = PFCP(pfcpSMReqBytes)
++
++pfcpSMReq = PFCP(version=1, seq=6, seid=0xffde72125aeb00a3) / \
++    PFCPSessionModificationRequest(IE_list=[
++        IE_QueryURR(IE_list=[IE_URR_Id(urr_id=1)])
++    ])
++assert bytes(pfcpSMReq) == pfcpSMReqBytes
++assert bytes(PFCP(pfcpSMReqBytes)) == pfcpSMReqBytes
++
++= Build and dissect PFCP Session Modification Response
++
++pfcpSMRespBytes = hex_bytes("2135008affde72125aeb00a3000006000013000101004e007500510004000000010068000400000000003f00028000004b0004e16e7efa004c0004e16e7efa004200190700000000000000000000000000000000000000000000000000430004000000008003000a48f9e16e7efa05566c008004000a48f9e16e7efa027f08008005000a48f9e16e7efa027f0800")
++
++pfcpSMResp = PFCP(version=1, seq=6, seid=0xffde72125aeb00a3) / \
++    PFCPSessionModificationResponse(IE_list=[
++        IE_Cause(cause=1),
++        IE_UsageReport_SMR(IE_list=[
++            IE_URR_Id(urr_id=1),
++            IE_UR_SEQN(ur_seqn=0),
++            IE_UsageReportTrigger(IMMER=1),
++            IE_StartTime(timestamp=3782115066),
++            IE_EndTime(timestamp=3782115066),
++            IE_VolumeMeasurement(DLVOL=1, ULVOL=1, TOVOL=1),
++            IE_DurationMeasurement(),
++            IE_EnterpriseSpecific(ietype=32771, enterprise_id=18681, data=b'\xe1n~\xfa\x05Vl\x00'),
++            IE_EnterpriseSpecific(ietype=32772, enterprise_id=18681, data=b'\xe1n~\xfa\x02\x7f\x08\x00'),
++            IE_EnterpriseSpecific(ietype=32773, enterprise_id=18681, data=b'\xe1n~\xfa\x02\x7f\x08\x00')
++        ])
++    ])
++
++assert bytes(pfcpSMResp) == pfcpSMRespBytes
++assert bytes(PFCP(pfcpSMRespBytes)) == pfcpSMRespBytes
++assert pfcpSMResp.answers(pfcpSMReq)
 +
 +# from difflib import unified_diff
 +# expected = PFCP(pfcpSRReq2Bytes).show2(dump=True).split("\n")
