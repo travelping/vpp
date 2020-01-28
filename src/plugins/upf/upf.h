@@ -467,6 +467,12 @@ typedef struct
   u32 handle;
 } urr_time_t;
 
+typedef struct
+{
+  f64 unix_time;
+  f64 vlib_time;
+} urr_abs_time_t;
+
 typedef struct {
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
 
@@ -506,7 +512,7 @@ typedef struct
   urr_time_t time_threshold;	/* relative duration in seconds */
   urr_time_t time_quota;	/* relative duration in seconds */
   urr_time_t quota_holding_time;	/* relative duration in seconds */
-  urr_time_t monitoring_time;	/* absolute UTC ts since 1900-01-01 00:00:00 */
+  urr_abs_time_t monitoring_time;	/* absolute UTC ts since 1900-01-01 00:00:00 */
 
   struct
   {

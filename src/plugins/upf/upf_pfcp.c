@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -973,7 +974,6 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   vec_foreach (urr, active->urr)
   {
     upf_pfcp_session_stop_urr_time (&urr->measurement_period, now);
-    upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
     upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
     upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
     upf_pfcp_session_stop_urr_time (&urr->traffic_timer, now);
@@ -1845,12 +1845,6 @@ sx_update_apply (upf_session_t * sx)
 	   ! !(urr->triggers & REPORTING_TRIGGER_PERIODIC_REPORTING));
       }
 
-    if (urr->update_flags & SX_URR_UPDATE_MONITORING_TIME)
-      {
-	upf_pfcp_session_start_stop_urr_time_abs
-	  (si, &urr->monitoring_time);
-      }
-
     if ((urr->methods & SX_URR_TIME))
       {
 	if (urr->update_flags & SX_URR_UPDATE_TIME_THRESHOLD)
@@ -1889,7 +1883,6 @@ sx_update_apply (upf_session_t * sx)
 	  {
 	    /* stop all timers */
 	    upf_pfcp_session_stop_urr_time (&urr->measurement_period, now);
-	    upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
 	    upf_pfcp_session_stop_urr_time (&urr->time_threshold, now);
 	    upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
 	    upf_pfcp_session_stop_urr_time (&urr->traffic_timer, now);
@@ -2010,6 +2003,28 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
     if (!urr)
       continue;
+
+#if CLIB_DEBUG > 2
+    f64 unow = unix_time_now ();
+    gtp_debug("Monitoring Time: %12.4f - %12.4f : %12.4f Unix: %U - %U : %12.4f",
+	      urr->monitoring_time.vlib_time, now, urr->monitoring_time.vlib_time - now,
+	      format_time_float, 0, urr->monitoring_time.unix_time,
+	      format_time_float, 0, unow,
+	      urr->monitoring_time.unix_time - unow);
+#endif
+
+    if (!(urr->status & URR_AFTER_MONITORING_TIME) &&
+	urr->monitoring_time.vlib_time < now)
+      {
+	urr->usage_before_monitoring_time.volume = urr->volume.measure;
+	memset (&urr->volume.measure.packets, 0, sizeof (urr->volume.measure.packets));
+	memset (&urr->volume.measure.bytes, 0, sizeof (urr->volume.measure.bytes));
+
+	urr->usage_before_monitoring_time.start_time = urr->start_time;
+	urr->start_time = urr->monitoring_time.unix_time;
+	urr->monitoring_time.vlib_time = INFINITY;
+	urr->status |= URR_AFTER_MONITORING_TIME;
+      }
 
     if ((urr->methods & SX_URR_VOLUME))
       {
@@ -2287,17 +2302,6 @@ format_urr_time (u8 * s, va_list * args)
 		 t->expected - now, t->handle);
 }
 
-static u8 *
-format_urr_time_abs (u8 * s, va_list * args)
-{
-  urr_time_t *t = va_arg (*args, urr_time_t *);
-  f64 now = unix_time_now ();
-
-  return format (s, "%U, in %9.3f secs, handle 0x%08x",
-		 /* VPP does not support ISO dates... */
-		 format_time_float, 0, t->base, t->base - now, t->handle);
-}
-
 u8 *
 format_upf_far (u8 * s, va_list * args)
 {
@@ -2516,10 +2520,15 @@ format_sx_session (u8 * s, va_list * args)
 		    format_urr_time, &urr->time_quota,
 		    format_urr_time, &urr->time_threshold);
       }
-    if (urr->monitoring_time.base != 0)
+    if (urr->monitoring_time.vlib_time != INFINITY)
       {
-	s = format (s, "  Monitoring Time: %U\n",
-		    format_urr_time_abs, &urr->monitoring_time);
+	f64 now = unix_time_now ();
+
+	s = format (s, "  Monitoring Time: %U, in %9.3f secs",
+		    /* VPP does not support ISO dates... */
+		    format_time_float, 0, urr->monitoring_time.unix_time,
+		    urr->monitoring_time.unix_time - now,
+		    urr->monitoring_time.vlib_time - vlib_time_now (gtm->vlib_main));
 
 	if (urr->status & URR_AFTER_MONITORING_TIME)
 	  {

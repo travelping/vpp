@@ -1617,6 +1617,7 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
+  sx_server_main_t *sxsm = &sx_server_main;
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   pfcp_create_urr_t *urr;
   struct rules *rules;
@@ -1639,10 +1640,10 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
     memset (create, 0, sizeof (*create));
 
     create->measurement_period.handle =
-      create->monitoring_time.handle =
       create->time_threshold.handle =
       create->time_quota.handle =
       create->traffic_timer.handle = ~0;
+    create->monitoring_time.vlib_time = INFINITY;
 
     create->id = urr->urr_id;
     create->methods = urr->measurement_method;
@@ -1692,8 +1693,10 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
 	f64 secs;
 
 	create->update_flags |= SX_URR_UPDATE_MONITORING_TIME;
-	create->monitoring_time.base =
+	create->monitoring_time.unix_time =
 	  urr->monitoring_time + modf(sx->unix_time_start, &secs);
+	create->monitoring_time.vlib_time =
+	  vlib_time_now (sxsm->vlib_main) + (create->monitoring_time.unix_time - now);
       }
 
     //TODO: subsequent_volume_threshold;
@@ -1722,6 +1725,7 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
 		   f64 now, struct pfcp_group *grp, int failed_rule_id_field,
 		   pfcp_failed_rule_id_t * failed_rule_id)
 {
+  sx_server_main_t *sxsm = &sx_server_main;
   struct pfcp_response *response = (struct pfcp_response *) (grp + 1);
   pfcp_update_urr_t *urr;
   int r = 0;
@@ -1804,8 +1808,10 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
 	f64 secs;
 
 	update->update_flags |= SX_URR_UPDATE_MONITORING_TIME;
-	update->monitoring_time.base =
+	update->monitoring_time.unix_time =
 	  urr->monitoring_time + modf(sx->unix_time_start, &secs);
+	update->monitoring_time.vlib_time =
+	  vlib_time_now (sxsm->vlib_main) + (update->monitoring_time.unix_time - now);
       }
 
     //TODO: subsequent_volume_threshold;
@@ -2066,6 +2072,20 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 	  sizeof (urr->volume.measure.packets));
   memset (&urr->volume.measure.bytes, 0, sizeof (urr->volume.measure.bytes));
 
+  if (!(urr->status & URR_AFTER_MONITORING_TIME) &&
+      urr->monitoring_time.vlib_time != INFINITY &&
+      urr->monitoring_time.unix_time < now)
+    {
+      urr->usage_before_monitoring_time.volume = urr->volume.measure;
+      memset (&urr->volume.measure.packets, 0, sizeof (urr->volume.measure.packets));
+      memset (&urr->volume.measure.bytes, 0, sizeof (urr->volume.measure.bytes));
+
+      urr->usage_before_monitoring_time.start_time = urr->start_time;
+      urr->start_time = urr->monitoring_time.unix_time;
+      urr->monitoring_time.vlib_time = INFINITY;
+      urr->status |= URR_AFTER_MONITORING_TIME;
+    }
+
   clib_spinlock_unlock (&sess->lock);
 
   if (urr->status & URR_AFTER_MONITORING_TIME)
@@ -2110,7 +2130,7 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
       r->duration_measurement = duration;
 
-      urr->monitoring_time.base = 0;
+      urr->monitoring_time.vlib_time = INFINITY;
     }
 
   r = init_usage_report (urr, trigger, report);

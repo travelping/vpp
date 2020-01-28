@@ -789,35 +789,6 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
     }
 }
 
-void
-upf_pfcp_session_start_stop_urr_time_abs (u32 si, urr_time_t * t)
-{
-  sx_server_main_t *sx = &sx_server_main;
-
-  /* the timer interval must be based on tw->current_tick, so for calculating that
-   * we need to use the now timestamp of that current_tick */
-  f64 now = sx->timer.last_run_time;
-
-  if (t->handle != ~0)
-    upf_pfcp_session_stop_urr_time (t, now);
-
-  if (t->base != 0)
-    {
-      i64 ticks;
-
-      // start timer.....
-      t->expected = t->base;
-      ticks = sx->timer.ticks_per_second * (t->expected - now) + 1;
-      ticks = clib_max (ticks, 1);	/* make sure ticks is at least 1 */
-      t->handle = TW (tw_timer_start) (&sx->timer, si, 0, ticks);
-
-      gtp_debug
-	("starting URR absolute timer on sidx %u, handle 0x%08x: "
-	 "now is %.4f, base is %.4f, expire in %lu ticks @ %.4f\n",
-	 si, t->handle, now, t->base, ticks, t->expected);
-    }
-}
-
 static void
 upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 {
@@ -826,6 +797,10 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   u32 si = sx - gtm->sessions;
   struct rules *active;
   upf_urr_t *urr;
+
+#if CLIB_DEBUG > 2
+  f64 vnow = vlib_time_now (gtm->vlib_main);
+#endif
 
   gtp_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)",
 	     sx, sx->cp_seid, sx - gtm->sessions, now);
@@ -852,6 +827,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 #define URR_DEBUG_HEADER						\
     "Rule       | base                                | period   | expire at               | in secs              | ticks     | handle     | check result\n"
 #define URR_DEUBG_LINE "%-10s | %U (%9.3f) | %8lu | %U | %9.3f, %9.3f | %9.3f | 0x%08x | %u\n"
+#define URR_DEUBG_ABS_LINE "%-10s | %U | %12.4f | %U | %12.4f\n"
 #define URR_DEBUG_VALUES(Label, t)					\
     (Label),								\
       format_time_float, 0, (t).base,					\
@@ -863,17 +839,24 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
       URR_COND_TIME(t, ((t).expected - now) * TW_CLOCKS_PER_SECOND),	\
       (t).handle, urr_check(t, now)
 
+#define URR_DEBUG_ABS_VALUES(Label, t)					\
+    (Label),								\
+      format_time_float, 0, (t).unix_time,				\
+      (t).unix_time - now,						\
+      format_vlib_time, gtm->vlib_main, (t).vlib_time,			\
+      (t).vlib_time - vnow
+
     gtp_debug ("URR: %p, Id: %u", urr, urr->id);
     urr_debug_out
       (URR_DEBUG_HEADER
        URR_DEUBG_LINE
        URR_DEUBG_LINE
        URR_DEUBG_LINE
-       URR_DEUBG_LINE,
+       URR_DEUBG_ABS_LINE,
        URR_DEBUG_VALUES ("Period", urr->measurement_period),
        URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
        URR_DEBUG_VALUES ("Quota", urr->time_quota),
-       URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
+       URR_DEBUG_ABS_VALUES ("Monitoring", urr->monitoring_time));
 
     if (urr_check (urr->measurement_period, now))
       {
@@ -963,26 +946,6 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	urr->triggers &= ~(REPORTING_TRIGGER_TIME_THRESHOLD |
 			   REPORTING_TRIGGER_TIME_QUOTA);
       }
-    else if (!(urr->status & URR_AFTER_MONITORING_TIME) &&
-	     (urr->monitoring_time.base != 0) &&
-	     (urr->monitoring_time.base <= now))
-      {
-	clib_spinlock_lock (&sx->lock);
-
-	urr->usage_before_monitoring_time.volume = urr->volume.measure;
-	memset (&urr->volume.measure.packets, 0,
-		sizeof (urr->volume.measure.packets));
-	memset (&urr->volume.measure.bytes, 0,
-		sizeof (urr->volume.measure.bytes));
-
-	clib_spinlock_unlock (&sx->lock);
-
-	upf_pfcp_session_stop_urr_time (&urr->monitoring_time, now);
-
-	urr->usage_before_monitoring_time.start_time = urr->start_time;
-	urr->start_time = urr->monitoring_time.base;
-	urr->status |= URR_AFTER_MONITORING_TIME;
-      }
   }
 
   if (vec_len(req.usage_report) != 0)
@@ -1008,7 +971,7 @@ upf_validate_session_timer (upf_session_t *sx)
   vec_foreach (urr, r->urr)
     {
       if (!urr_check(urr->measurement_period, now) &&
-	  !urr_check(urr->monitoring_time, now) &&
+	  !(urr->monitoring_time.vlib_time != INFINITY) &&
 	  !urr_check(urr->time_threshold, now) &&
 	  !urr_check(urr->time_quota, now))
 	continue;
@@ -1019,12 +982,12 @@ upf_validate_session_timer (upf_session_t *sx)
 		    URR_DEUBG_LINE
 		    URR_DEUBG_LINE
 		    URR_DEUBG_LINE
-		    URR_DEUBG_LINE,
+		    URR_DEUBG_ABS_LINE,
 		    urr, sx->cp_seid, urr->id,
 		    URR_DEBUG_VALUES ("Period", urr->measurement_period),
 		    URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
-		    URR_DEBUG_VALUES ("Quota", urr->time_quota),
-		    URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
+		    URR_DEBUG_VALUES ("Quota", urr->time_quota));
+		    URR_DEBUG_ABS_VALUES ("Monitoring", urr->monitoring_time));
     }
 #undef urr_check
 
@@ -1046,12 +1009,12 @@ upf_validate_session_timer (upf_session_t *sx)
 		    URR_DEUBG_LINE
 		    URR_DEUBG_LINE
 		    URR_DEUBG_LINE
-		    URR_DEUBG_LINE,
+		    URR_DEUBG_ABS_LINE,
 		    urr, sx->cp_seid, urr->id,
 		    URR_DEBUG_VALUES ("Period", urr->measurement_period),
 		    URR_DEBUG_VALUES ("Threshold", urr->time_threshold),
 		    URR_DEBUG_VALUES ("Quota", urr->time_quota),
-		    URR_DEBUG_VALUES ("Monitoring", urr->monitoring_time));
+		    URR_DEBUG_ABS_VALUES ("Monitoring", urr->monitoring_time));
     }
 #undef urr_check
 
