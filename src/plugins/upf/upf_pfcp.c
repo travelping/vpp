@@ -1189,7 +1189,7 @@ sx_add_del_v4_teid (const void *teid, void *si, int is_add)
 
   gtp_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
-     is_add, v4_teid->teid, format_ip4_address, &v4_teid->dst, sess,
+     is_add, v4_teid->key.teid, format_ip4_address, &v4_teid->key.dst, sess,
      sess - gtm->sessions);
 
   clib_bihash_add_del_8_8 (&gtm->v4_tunnel_by_key, &kv, is_add);
@@ -1210,7 +1210,7 @@ sx_add_del_v6_teid (const void *teid, void *si, int is_add)
 
   gtp_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
-     is_add, v6_teid->teid, format_ip6_address, &v6_teid->dst, sess,
+     is_add, v6_teid->key.teid, format_ip6_address, &v6_teid->key.dst, sess,
      sess - gtm->sessions);
 
   clib_bihash_add_del_24_8 (&gtm->v6_tunnel_by_key, &kv, is_add);
