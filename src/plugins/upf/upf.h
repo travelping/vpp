@@ -562,6 +562,10 @@ typedef struct
   /* Required for pool_get_aligned  */
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
 
+  /* most updated fields first */
+  clib_spinlock_t lock;
+  f64 last_ul_traffic;
+
   int fib_index;
   ip46_address_t up_address;
   u64 cp_seid;
@@ -577,7 +581,6 @@ typedef struct
   uint32_t flags;
 #define SX_UPDATING    0x8000
 
-  clib_spinlock_t lock;
   volatile int active;
 
   struct rules
@@ -605,6 +608,7 @@ typedef struct
     gtpu6_endp_rule_t *v6_teid;
 
     send_end_marker_t *send_end_marker;
+    urr_time_t inactivity_timer;
   } rules[2];
 #define SX_ACTIVE  0
 #define SX_PENDING 1

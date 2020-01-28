@@ -2276,6 +2276,14 @@ handle_session_establishment_request (sx_msg_t * req,
   sess = sx_create_session (assoc, req->fib_index, &up_address,
 			    msg->f_seid.seid, &cp_address);
 
+  if (ISSET_BIT (msg->grp.fields, SESSION_ESTABLISHMENT_REQUEST_USER_PLANE_INACTIVITY_TIMER))
+    {
+      struct rules *pending = sx_get_rules(sess, SX_PENDING);
+
+      pending->inactivity_timer.period = msg->user_plane_inactivity_timer;
+      pending->inactivity_timer.handle = ~0;
+    }
+
   if ((r = handle_create_pdr (sess, msg->create_pdr, &resp.grp,
 			      SESSION_ESTABLISHMENT_RESPONSE_FAILED_RULE_ID,
 			      &resp.failed_rule_id)) != 0)
@@ -2353,7 +2361,8 @@ handle_session_modification_request (sx_msg_t * req,
 
   cp_seid = sess->cp_seid;
 
-  if (msg->grp.fields & (BIT (SESSION_MODIFICATION_REQUEST_REMOVE_PDR) |
+  if (msg->grp.fields & (BIT (SESSION_MODIFICATION_REQUEST_USER_PLANE_INACTIVITY_TIMER) |
+			 BIT (SESSION_MODIFICATION_REQUEST_REMOVE_PDR) |
 			 BIT (SESSION_MODIFICATION_REQUEST_REMOVE_FAR) |
 			 BIT (SESSION_MODIFICATION_REQUEST_REMOVE_URR) |
 			 BIT (SESSION_MODIFICATION_REQUEST_REMOVE_QER) |
@@ -2371,6 +2380,14 @@ handle_session_modification_request (sx_msg_t * req,
     {
       /* invoke the update process only if a update is include */
       sx_update_session (sess);
+
+      if (msg->grp.fields & BIT (SESSION_MODIFICATION_REQUEST_USER_PLANE_INACTIVITY_TIMER))
+	{
+	  struct rules *pending = sx_get_rules(sess, SX_PENDING);
+
+	  pending->inactivity_timer.period = msg->user_plane_inactivity_timer;
+	  pending->inactivity_timer.handle = ~0;
+	}
 
       if ((r = handle_create_pdr (sess, msg->create_pdr, &resp.grp,
 				  SESSION_MODIFICATION_RESPONSE_FAILED_RULE_ID,

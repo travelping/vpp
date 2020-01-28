@@ -735,6 +735,44 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 }
 
 void
+upf_pfcp_session_stop_up_inactivity_timer(urr_time_t * t)
+{
+  sx_server_main_t *sxsm = &sx_server_main;
+
+  if (t->handle != ~0)
+    TW (tw_timer_stop) (&sxsm->timer, t->handle);
+
+  t->handle = ~0;
+  t->expected = 0;
+}
+
+void
+upf_pfcp_session_start_up_inactivity_timer(u32 si, f64 last, urr_time_t * t)
+{
+  sx_server_main_t *sxsm = &sx_server_main;
+  i64 interval;
+  f64 period;
+
+  if (t->handle != ~0 || t->period == 0)
+    return;
+
+  // start timer.....
+
+  period = t->period - trunc(vlib_time_now (sxsm->vlib_main) - last);
+
+  interval = sxsm->timer.ticks_per_second * period;
+  interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
+  t->handle = TW (tw_timer_start) (&sxsm->timer, si, 0, interval);
+
+  gtp_debug
+    ("starting UP inactivity timer on sidx %u, handle 0x%08x: "
+     "now is %.4f, expire in %lu ticks "
+     " clib_now %.4f, current tick: %u",
+     si, t->handle, sxsm->timer.last_run_time, interval,
+     unix_time_now (), sxsm->timer.current_tick);
+}
+
+void
 upf_pfcp_session_stop_urr_time (urr_time_t * t, const f64 now)
 {
   sx_server_main_t *sx = &sx_server_main;
@@ -802,16 +840,26 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   f64 vnow = vlib_time_now (gtm->vlib_main);
 #endif
 
-  gtp_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)",
-	     sx, sx->cp_seid, sx - gtm->sessions, now);
-
   active = sx_get_rules (sx, SX_ACTIVE);
+
+  gtp_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)\n"
+	     "  UP Inactivity Timer: %u secs, inactive %12.4f secs (0x%08x)",
+	     sx, sx->cp_seid, sx - gtm->sessions, now,
+	     active->inactivity_timer.period,
+	     vlib_time_now(gtm->vlib_main) - sx->last_ul_traffic,
+	     active->inactivity_timer.handle);
 
   memset (&req, 0, sizeof (req));
   SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_REPORT_TYPE);
-  req.report_type = REPORT_TYPE_USAR;
 
-  SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_USAGE_REPORT);
+  if (active->inactivity_timer.handle != ~0 &&
+      active->inactivity_timer.period != 0 &&
+      ceil(vlib_time_now(gtm->vlib_main) - sx->last_ul_traffic) >=
+      active->inactivity_timer.period)
+    {
+      active->inactivity_timer.handle = ~0;
+      req.report_type |= REPORT_TYPE_UPIR;
+    }
 
   vec_foreach (urr, active->urr)
   {
@@ -940,6 +988,9 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
     if (trigger != 0)
       {
+	req.report_type |= REPORT_TYPE_USAR;
+	SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_USAGE_REPORT);
+
 	build_usage_report (sx, NULL, urr, trigger, trigger_now, &req.usage_report);
 
 	// clear reporting on the time based triggers, until rearmed by update
@@ -948,7 +999,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
       }
   }
 
-  if (vec_len(req.usage_report) != 0)
+  if (req.report_type != 0)
     upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
 					  &req.grp);
 

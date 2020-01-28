@@ -519,6 +519,10 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
   sx->cp_seid = cp_seid;
   sx->cp_address = *cp_address;
 
+  sx->last_ul_traffic = vlib_time_now (sxsm->vlib_main);
+  for (size_t i = 0; i < ARRAY_LEN (sx->rules); i++)
+    sx->rules[i].inactivity_timer.handle = ~0;
+
   sx->unix_time_start = sxsm->now;
 
   clib_spinlock_init (&sx->lock);
@@ -535,7 +539,13 @@ sx_create_session (upf_node_assoc_t * assoc, int sx_fib_index,
 void
 sx_update_session (upf_session_t * sx)
 {
+  struct rules *active = sx_get_rules(sx, SX_ACTIVE);
+  struct rules *pending = sx_get_rules(sx, SX_PENDING);
+
   // TODO: do we need some kind of update lock ?
+
+  if (active->inactivity_timer.period != 0)
+    pending->inactivity_timer = active->inactivity_timer;
 }
 
 static void
@@ -1797,6 +1807,11 @@ sx_update_apply (upf_session_t * sx)
   pending = sx_get_rules (sx, SX_PENDING);
   active = sx_get_rules (sx, SX_ACTIVE);
 
+  if (active->inactivity_timer.handle != pending->inactivity_timer.handle)
+    upf_pfcp_session_stop_up_inactivity_timer(&pending->inactivity_timer);
+  upf_pfcp_session_start_up_inactivity_timer(si, sx->last_ul_traffic,
+					     &active->inactivity_timer);
+
   if (pending_far)
     {
       upf_far_t *far;
@@ -1995,6 +2010,9 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
   gtp_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
 
   clib_spinlock_lock (&sess->lock);
+
+  if (is_ul)
+    sess->last_ul_traffic = now;
 
   vec_foreach (urr_id, pdr->urr_ids)
   {
@@ -2389,6 +2407,11 @@ format_sx_session (u8 * s, va_list * args)
   if (debug)
     s = format (s, "                  (prev:%u,next:%u)\n",
 		sx->assoc.prev, sx->assoc.next);
+  if (rules->inactivity_timer.period != 0)
+    s = format (s, "  UP Inactivity Timer: %u secs, inactive %12.4f secs (0x%08x)\n",
+		rules->inactivity_timer.period,
+		vlib_time_now(gtm->vlib_main) - sx->last_ul_traffic,
+		rules->inactivity_timer.handle);
 
   vec_foreach (pdr, rules->pdr)
   {
