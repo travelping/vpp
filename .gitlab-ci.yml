@@ -1,9 +1,26 @@
 stages:
-  - build
+- build
+- test
 
 variables:
   REGISTRY: "quay.io"
   CONTAINER_IMAGE: travelping/upf
+
+# prepare:
+#   image: docker:stable
+#   services:
+#     - docker:dind
+#   stage: prepare
+#   script:
+#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+#     - cd .meta
+#     - docker build -t $CI_REGISTRY/travelping/vpp/testimage:latest .
+#     - docker push $CI_REGISTRY/travelping/vpp/testimage:latest
+#   only:
+#     # refs:
+#     #   - master
+#     changes:
+#       - extras/docker/Dockerfile.test
 
 # build container image
 .build:
@@ -47,11 +64,22 @@ variables:
     - >
       DOCKER_BUILDKIT=1 docker run
       --rm artifacts:${CI_COMMIT_SHA}_${CONTAINER_VARIANT} | tar -C "debs" -xf -
+    - |
+      echo "CI_JOB_NAME: ${CI_JOB_NAME}"
+      mkdir tst-install
+      if [[ ${CI_JOB_NAME} = "build:debug" ]]; then
+        docker run --rm --entrypoint /bin/tar \
+               artifacts:${CI_COMMIT_SHA}_${CONTAINER_VARIANT} \
+               -C /src/vpp \
+               -cz build-root/install-vpp_debug-native \
+               > tst-install/install.tar.gz
+      fi
   artifacts:
     when: always
     untracked: true
     paths:
-      - debs
+    - debs
+    - tst-install
 
 # build container image
 build:release:
@@ -63,3 +91,32 @@ build:debug:
   extends: .build
   variables:
     DOCKER_FILE: extras/docker/Dockerfile.devel
+
+test:debug:
+  stage: test
+  image: docker:git
+  # FIXME: try not to use docker:dind. This may cause problems with shm_size
+  services:
+  - docker:dind
+  dependencies:
+  - build:debug
+  script:
+  - export DOCKER_HOST="tcp://localhost:2375"
+  - docker build -f extras/docker/Dockerfile.test -t vppbuild .
+  - tar -xvzf tst-install/install.tar.gz
+  - |
+    mkdir -p test-out
+    if ! docker run --rm --name vpp-build --shm-size 1024m \
+               -v $PWD:/src/vpp:delegated \
+               -e LC_ALL=C.UTF-8 \
+               -e LANG=C.UTF-8 \
+               vppbuild \
+               /bin/bash -c \
+               "if ! make -j8 retest-debug TEST=test_upf V=1; then tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true; tar -C /src/vpp/build-root/install-vpp_debug-native/ -cvzf /src/vpp/test-out/vpp.tar.gz vpp; exit 1; fi"; then
+      ls -l test-out/
+      exit 1
+    fi
+  artifacts:
+    when: on_failure
+    paths:
+    - test-out
