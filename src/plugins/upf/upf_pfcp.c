@@ -55,6 +55,8 @@ upf_main_t upf_main;
 static void sx_add_del_ue_ip (const void *ue_ip, void *si, int is_add);
 static void sx_add_del_v4_teid (const void *teid, void *si, int is_add);
 static void sx_add_del_v6_teid (const void *teid, void *si, int is_add);
+static void sx_add_del_v4_tdf (const void *tdf, void *si, int is_add);
+static void sx_add_del_v6_tdf (const void *tdf, void *si, int is_add);
 u8 * format_upf_acl (u8 * s, va_list * args);
 
 #define vec_bsearch(k, v, compar)				\
@@ -964,15 +966,19 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
   sx_server_main_t *sxsm = &sx_server_main;
   const f64 now = sxsm->timer.last_run_time;
   upf_main_t *gtm = &upf_main;
-  ue_ip_t *ue_dst_ip;
+  ue_ip_t *ue_ip;
   gtpu4_endp_rule_t *v4_teid;
   gtpu6_endp_rule_t *v6_teid;
   upf_urr_t *urr;
+  upf_acl_t *acl;
 
   hash_unset (gtm->session_by_id, sx->cp_seid);
   vec_foreach (v4_teid, active->v4_teid) sx_add_del_v4_teid (v4_teid, sx, 0);
   vec_foreach (v6_teid, active->v6_teid) sx_add_del_v6_teid (v6_teid, sx, 0);
-  vec_foreach (ue_dst_ip, active->ue_dst_ip) sx_add_del_ue_ip (ue_dst_ip, sx, 0);
+  vec_foreach (ue_ip, active->ue_dst_ip) sx_add_del_ue_ip (ue_ip, sx, 0);
+  vec_foreach (ue_ip, active->ue_src_ip) sx_add_del_ue_ip (ue_ip, sx, 0);
+  vec_foreach (acl, active->v4_acls) sx_add_del_v4_tdf(acl, sx, 0);
+  vec_foreach (acl, active->v6_acls) sx_add_del_v6_tdf(acl, sx, 0);
 
   node_assoc_detach_session (sx);
 
