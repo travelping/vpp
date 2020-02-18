@@ -994,6 +994,7 @@ sx_disable_session (upf_session_t * sx, int drop_msgs)
     upf_pfcp_session_stop_urr_time (&urr->time_quota, now);
     upf_pfcp_session_stop_urr_time (&urr->traffic_timer, now);
   }
+  upf_pfcp_session_stop_up_inactivity_timer (&active->inactivity_timer);
 
   if (drop_msgs)
     {

@@ -739,7 +739,7 @@ upf_pfcp_session_stop_up_inactivity_timer(urr_time_t * t)
 {
   sx_server_main_t *sxsm = &sx_server_main;
 
-  if (t->handle != ~0)
+  if (t->handle != ~0 &&  t->expected > vlib_time_now (sxsm->vlib_main))
     TW (tw_timer_stop) (&sxsm->timer, t->handle);
 
   t->handle = ~0;
@@ -759,6 +759,7 @@ upf_pfcp_session_start_up_inactivity_timer(u32 si, f64 last, urr_time_t * t)
   // start timer.....
 
   period = t->period - trunc(vlib_time_now (sxsm->vlib_main) - last);
+  t->expected = vlib_time_now (sxsm->vlib_main) + period;
 
   interval = sxsm->timer.ticks_per_second * period;
   interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
@@ -853,12 +854,20 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_REPORT_TYPE);
 
   if (active->inactivity_timer.handle != ~0 &&
-      active->inactivity_timer.period != 0 &&
-      ceil(vlib_time_now(gtm->vlib_main) - sx->last_ul_traffic) >=
-      active->inactivity_timer.period)
+      active->inactivity_timer.period != 0)
     {
-      active->inactivity_timer.handle = ~0;
-      req.report_type |= REPORT_TYPE_UPIR;
+      if (ceil(vlib_time_now(gtm->vlib_main) - sx->last_ul_traffic) >=
+	  active->inactivity_timer.period)
+	{
+	  active->inactivity_timer.handle = ~0;
+	  req.report_type |= REPORT_TYPE_UPIR;
+	}
+      else
+	{
+	  upf_pfcp_session_stop_up_inactivity_timer (&active->inactivity_timer);
+	  upf_pfcp_session_start_up_inactivity_timer(si, sx->last_ul_traffic,
+						     &active->inactivity_timer);
+	}
     }
 
   vec_foreach (urr, active->urr)
