@@ -1644,6 +1644,8 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
       create->time_quota.handle =
       create->traffic_timer.handle = ~0;
     create->monitoring_time.vlib_time = INFINITY;
+    create->time_of_first_packet = INFINITY;
+    create->time_of_last_packet = INFINITY;
 
     create->id = urr->urr_id;
     create->methods = urr->measurement_method;
@@ -2061,9 +2063,11 @@ pfcp_usage_report_t *
 build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 		    u32 trigger, f64 now, pfcp_usage_report_t ** report)
 {
+  sx_server_main_t *sxsm = &sx_server_main;
   pfcp_usage_report_t *r;
   urr_volume_t volume;
   u64 start_time, duration;
+  f64 vnow = vlib_time_now (sxsm->vlib_main);
 
   clib_spinlock_lock (&sess->lock);
 
@@ -2081,7 +2085,11 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       memset (&urr->volume.measure.bytes, 0, sizeof (urr->volume.measure.bytes));
 
       urr->usage_before_monitoring_time.start_time = urr->start_time;
+      urr->usage_before_monitoring_time.time_of_first_packet = urr->time_of_first_packet;
+      urr->usage_before_monitoring_time.time_of_last_packet = urr->time_of_last_packet;
       urr->start_time = urr->monitoring_time.unix_time;
+      urr->time_of_first_packet = INFINITY;
+      urr->time_of_last_packet = INFINITY;
       urr->monitoring_time.vlib_time = INFINITY;
       urr->status |= URR_AFTER_MONITORING_TIME;
     }
@@ -2107,6 +2115,20 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 
 	  r->start_time = start_time;
 	  r->end_time = r->start_time + duration;
+
+	  if (urr->usage_before_monitoring_time.time_of_first_packet != INFINITY)
+	    {
+	      SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_FIRST_PACKET);
+	      r->time_of_first_packet =
+		trunc(now - (vnow - urr->usage_before_monitoring_time.time_of_first_packet));
+
+	      if (urr->usage_before_monitoring_time.time_of_last_packet != INFINITY)
+		{
+		  SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_LAST_PACKET);
+		  r->time_of_last_packet =
+		    trunc(now - (vnow - urr->usage_before_monitoring_time.time_of_last_packet));
+		}
+	    }
 
 	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
 	  SET_BIT (r->grp.fields, USAGE_REPORT_TP_START_TIME);
@@ -2153,6 +2175,19 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
       r->start_time = start_time;
       r->end_time = r->start_time + duration;
 
+
+      if (urr->time_of_first_packet != INFINITY)
+	{
+	  SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_FIRST_PACKET);
+	  r->time_of_first_packet = trunc(now - (vnow - urr->time_of_first_packet));
+
+	  if (urr->time_of_last_packet != INFINITY)
+	    {
+	      SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_LAST_PACKET);
+	      r->time_of_last_packet = trunc(now - (vnow - urr->time_of_last_packet));
+	    }
+	}
+
       SET_BIT (r->grp.fields, USAGE_REPORT_TP_NOW);
       SET_BIT (r->grp.fields, USAGE_REPORT_TP_START_TIME);
       SET_BIT (r->grp.fields, USAGE_REPORT_TP_END_TIME);
@@ -2195,14 +2230,14 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 
   /* SET_BIT(r->grp.fields, USAGE_REPORT_APPLICATION_DETECTION_INFORMATION); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_NETWORK_INSTANCE); */
-  /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_FIRST_PACKET); */
-  /* SET_BIT(r->grp.fields, USAGE_REPORT_TIME_OF_LAST_PACKET); */
   /* SET_BIT(r->grp.fields, USAGE_REPORT_USAGE_INFORMATION); */
 
   urr->status &= ~URR_AFTER_MONITORING_TIME;
   urr->start_time += duration;
   if (urr->time_threshold.base)
     urr->time_threshold.base = urr->start_time;
+  urr->time_of_first_packet = INFINITY;
+  urr->time_of_last_packet = INFINITY;
 
   return r;
 }

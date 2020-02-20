@@ -2046,10 +2046,17 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	memset (&urr->volume.measure.bytes, 0, sizeof (urr->volume.measure.bytes));
 
 	urr->usage_before_monitoring_time.start_time = urr->start_time;
+	urr->usage_before_monitoring_time.time_of_first_packet = urr->time_of_first_packet;
+	urr->usage_before_monitoring_time.time_of_last_packet = urr->time_of_last_packet;
 	urr->start_time = urr->monitoring_time.unix_time;
+	urr->time_of_first_packet = now;
 	urr->monitoring_time.vlib_time = INFINITY;
 	urr->status |= URR_AFTER_MONITORING_TIME;
       }
+
+    if (urr->time_of_first_packet == INFINITY)
+      urr->time_of_first_packet = now;
+    urr->time_of_last_packet = now;
 
     if ((urr->methods & SX_URR_VOLUME))
       {
@@ -2521,6 +2528,12 @@ format_sx_session (u8 * s, va_list * args)
       /* *INDENT-ON* */
     s =
       format (s, "  Start Time: %U\n", format_time_float, 0, urr->start_time);
+    s = format (s, "  vTime of First Usage: %U \n"
+		"  vTime of Last Usage:  %U \n",
+		format_vlib_time, gtm->vlib_main,
+		urr->usage_before_monitoring_time.time_of_first_packet,
+		format_vlib_time, gtm->vlib_main,
+		urr->usage_before_monitoring_time.time_of_last_packet);
     if (urr->methods & SX_URR_VOLUME)
       {
 	urr_volume_t *v = &urr->volume;
@@ -2562,7 +2575,13 @@ format_sx_session (u8 * s, va_list * args)
 
 	if (urr->status & URR_AFTER_MONITORING_TIME)
 	  {
-	    s = format (s, "  Usage Before Monitoring Time\n");
+	    s = format (s, "  Usage Before Monitoring Time\n"
+			"    vTime of First Usage: %U \n"
+			"    vTime of Last Usage:  %U \n",
+			format_vlib_time, gtm->vlib_main,
+			urr->usage_before_monitoring_time.time_of_first_packet,
+			format_vlib_time, gtm->vlib_main,
+			urr->usage_before_monitoring_time.time_of_last_packet);
 	    if (urr->methods & SX_URR_VOLUME)
 	      {
 		urr_measure_t *v = &urr->usage_before_monitoring_time.volume;

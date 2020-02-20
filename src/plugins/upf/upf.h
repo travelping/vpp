@@ -506,6 +506,8 @@ typedef struct
   u32 seq_no;
   f64 start_time;
 
+  f64 time_of_first_packet;
+  f64 time_of_last_packet;
   urr_volume_t volume;
 
   urr_time_t measurement_period;	/* relative duration in seconds */
@@ -517,6 +519,8 @@ typedef struct
   struct
   {
     f64 start_time;
+    f64 time_of_first_packet;
+    f64 time_of_last_packet;
     urr_measure_t volume;
   } usage_before_monitoring_time;
 
