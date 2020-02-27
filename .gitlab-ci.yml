@@ -120,3 +120,26 @@ test:debug:
     when: on_failure
     paths:
     - test-out
+
+test:external:
+  stage: test
+  image: quay.io/travelping/upf-test:master
+  services:
+  - docker:dind
+  script:
+  - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
+  - CONTAINER_VARIANT=release
+  - CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
+  - CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
+  - SRC_DIR="${PWD}"
+  - cd /test
+  - docker-compose build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
+  - docker-compose run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
+  # FIXME: the following fails --
+  # - docker-compose run --rm -T grabpcaps | tar -xv
+  - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
+  dependencies:
+  - build:release
+  artifacts:
+    paths:
+    - pcaps
