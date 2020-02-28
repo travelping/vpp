@@ -110,6 +110,20 @@ ipfilter_address_cmp_const (const ipfilter_address_t * a,
   return intcmp (a->mask, b.mask);
 };
 
+static inline u32
+upf_nwi_fib_index (fib_protocol_t proto, u32 nwi_index)
+{
+  upf_main_t *gtm = &upf_main;
+
+  if (!pool_is_free_index (gtm->nwis, nwi_index))
+    {
+      upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, nwi_index);
+      return nwi->fib_index[proto];
+    }
+  else
+    return ~0;
+}
+
 #endif /* _UPF_SX_H_ */
 
 /*

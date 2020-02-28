@@ -113,7 +113,7 @@ VNET_HW_INTERFACE_CLASS (gtpu_hw_class) =
 /* *INDENT-ON* */
 
 static int
-vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+vnet_upf_create_nwi_if (u8 * name, u32 ip4_table_id, u32 ip6_table_id, u32 * sw_if_idx)
 {
   vnet_main_t *vnm = upf_main.vnet_main;
   l2input_main_t *l2im = &l2input_main;
@@ -136,9 +136,9 @@ vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
 
   pool_get (gtm->nwis, nwi);
   memset (nwi, 0, sizeof (*nwi));
+  memset (&nwi->fib_index, ~0, sizeof (nwi->fib_index));
 
   nwi->name = vec_dup (name);
-  nwi->table_id = table_id;
 
   if_index = nwi - gtm->nwis;
 
@@ -187,8 +187,11 @@ vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
   l2im->configs[sw_if_index].bd_index = 0;
 
   /* move into fib table */
-  ip_table_bind (FIB_PROTOCOL_IP4, sw_if_index, table_id, 0);
-  ip_table_bind (FIB_PROTOCOL_IP6, sw_if_index, table_id, 0);
+  ip_table_bind (FIB_PROTOCOL_IP4, sw_if_index, ip4_table_id, 0);
+  ip_table_bind (FIB_PROTOCOL_IP6, sw_if_index, ip6_table_id, 0);
+
+  nwi->fib_index[FIB_PROTOCOL_IP4] = ip4_fib_table_get_index_for_sw_if_index (sw_if_index);
+  nwi->fib_index[FIB_PROTOCOL_IP6] = ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
 
   vnet_sw_interface_t *si = vnet_get_sw_interface (vnm, sw_if_index);
   si->flags &= ~VNET_SW_INTERFACE_FLAG_HIDDEN;
@@ -213,7 +216,7 @@ vnet_upf_create_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
 }
 
 static int
-vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
+vnet_upf_delete_nwi_if (u8 * name, u32 * sw_if_idx)
 {
   vnet_main_t *vnm = upf_main.vnet_main;
   upf_main_t *gtm = &upf_main;
@@ -245,11 +248,11 @@ vnet_upf_delete_nwi_if (u8 * name, u32 table_id, u32 * sw_if_idx)
 }
 
 int
-vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add)
+vnet_upf_nwi_add_del (u8 * name, u32 ip4_table_id, u32 ip6_table_id, u8 add)
 {
   return (add) ?
-    vnet_upf_create_nwi_if (name, table_id, NULL) :
-    vnet_upf_delete_nwi_if (name, table_id, NULL);
+    vnet_upf_create_nwi_if (name, ip4_table_id, ip6_table_id, NULL) :
+    vnet_upf_delete_nwi_if (name, NULL);
 }
 
 static int
@@ -1572,9 +1575,9 @@ build_sx_rules (upf_session_t * sx)
     upf_pdr_t *pdr = vec_elt_at_index(pending->pdr, idx);
     u32 sw_if_index = ~0;
 
-    if (pdr->pdi.nwi != ~0)
+    if (pdr->pdi.nwi_index != ~0)
       {
-	upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi);
+	upf_nwi_t *nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi_index);
 	sw_if_index = nwi->sw_if_index;
       }
 
@@ -2345,8 +2348,8 @@ format_upf_far (u8 * s, va_list * args)
 
   indent = format_get_indent (s);
 
-  if (!pool_is_free_index (gtm->nwis, far->forward.nwi))
-    nwi = pool_elt_at_index (gtm->nwis, far->forward.nwi);
+  if (!pool_is_free_index (gtm->nwis, far->forward.nwi_index))
+    nwi = pool_elt_at_index (gtm->nwis, far->forward.nwi_index);
 
   if (!debug)
     s = format (s, "FAR: %u\n", far->id);
@@ -2432,8 +2435,8 @@ format_sx_session (u8 * s, va_list * args)
     upf_nwi_t *nwi = NULL;
     size_t j;
 
-    if (!pool_is_free_index (gtm->nwis, pdr->pdi.nwi))
-      nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi);
+    if (!pool_is_free_index (gtm->nwis, pdr->pdi.nwi_index))
+      nwi = pool_elt_at_index (gtm->nwis, pdr->pdi.nwi_index);
 
     s = format (s, "PDR: %u @ %p\n"
 		"  Precedence: %u\n"
@@ -2729,8 +2732,8 @@ format_gtpu_endpoint (u8 * s, va_list * args)
   if (!is_zero_ip6_address (&ep->ip6))
     s = format (s, " IP6: %U", format_ip6_address, &ep->ip6);
 
-  if (~0 != ep->nwi)
-    s = format (s, ", nwi: %U", format_network_instance_index, ep->nwi);
+  if (~0 != ep->nwi_index)
+    s = format (s, ", nwi: %U", format_network_instance_index, ep->nwi_index);
 
   if (INTF_INVALID != ep->intf)
     s = format (s, ", Intf: %u", ep->intf);

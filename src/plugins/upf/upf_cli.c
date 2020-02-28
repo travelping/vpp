@@ -310,7 +310,7 @@ upf_nwi_add_del_command_fn (vlib_main_t * vm,
   if (~0 == fib_table_find (FIB_PROTOCOL_IP6, table_id))
     clib_warning ("table %d not (yet) defined for IPv6", table_id);
 
-  rv = vnet_upf_nwi_add_del (name, table_id, add);
+  rv = vnet_upf_nwi_add_del (name, table_id, table_id, add);
 
   switch (rv)
     {
@@ -384,8 +384,10 @@ upf_show_nwi_command_fn (vlib_main_t * vm,
     if (name && !vec_is_equal(name, nwi->name))
       continue;
 
-    vlib_cli_output (vm, "%U, table-id: %u\n",
-		     format_network_instance, nwi->name, nwi->table_id);
+    vlib_cli_output (vm, "%U, ip4-fib-index %u, ip6-fib-index %u\n",
+		     format_network_instance, nwi->name,
+		     nwi->fib_index[FIB_PROTOCOL_IP4],
+		     nwi->fib_index[FIB_PROTOCOL_IP6]);
   }));
   /* *INDENT-ON* */
 

@@ -119,7 +119,7 @@ vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
   upf_upip_res_t res = {
     .ip4 = *ip4,
     .ip6 = *ip6,
-    .nwi = ~0,
+    .nwi_index = ~0,
     .intf = intf,
     .teid = teid,
     .mask = mask
@@ -132,7 +132,7 @@ vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
       if (!p)
 	return VNET_API_ERROR_NO_SUCH_ENTRY;
 
-      res.nwi = p[0];
+      res.nwi_index = p[0];
     }
 
   p = mhash_get (&gtm->upip_res_index, &res);

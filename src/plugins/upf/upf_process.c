@@ -303,8 +303,12 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		}
 	      else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
 		{
-		  next = upf_to_proxy (b, is_ip4, sidx, far - active->far,
-				       far->forward.table_id, &error);
+		  u32 fib_index;
+
+		  fib_index =
+		    upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6,
+				       far->forward.nwi_index);
+		  next = upf_to_proxy (b, is_ip4, sidx, far - active->far, fib_index, &error);
 		}
 	      else
 		{
@@ -313,15 +317,15 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
 				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM |
 				    VNET_BUFFER_F_OFFLOAD_IP_CKSUM);
-		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			far->forward.table_id;
+		  vnet_buffer (b)->sw_if_index[VLIB_TX] =
+		    upf_nwi_fib_index (FIB_PROTOCOL_IP4, far->forward.nwi_index);
 		    }
 		  else
 		    {
 		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
 				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM);
 		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			far->forward.table_id;
+			upf_nwi_fib_index (FIB_PROTOCOL_IP6, far->forward.nwi_index);
 		    }
 		  next = UPF_PROCESS_NEXT_IP_INPUT;
 		}

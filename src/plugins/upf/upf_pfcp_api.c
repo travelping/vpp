@@ -356,9 +356,9 @@ static void
 
     vec_add2 (*upip, r, 1);
 
-    if (res->nwi != ~0)
+    if (res->nwi_index != ~0)
       {
-	upf_nwi_t *nwi = pool_elt_at_index(gtm->nwis, res->nwi);
+	upf_nwi_t *nwi = pool_elt_at_index(gtm->nwis, res->nwi_index);
 
 	r->flags |= USER_PLANE_IP_RESOURCE_INFORMATION_ASSONI;
 	r->network_instance = vec_dup(nwi->name);
@@ -809,7 +809,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
     vec_add2 (rules->pdr, create, 1);
     memset (create, 0, sizeof (*create));
 
-    create->pdi.nwi = ~0;
+    create->pdi.nwi_index = ~0;
     create->pdi.adr.application_id = ~0;
     create->pdi.adr.db_id = ~0;
 
@@ -832,7 +832,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	    break;
 	  }
 
-	create->pdi.nwi = nwi - gtm->nwis;
+	create->pdi.nwi_index = nwi - gtm->nwis;
       }
 
     create->pdi.src_intf = pdr->pdi.source_interface;
@@ -997,10 +997,10 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 		r = -1;
 		break;
 	      }
-	    update->pdi.nwi = nwi - gtm->nwis;
+	    update->pdi.nwi_index = nwi - gtm->nwis;
 	  }
 	else
-	  update->pdi.nwi = ~0;
+	  update->pdi.nwi_index = ~0;
       }
 
     update->precedence = pdr->precedence;
@@ -1173,7 +1173,7 @@ upip_ip_interface_ip (upf_far_forward_t * ff, u32 fib_index, int is_ip4)
     if (INTF_INVALID != res->intf && ff->dst_intf != res->intf)
       continue;
 
-    if (~0 != res->nwi && ~0 != ff->nwi && ff->nwi != res->nwi)
+    if (~0 != res->nwi_index && ~0 != ff->nwi_index && ff->nwi_index != res->nwi_index)
       continue;
 
     if (is_ip4)
@@ -1270,16 +1270,6 @@ ip_udp_gtpu_rewrite (upf_far_forward_t * ff, u32 fib_index, int is_ip4)
 }
 
 /* from src/vnet/ip/ping.c */
-static u32
-upf_ip46_fib_index_from_table_id (u32 table_id, int is_ip4)
-{
-  u32 fib_index = is_ip4 ?
-    ip4_fib_index_from_table_id (table_id) :
-    ip6_fib_index_from_table_id (table_id);
-  return fib_index;
-}
-
-/* from src/vnet/ip/ping.c */
 static fib_node_index_t
 upf_ip46_fib_table_lookup_host (u32 fib_index, ip46_address_t * pa46,
 				int is_ip4)
@@ -1331,7 +1321,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 
     vec_add2 (rules->far, create, 1);
     memset (create, 0, sizeof (*create));
-    create->forward.nwi = ~0;
+    create->forward.nwi_index = ~0;
     create->forward.dst_sw_if_index = ~0;
 
     create->id = far->far_id;
@@ -1357,8 +1347,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 		break;
 	      }
 
-	    create->forward.table_id = nwi->table_id;
-	    create->forward.nwi = nwi - gtm->nwis;
+	    create->forward.nwi_index = nwi - gtm->nwis;
 	  }
 
 	create->forward.dst_intf =
@@ -1387,8 +1376,8 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 	      far->forwarding_parameters.outer_header_creation;
 
 	    fib_index =
-	      upf_ip46_fib_index_from_table_id (create->forward.table_id,
-						is_ip4);
+	      upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6,
+				 create->forward.nwi_index);
 	    if (~0 == fib_index)
 	      {
 		gtp_debug
@@ -1489,13 +1478,11 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 		    r = -1;
 		    break;
 		  }
-		update->forward.table_id = nwi->table_id;
-		update->forward.nwi = nwi - gtm->nwis;
+		update->forward.nwi_index = nwi - gtm->nwis;
 	      }
 	    else
 	      {
-		update->forward.table_id = 0;
-		update->forward.nwi = ~0;
+		update->forward.nwi_index = ~0;
 	      }
 	  }
 
@@ -1530,8 +1517,8 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 	    update->forward.outer_header_creation = *ohc;
 
 	    fib_index =
-	      upf_ip46_fib_index_from_table_id (update->forward.table_id,
-						is_ip4);
+	      upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6,
+				 update->forward.nwi_index);
 	    if (~0 == fib_index)
 	      {
 		gtp_debug

@@ -358,7 +358,7 @@ typedef struct
 typedef struct
 {
   pfcp_source_interface_t src_intf;
-  uword nwi;
+  u32 nwi_index;
 
   u32 fields;
 #define F_PDI_LOCAL_F_TEID    0x0001
@@ -393,9 +393,8 @@ typedef struct
 #define FAR_F_OUTER_HEADER_CREATION	BIT(1)
 
   pfcp_destination_interface_t dst_intf;
-  u32 table_id;
   u32 dst_sw_if_index;
-  uword nwi;
+  u32 nwi_index;
 
   pfcp_redirect_information_t redirect_information;
   pfcp_outer_header_creation_t outer_header_creation;
@@ -680,7 +679,7 @@ typedef struct
 {
   ip4_address_t ip4;
   ip6_address_t ip6;
-  u32 nwi;
+  u32 nwi_index;
   u8 intf;
   u32 teid;
   u32 mask;
@@ -689,7 +688,7 @@ typedef struct
 typedef struct
 {
   u8 *name;
-  u32 table_id;
+  u32 fib_index[FIB_PROTOCOL_IP_MAX];
 
   /* vnet intfc index */
   u32 sw_if_index;
@@ -852,7 +851,7 @@ u32 gtpu_end_marker (u32 fib_index, u32 dpoi_index, u8 * rewrite, int is_ip4);
 int upf_enable_disable (upf_main_t * sm, u32 sw_if_index, int enable_disable);
 
 int vnet_upf_pfcp_endpoint_add_del (ip46_address_t * ip, u32 fib_index, u8 add);
-int vnet_upf_nwi_add_del (u8 * name, u32 table_id, u8 add);
+int vnet_upf_nwi_add_del (u8 * name, u32 ip4_table_id, u32 ip6_table_id, u8 add);
 int vnet_upf_upip_add_del (ip4_address_t * ip4, ip6_address_t * ip6,
 			   u8 * name, u8 intf, u32 teid, u32 mask, u8 add);
 
