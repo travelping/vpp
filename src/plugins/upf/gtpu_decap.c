@@ -77,15 +77,11 @@ gtpu_input (vlib_main_t * vm,
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
-  vnet_main_t *vnm = gtm->vnet_main;
-  vnet_interface_main_t *im = &vnm->interface_main;
   u32 last_session_index = ~0;
   u32 last_rule_index = ~0;
   gtpu4_tunnel_key_t last_key4;
   clib_bihash_kv_24_8_t last_key6;
   u32 pkts_decapsulated = 0;
-  u32 thread_index = vlib_get_thread_index ();
-  u32 stats_sw_if_index, stats_n_packets, stats_n_bytes;
 
   if (is_ip4)
     last_key4.as_u64 = ~0;
@@ -96,8 +92,6 @@ gtpu_input (vlib_main_t * vm,
   n_left_from = from_frame->n_vectors;
 
   next_index = node->cached_next_index;
-  stats_sw_if_index = node->runtime_data[0];
-  stats_n_packets = stats_n_bytes = 0;
 
   while (n_left_from > 0)
     {
@@ -118,7 +112,6 @@ gtpu_input (vlib_main_t * vm,
 	  upf_session_t *t0, *t1;
 	  gtpu4_tunnel_key_t key4_0, key4_1;
 	  u32 error0, error1;
-	  u32 sw_if_index0, sw_if_index1, len0, len1;
 	  u16 hdr_len0, hdr_len1;
 
 	  /* Prefetch next iteration. */
@@ -343,31 +336,9 @@ gtpu_input (vlib_main_t * vm,
 	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
-	  sw_if_index0 = t0->sw_if_index;
-	  len0 = vlib_buffer_length_in_chain (vm, b0) - hdr_len0;
-
-	  /* Set packet input sw_if_index to unicast GTPU tunnel for learning */
-	  vnet_buffer (b0)->sw_if_index[VLIB_RX] = sw_if_index0;
+	  vnet_buffer (b0)->sw_if_index[VLIB_RX] = 0;
 
 	  pkts_decapsulated++;
-	  stats_n_packets += 1;
-	  stats_n_bytes += len0;
-
-	  /* Batch stats increment on the same gtpu tunnel so counter
-	     is not incremented per packet */
-	  if (PREDICT_FALSE (sw_if_index0 != stats_sw_if_index))
-	    {
-	      stats_n_packets -= 1;
-	      stats_n_bytes -= len0;
-	      if (stats_n_packets)
-		vlib_increment_combined_counter
-		  (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_RX,
-		   thread_index, stats_sw_if_index,
-		   stats_n_packets, stats_n_bytes);
-	      stats_n_packets = 1;
-	      stats_n_bytes = len0;
-	      stats_sw_if_index = sw_if_index0;
-	    }
 
 	trace0:
 	  b0->error = error0 ? node->errors[error0] : 0;
@@ -542,31 +513,9 @@ gtpu_input (vlib_main_t * vm,
 	    next1 = (~0 == upf_buffer_opaque (b1)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
-	  sw_if_index1 = t1->sw_if_index;
-	  len1 = vlib_buffer_length_in_chain (vm, b1) - hdr_len1;
-
-	  /* Set packet input sw_if_index to unicast GTPU tunnel for learning */
-	  vnet_buffer (b1)->sw_if_index[VLIB_RX] = sw_if_index1;
+	  vnet_buffer (b1)->sw_if_index[VLIB_RX] = 0;
 
 	  pkts_decapsulated++;
-	  stats_n_packets += 1;
-	  stats_n_bytes += len1;
-
-	  /* Batch stats increment on the same gtpu tunnel so counter
-	     is not incremented per packet */
-	  if (PREDICT_FALSE (sw_if_index1 != stats_sw_if_index))
-	    {
-	      stats_n_packets -= 1;
-	      stats_n_bytes -= len1;
-	      if (stats_n_packets)
-		vlib_increment_combined_counter
-		  (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_RX,
-		   thread_index, stats_sw_if_index,
-		   stats_n_packets, stats_n_bytes);
-	      stats_n_packets = 1;
-	      stats_n_bytes = len1;
-	      stats_sw_if_index = sw_if_index1;
-	    }
 
 	trace1:
 	  b1->error = error1 ? node->errors[error1] : 0;
@@ -600,7 +549,6 @@ gtpu_input (vlib_main_t * vm,
 	  upf_session_t *t0;
 	  gtpu4_tunnel_key_t key4_0;
 	  u32 error0;
-	  u32 sw_if_index0, len0;
 	  u16 hdr_len0;
 
 	  bi0 = from[0];
@@ -794,31 +742,9 @@ gtpu_input (vlib_main_t * vm,
 	    next0 = (~0 == upf_buffer_opaque (b0)->gtpu.pdr_idx) ?
 	      GTPU_INPUT_NEXT_IP6_FLOW_PROCESS : GTPU_INPUT_NEXT_IP6_PROCESS;
 
-	  sw_if_index0 = t0->sw_if_index;
-	  len0 = vlib_buffer_length_in_chain (vm, b0) - hdr_len0;
-
-	  /* Set packet input sw_if_index to unicast GTPU tunnel for learning */
-	  vnet_buffer (b0)->sw_if_index[VLIB_RX] = sw_if_index0;
+	  vnet_buffer (b0)->sw_if_index[VLIB_RX] = 0;
 
 	  pkts_decapsulated++;
-	  stats_n_packets += 1;
-	  stats_n_bytes += len0;
-
-	  /* Batch stats increment on the same gtpu tunnel so counter
-	     is not incremented per packet */
-	  if (PREDICT_FALSE (sw_if_index0 != stats_sw_if_index))
-	    {
-	      stats_n_packets -= 1;
-	      stats_n_bytes -= len0;
-	      if (stats_n_packets)
-		vlib_increment_combined_counter
-		  (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_RX,
-		   thread_index, stats_sw_if_index,
-		   stats_n_packets, stats_n_bytes);
-	      stats_n_packets = 1;
-	      stats_n_bytes = len0;
-	      stats_sw_if_index = sw_if_index0;
-	    }
 
 	trace00:
 	  b0->error = error0 ? node->errors[error0] : 0;
@@ -845,15 +771,6 @@ gtpu_input (vlib_main_t * vm,
 			       gtpu4_input_node.index : gtpu6_input_node.
 			       index, GTPU_ERROR_DECAPSULATED,
 			       pkts_decapsulated);
-
-  /* Increment any remaining batch stats */
-  if (stats_n_packets)
-    {
-      vlib_increment_combined_counter
-	(im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_RX,
-	 thread_index, stats_sw_if_index, stats_n_packets, stats_n_bytes);
-      node->runtime_data[0] = stats_sw_if_index;
-    }
 
   return from_frame->n_vectors;
 }

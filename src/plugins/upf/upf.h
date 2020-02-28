@@ -619,9 +619,6 @@ typedef struct
   /** FIFO to hold the DL pkts for this session */
   vlib_buffer_t *dl_fifo;
 
-  /* vnet intfc index */
-  u32 sw_if_index;
-
   /* DPO locks */
   u32 dpo_locks;
 

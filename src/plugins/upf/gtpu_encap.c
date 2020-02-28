@@ -148,13 +148,8 @@ upf_encap_inline (vlib_main_t * vm,
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
-  vnet_main_t *vnm = gtm->vnet_main;
-  vnet_interface_main_t *im = &vnm->interface_main;
   u32 pkts_encapsulated = 0;
   u16 old_l0 = 0, old_l1 = 0, old_l2 = 0, old_l3 = 0;
-  u32 thread_index = vlib_get_thread_index ();
-  u32 stats_sw_if_index, stats_n_packets, stats_n_bytes;
-  u32 sw_if_index0 = 0, sw_if_index1 = 0, sw_if_index2 = 0, sw_if_index3 = 0;
   u32 next0 = 0, next1 = 0, next2 = 0, next3 = 0;
   upf_session_t *s0 = NULL, *s1 = NULL, *s2 = NULL, *s3 = NULL;
   struct rules *r0 = NULL, *r1 = NULL, *r2 = NULL, *r3 = NULL;
@@ -170,8 +165,6 @@ upf_encap_inline (vlib_main_t * vm,
   n_left_from = from_frame->n_vectors;
 
   next_index = node->cached_next_index;
-  stats_sw_if_index = node->runtime_data[0];
-  stats_n_packets = stats_n_bytes = 0;
 
   while (n_left_from > 0)
     {
@@ -184,7 +177,6 @@ upf_encap_inline (vlib_main_t * vm,
 	  u32 bi0, bi1, bi2, bi3;
 	  vlib_buffer_t *b0, *b1, *b2, *b3;
 	  u32 flow_hash0, flow_hash1, flow_hash2, flow_hash3;
-	  u32 len0, len1, len2, len3;
 	  ip4_header_t *ip4_0, *ip4_1, *ip4_2, *ip4_3;
 	  ip6_header_t *ip6_0, *ip6_1, *ip6_2, *ip6_3;
 	  udp_header_t *udp0, *udp1, *udp2, *udp3;
@@ -248,10 +240,6 @@ upf_encap_inline (vlib_main_t * vm,
 	  s1 = &gtm->sessions[upf_buffer_opaque (b1)->gtpu.session_index];
 	  s2 = &gtm->sessions[upf_buffer_opaque (b2)->gtpu.session_index];
 	  s3 = &gtm->sessions[upf_buffer_opaque (b3)->gtpu.session_index];
-	  sw_if_index0 = s0->sw_if_index;
-	  sw_if_index1 = s1->sw_if_index;
-	  sw_if_index2 = s2->sw_if_index;
-	  sw_if_index3 = s3->sw_if_index;
 
 	  r0 = sx_get_rules (s0, SX_ACTIVE);
 	  r1 = sx_get_rules (s1, SX_ACTIVE);
@@ -557,59 +545,12 @@ upf_encap_inline (vlib_main_t * vm,
 	  b3->flags &= csum_mask;
 
 	  pkts_encapsulated += 4;
-	  len0 = vlib_buffer_length_in_chain (vm, b0);
-	  len1 = vlib_buffer_length_in_chain (vm, b1);
-	  len2 = vlib_buffer_length_in_chain (vm, b2);
-	  len3 = vlib_buffer_length_in_chain (vm, b3);
-	  stats_n_packets += 4;
-	  stats_n_bytes += len0 + len1 + len2 + len3;
 
 	  /* save inner packet flow_hash for load-balance node */
 	  vnet_buffer (b0)->ip.flow_hash = flow_hash0;
 	  vnet_buffer (b1)->ip.flow_hash = flow_hash1;
 	  vnet_buffer (b2)->ip.flow_hash = flow_hash2;
 	  vnet_buffer (b3)->ip.flow_hash = flow_hash3;
-
-	  /* Batch stats increment on the same gtpu tunnel so counter is not
-	     incremented per packet. Note stats are still incremented for deleted
-	     and admin-down tunnel where packets are dropped. It is not worthwhile
-	     to check for this rare case and affect normal path performance. */
-	  if (PREDICT_FALSE ((sw_if_index0 != stats_sw_if_index) ||
-			     (sw_if_index1 != stats_sw_if_index) ||
-			     (sw_if_index2 != stats_sw_if_index) ||
-			     (sw_if_index3 != stats_sw_if_index)))
-	    {
-	      stats_n_packets -= 4;
-	      stats_n_bytes -= len0 + len1 + len2 + len3;
-	      if ((sw_if_index0 == sw_if_index1) &&
-		  (sw_if_index1 == sw_if_index2) &&
-		  (sw_if_index2 == sw_if_index3))
-		{
-		  if (stats_n_packets)
-		    vlib_increment_combined_counter
-		      (im->combined_sw_if_counters +
-		       VNET_INTERFACE_COUNTER_TX, thread_index,
-		       stats_sw_if_index, stats_n_packets, stats_n_bytes);
-		  stats_sw_if_index = sw_if_index0;
-		  stats_n_packets = 4;
-		  stats_n_bytes = len0 + len1 + len2 + len3;
-		}
-	      else
-		{
-		  vlib_increment_combined_counter
-		    (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-		     thread_index, sw_if_index0, 1, len0);
-		  vlib_increment_combined_counter
-		    (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-		     thread_index, sw_if_index1, 1, len1);
-		  vlib_increment_combined_counter
-		    (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-		     thread_index, sw_if_index2, 1, len2);
-		  vlib_increment_combined_counter
-		    (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-		     thread_index, sw_if_index3, 1, len3);
-		}
-	    }
 
 	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
@@ -654,7 +595,6 @@ upf_encap_inline (vlib_main_t * vm,
 	  u32 bi0;
 	  vlib_buffer_t *b0;
 	  u32 flow_hash0;
-	  u32 len0;
 	  ip4_header_t *ip4_0;
 	  ip6_header_t *ip6_0;
 	  udp_header_t *udp0;
@@ -677,7 +617,6 @@ upf_encap_inline (vlib_main_t * vm,
 
 	  /* Get next node index and adj index from tunnel next_dpo */
 	  s0 = &gtm->sessions[upf_buffer_opaque (b0)->gtpu.session_index];
-	  sw_if_index0 = s0->sw_if_index;
 
 	  r0 = sx_get_rules (s0, SX_ACTIVE);
 
@@ -785,30 +724,9 @@ upf_encap_inline (vlib_main_t * vm,
 	  b0->flags &= csum_mask;
 
 	  pkts_encapsulated++;
-	  len0 = vlib_buffer_length_in_chain (vm, b0);
-	  stats_n_packets += 1;
-	  stats_n_bytes += len0;
 
 	  /* save inner packet flow_hash for load-balance node */
 	  vnet_buffer (b0)->ip.flow_hash = flow_hash0;
-
-	  /* Batch stats increment on the same gtpu tunnel so counter is not
-	     incremented per packet. Note stats are still incremented for deleted
-	     and admin-down tunnel where packets are dropped. It is not worthwhile
-	     to check for this rare case and affect normal path performance. */
-	  if (PREDICT_FALSE (sw_if_index0 != stats_sw_if_index))
-	    {
-	      stats_n_packets -= 1;
-	      stats_n_bytes -= len0;
-	      if (stats_n_packets)
-		vlib_increment_combined_counter
-		  (im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-		   thread_index, stats_sw_if_index,
-		   stats_n_packets, stats_n_bytes);
-	      stats_n_packets = 1;
-	      stats_n_bytes = len0;
-	      stats_sw_if_index = sw_if_index0;
-	    }
 
 	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
@@ -829,15 +747,6 @@ upf_encap_inline (vlib_main_t * vm,
   vlib_node_increment_counter (vm, node->node_index,
 			       UPF_ENCAP_ERROR_ENCAPSULATED,
 			       pkts_encapsulated);
-
-  /* Increment any remaining batch stats */
-  if (stats_n_packets)
-    {
-      vlib_increment_combined_counter
-	(im->combined_sw_if_counters + VNET_INTERFACE_COUNTER_TX,
-	 thread_index, stats_sw_if_index, stats_n_packets, stats_n_bytes);
-      node->runtime_data[0] = stats_sw_if_index;
-    }
 
   return from_frame->n_vectors;
 }
