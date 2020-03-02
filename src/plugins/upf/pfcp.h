@@ -1653,7 +1653,7 @@ typedef struct
   pfcp_subsequent_volume_threshold_t subsequent_volume_threshold;
   pfcp_subsequent_time_threshold_t subsequent_time_threshold;
   pfcp_inactivity_detection_time_t inactivity_detection_time;
-  pfcp_linked_urr_id_t linked_urr_id;
+  pfcp_linked_urr_id_t *linked_urr_id;
   pfcp_measurement_information_t measurement_information;
   pfcp_time_quota_mechanism_t time_quota_mechanism;
   pfcp_aggregated_urrs_t aggregated_urrs;
@@ -1706,7 +1706,7 @@ typedef struct
   pfcp_subsequent_volume_threshold_t subsequent_volume_threshold;
   pfcp_subsequent_time_threshold_t subsequent_time_threshold;
   pfcp_inactivity_detection_time_t inactivity_detection_time;
-  pfcp_linked_urr_id_t linked_urr_id;
+  pfcp_linked_urr_id_t *linked_urr_id;
   pfcp_measurement_information_t measurement_information;
   pfcp_time_quota_mechanism_t time_quota_mechanism;
   pfcp_aggregated_urrs_t aggregated_urrs;
