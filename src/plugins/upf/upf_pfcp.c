@@ -622,7 +622,7 @@ static uword
 peer_addr_ref (const upf_far_forward_t * fwd)
 {
   u8 is_ip4 =
-    ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_IP4);
+    ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_ANY_IP4);
   upf_main_t *gtm = &upf_main;
   clib_bihash_kv_24_8_t kv, value;
   u32 fib_index;
@@ -680,7 +680,7 @@ static uword
 peer_addr_unref (const upf_far_forward_t * fwd)
 {
   u8 is_ip4 =
-    ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_IP4);
+    ! !(fwd->outer_header_creation.description & OUTER_HEADER_CREATION_ANY_IP4);
   upf_main_t *gtm = &upf_main;
   clib_bihash_kv_24_8_t kv, value;
   upf_peer_t *p = NULL;
@@ -1851,7 +1851,7 @@ sx_update_apply (upf_session_t * sx)
 
 	is_ip4 =
 	  ! !(far->forward.outer_header_creation.
-	      description & OUTER_HEADER_CREATION_IP4);
+	      description & OUTER_HEADER_CREATION_ANY_IP4);
 
 	gtp_debug ("TODO: send_end_marker for FAR %d", far->id);
 	bi = gtpu_end_marker (send_em->fib_index, send_em->dpoi_index,
@@ -2289,7 +2289,12 @@ static const char *outer_header_removal_str[] = {
   "GTP-U/UDP/IPv4",
   "GTP-U/UDP/IPv6",
   "UDP/IPv4",
-  "UDP/IPv6"
+  "UDP/IPv6",
+  "IPv4",
+  "IPv6",
+  "GTP-U/UDP/IP",
+  "VLAN S-TAG",
+  "S-TAG and C-TAG"
 };
 
 static const char *qer_gate_status_flags[] = {
@@ -2387,7 +2392,7 @@ format_upf_far (u8 * s, va_list * args)
 	    s = format (s, "%URewrite Header: %U\n",
 			format_white_space, indent + 4,
 			(ff->outer_header_creation.description &
-			 OUTER_HEADER_CREATION_IP4) ? format_ip4_header : format_ip6_header,
+			 OUTER_HEADER_CREATION_ANY_IP4) ? format_ip4_header : format_ip6_header,
 			ff->rewrite, vec_len (ff->rewrite));
 	}
     }

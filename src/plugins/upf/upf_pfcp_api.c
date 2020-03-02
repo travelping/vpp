@@ -1369,7 +1369,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 	    pfcp_outer_header_creation_t *ohc =
 	      &far->forwarding_parameters.outer_header_creation;
 	    u32 fib_index;
-	    int is_ip4 = ! !(ohc->description & OUTER_HEADER_CREATION_IP4);
+	    int is_ip4 = ! !(ohc->description & OUTER_HEADER_CREATION_ANY_IP4);
 
 	    create->forward.flags |= FAR_F_OUTER_HEADER_CREATION;
 	    create->forward.outer_header_creation =
@@ -1507,7 +1507,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 	    pfcp_outer_header_creation_t *ohc =
 	      &far->update_forwarding_parameters.outer_header_creation;
 	    u32 fib_index;
-	    int is_ip4 = ! !(ohc->description & OUTER_HEADER_CREATION_IP4);
+	    int is_ip4 = ! !(ohc->description & OUTER_HEADER_CREATION_ANY_IP4);
 
 	    if (ISSET_BIT (far->update_forwarding_parameters.grp.fields,
 			   UPDATE_FORWARDING_PARAMETERS_SXSMREQ_FLAGS) &&
@@ -2131,14 +2131,20 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
 	}
 
       SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
-      r->volume_measurement.fields = 7;
+      r->volume_measurement.fields = PFCP_VOLUME_ALL;
 
-      r->volume_measurement.ul =
+      r->volume_measurement.volume.ul =
 	urr->usage_before_monitoring_time.volume.bytes.ul;
-      r->volume_measurement.dl =
+      r->volume_measurement.volume.dl =
 	urr->usage_before_monitoring_time.volume.bytes.dl;
-      r->volume_measurement.total =
+      r->volume_measurement.volume.total =
 	urr->usage_before_monitoring_time.volume.bytes.total;
+      r->volume_measurement.packets.ul =
+	urr->usage_before_monitoring_time.volume.packets.ul;
+      r->volume_measurement.packets.dl =
+	urr->usage_before_monitoring_time.volume.packets.dl;
+      r->volume_measurement.packets.total =
+	urr->usage_before_monitoring_time.volume.packets.total;
 
       SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
       r->duration_measurement = duration;
@@ -2209,11 +2215,14 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
   if ((trigger & USAGE_REPORT_TRIGGER_START_OF_TRAFFIC) == 0)
     {
       SET_BIT (r->grp.fields, USAGE_REPORT_VOLUME_MEASUREMENT);
-      r->volume_measurement.fields = 7;
+      r->volume_measurement.fields = PFCP_VOLUME_ALL;
 
-      r->volume_measurement.ul = volume.measure.bytes.ul;
-      r->volume_measurement.dl = volume.measure.bytes.dl;
-      r->volume_measurement.total = volume.measure.bytes.total;
+      r->volume_measurement.volume.ul = volume.measure.bytes.ul;
+      r->volume_measurement.volume.dl = volume.measure.bytes.dl;
+      r->volume_measurement.volume.total = volume.measure.bytes.total;
+      r->volume_measurement.packets.ul = volume.measure.packets.ul;
+      r->volume_measurement.packets.dl = volume.measure.packets.dl;
+      r->volume_measurement.packets.total = volume.measure.packets.total;
 
       SET_BIT (r->grp.fields, USAGE_REPORT_DURATION_MEASUREMENT);
       r->duration_measurement = duration;
