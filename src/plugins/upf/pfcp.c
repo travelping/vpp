@@ -333,6 +333,13 @@ typedef union {
 #define get_ip46_ip6(IP,V)			\
   get_ip6((IP).ip6, (V))
 
+#define get_vec(VEC,L,V)			\
+  do {						\
+    vec_reset_length ((VEC));			\
+    vec_add ((VEC), (V), (L));			\
+    (V) += (L);					\
+  } while (0)
+
 #define finalize_msg(V,P)			\
   do {						\
     set_msg_hdr_length(V,(P) - 4);		\
@@ -916,8 +923,7 @@ decode_sdf_filter (u8 * data, u16 length, void *p)
       if (length < flow_len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
-      vec_reset_length (v->flow);
-      vec_add (v->flow, data, flow_len);
+      get_vec (v->flow, flow_len, data);
       length -= flow_len;
     }
 
@@ -1217,8 +1223,8 @@ decode_redirect_information (u8 * data, u16 length, void *p)
 
     case REDIRECT_INFORMATION_HTTP:
     case REDIRECT_INFORMATION_SIP:
-      vec_reset_length (v->uri);
-      vec_add (v->uri, data, addr_len);
+      get_vec(v->uri, addr_len, data);
+      length -= addr_len;
       break;
 
     default:
@@ -1325,8 +1331,7 @@ decode_forwarding_policy (u8 * data, u16 length, void *p)
   if (fpi_len > length)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->identifier);
-  vec_add (v->identifier, data, length);
+  get_vec (v->identifier, length, data);
 
   return 0;
 }
@@ -1682,8 +1687,7 @@ decode_node_id (u8 * data, u16 length, void *p)
       break;
 
     case NID_FQDN:
-      vec_reset_length (v->fqdn);
-      vec_add (v->fqdn, data, length);
+      get_vec (v->fqdn, length, data);
       break;
 
     default:
@@ -1774,8 +1778,7 @@ decode_pfd_contents (u8 * data, u16 length, void *p)
       if (length < len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
-      vec_reset_length (v->flow_description);
-      vec_add (v->flow_description, data, len);
+      get_vec (v->flow_description, len, data);
       length -= len;
     }
 
@@ -1790,8 +1793,7 @@ decode_pfd_contents (u8 * data, u16 length, void *p)
       if (length < len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
-      vec_reset_length (v->url);
-      vec_add (v->url, data, len);
+      get_vec (v->url, len, data);
       length -= len;
     }
 
@@ -1806,8 +1808,7 @@ decode_pfd_contents (u8 * data, u16 length, void *p)
       if (length < len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
-      vec_reset_length (v->domain);
-      vec_add (v->domain, data, len);
+      get_vec (v->domain, len, data);
       length -= len;
     }
 
@@ -1822,8 +1823,7 @@ decode_pfd_contents (u8 * data, u16 length, void *p)
       if (length < len)
 	return PFCP_CAUSE_INVALID_LENGTH;
 
-      vec_reset_length (v->custom);
-      vec_add (v->custom, data, len);
+      get_vec (v->custom, len, data);
       length -= len;
     }
 
@@ -2310,8 +2310,7 @@ decode_flow_information (u8 * data, u16 length, void *p)
   if (length < len)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->flow_description);
-  vec_add (v->flow_description, data, len);
+  get_vec (v->flow_description, len, data);
   length -= len;
 
   return 0;
@@ -2631,8 +2630,7 @@ decode_header_enrichment (u8 * data, u16 length, void *p)
   if (length < len)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->name);
-  vec_add (v->name, data, len);
+  get_vec (v->name, len, data);
   length -= len;
 
   if (length < 2)
@@ -2644,8 +2642,7 @@ decode_header_enrichment (u8 * data, u16 length, void *p)
   if (length < len)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->value);
-  vec_add (v->value, data, len);
+  get_vec (v->value, len, data);
   length -= len;
 
   return 0;
@@ -3131,10 +3128,7 @@ decode_user_plane_ip_resource_information (u8 * data, u16 length, void *p)
     }
 
   if (flags & USER_PLANE_IP_RESOURCE_INFORMATION_ASSONI)
-    {
-      vec_reset_length (v->network_instance);
-      vec_add (v->network_instance, data, length);
-    }
+    get_vec (v->network_instance, length, data);
 
   if (flags & USER_PLANE_IP_RESOURCE_INFORMATION_ASSOSI)
     v->source_intf = get_u8 (data) & 0x0f;
@@ -3788,8 +3782,7 @@ decode_trace_information (u8 * data, u16 length, void *p)
   if (length < len)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->triggering_events);
-  vec_add (v->triggering_events, data, len);
+  get_vec (v->triggering_events, len, data);
   length -= len;
 
   if (length < 1)
@@ -3801,8 +3794,7 @@ decode_trace_information (u8 * data, u16 length, void *p)
   if (length < len)
     return PFCP_CAUSE_INVALID_LENGTH;
 
-  vec_reset_length (v->interfaces);
-  vec_add (v->interfaces, data, len);
+  get_vec (v->interfaces, len, data);
   length -= len;
 
   if (length < 1)
