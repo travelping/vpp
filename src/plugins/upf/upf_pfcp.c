@@ -797,6 +797,8 @@ sx_free_urr (upf_urr_t *urr)
 
   pool_free (urr->traffic);
   hash_free (urr->traffic_by_ue);
+  vec_free (urr->linked_urr_ids);
+  clib_bitmap_free (urr->liusa_bitmap);
 }
 
 int
@@ -819,6 +821,8 @@ sx_make_pending_urr (upf_session_t * sx)
 	urr->update_flags = 0;
 	urr->traffic = NULL;
 	urr->traffic_by_ue = NULL;
+	urr->linked_urr_ids = vec_dup (urr->linked_urr_ids);
+	urr->liusa_bitmap = NULL;
 	memset (&urr->volume.measure, 0, sizeof (urr->volume.measure));
       }
 
@@ -1680,6 +1684,30 @@ build_sx_rules (upf_session_t * sx)
   return 0;
 }
 
+static void
+build_urr_link_map (upf_session_t * sx)
+{
+  struct rules *pending = sx_get_rules (sx, SX_PENDING);
+  u32 idx;
+
+  vec_foreach_index (idx, pending->urr)
+  {
+    upf_urr_t *urr = vec_elt_at_index(pending->urr, idx);
+    u32 *id;
+
+    vec_foreach (id, urr->linked_urr_ids)
+    {
+      upf_urr_t *l;
+
+      l = sx_get_urr_by_id (pending, *id);
+      if (!l)
+	continue;
+
+      l->liusa_bitmap = clib_bitmap_set (l->liusa_bitmap, idx, 1);
+    }
+  }
+}
+
 int
 sx_update_apply (upf_session_t * sx)
 {
@@ -1767,7 +1795,9 @@ sx_update_apply (upf_session_t * sx)
   else
     pending->far = active->far;
 
-  if (!pending_urr)
+  if (pending_urr)
+    build_urr_link_map (sx);
+  else
     pending->urr = active->urr;
 
   if (pending_qer)
@@ -2522,7 +2552,7 @@ format_sx_session (u8 * s, va_list * args)
   vec_foreach (urr, rules->urr)
   {
       if (debug)
-	s = format (s, "URR: %u @ %p\n", urr->id, urr);
+	s = format (s, "URR: %u @ %p [%d]\n", urr->id, urr, urr - rules->urr);
       else
 	s = format (s, "URR: %u\n", urr->id);
 
@@ -2534,6 +2564,25 @@ format_sx_session (u8 * s, va_list * args)
 		  urr->triggers, format_flags, (u64)urr->triggers, urr_trigger_flags,
 		  urr->status, format_flags, (u64)urr->status, urr_status_flags);
       /* *INDENT-ON* */
+
+      if (urr->triggers & REPORTING_TRIGGER_LINKED_USAGE_REPORTING)
+      {
+	u32 * id;
+
+	s = format (s, "  Linked URR Ids: [");
+	vec_foreach (id, urr->linked_urr_ids)
+	{
+	  if (id == urr->linked_urr_ids)
+	    s = format (s, "%d", *id);
+	  else
+	    s = format (s, ",%d", *id);
+	}
+	s = format (s, "]\n");
+      }
+      if (debug)
+	s = format (s, "  LIUSA: %U\n",
+		    format_bitmap_hex, urr->liusa_bitmap);
+
     s =
       format (s, "  Start Time: %U\n", format_time_float, 0, urr->start_time);
     s = format (s, "  vTime of First Usage: %U \n"

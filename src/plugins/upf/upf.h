@@ -527,6 +527,9 @@ typedef struct
   upf_urr_traffic_t *traffic;
   uword * traffic_by_ue;
   urr_time_t traffic_timer;
+
+  pfcp_linked_urr_id_t *linked_urr_ids;
+  uword *liusa_bitmap;
 } upf_urr_t;
 
 /* QoS Enforcement Rules */

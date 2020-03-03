@@ -1695,6 +1695,11 @@ handle_create_urr (upf_session_t * sx, pfcp_create_urr_t * create_urr,
     //TODO: subsequent_volume_threshold;
     //TODO: subsequent_time_threshold;
     //TODO: inactivity_detection_time;
+
+    if (ISSET_BIT (urr->grp.fields, CREATE_URR_LINKED_URR_ID) &&
+	create->triggers & REPORTING_TRIGGER_LINKED_USAGE_REPORTING)
+      create->linked_urr_ids = vec_dup (urr->linked_urr_id);
+
     //TODO: linked_urr_id;
     //TODO: measurement_information;
     //TODO: time_quota_mechanism;
@@ -1810,7 +1815,13 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
     //TODO: subsequent_volume_threshold;
     //TODO: subsequent_time_threshold;
     //TODO: inactivity_detection_time;
-    //TODO: linked_urr_id;
+
+    if (ISSET_BIT (urr->grp.fields, UPDATE_URR_LINKED_URR_ID) &&
+	update->triggers & REPORTING_TRIGGER_LINKED_USAGE_REPORTING)
+      update->linked_urr_ids = vec_dup (urr->linked_urr_id);
+    else
+      vec_free (update->linked_urr_ids);
+
     //TODO: measurement_information;
     //TODO: time_quota_mechanism;
   }
@@ -2050,15 +2061,17 @@ init_usage_report (upf_urr_t * urr, u32 trigger,
   return r;
 }
 
-pfcp_usage_report_t *
-build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
-		    u32 trigger, f64 now, pfcp_usage_report_t ** report)
+static void
+report_usage_ev (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
+		 u32 trigger, f64 now, pfcp_usage_report_t ** report)
 {
   sx_server_main_t *sxsm = &sx_server_main;
   pfcp_usage_report_t *r;
   urr_volume_t volume;
   u64 start_time, duration;
   f64 vnow = vlib_time_now (sxsm->vlib_main);
+
+  ASSERT (report);
 
   clib_spinlock_lock (&sess->lock);
 
@@ -2238,9 +2251,39 @@ build_usage_report (upf_session_t * sess, ip46_address_t * ue, upf_urr_t * urr,
     urr->time_threshold.base = urr->start_time;
   urr->time_of_first_packet = INFINITY;
   urr->time_of_last_packet = INFINITY;
-
-  return r;
 }
+
+void
+upf_usage_report_build (upf_session_t * sx,
+			ip46_address_t * ue,
+			upf_urr_t * urr, f64 now,
+			upf_usage_report_t *report,
+			pfcp_usage_report_t ** usage_report)
+{
+  u32 idx;
+
+  clib_warning ("Usage Report:\n  LIUSA %U\n",
+		format_bitmap_hex, report->liusa_bitmap);
+
+  vec_foreach_index (idx, report->events)
+  {
+    upf_usage_report_ev_t *r = vec_elt_at_index (report->events, idx);
+
+    if (r->triggers)
+      report_usage_ev (sx, ue, vec_elt_at_index (urr, idx),
+		       r->triggers, r->now, usage_report);
+    else
+      {
+	/* not triggered, check LIUSA reporting */
+
+	if (clib_bitmap_get (report->liusa_bitmap, idx))
+	  report_usage_ev (sx, ue, vec_elt_at_index (urr, idx),
+			   USAGE_REPORT_TRIGGER_LINKED_USAGE_REPORTING,
+			   now, usage_report);
+      }
+  }
+}
+
 
 static int
 handle_session_set_deletion_request (sx_msg_t * req,
@@ -2374,7 +2417,9 @@ handle_session_modification_request (sx_msg_t * req,
 {
   pfcp_session_modification_response_t resp;
   sx_server_main_t *sxsm = &sx_server_main;
+  upf_usage_report_t report;
   pfcp_query_urr_t *qry;
+  struct rules *active;
   upf_session_t *sess;
   f64 now = sxsm->now;
   u64 cp_seid = 0;
@@ -2488,6 +2533,9 @@ handle_session_modification_request (sx_msg_t * req,
 	goto out_update_finish;
     }
 
+  active = sx_get_rules (sess, SX_ACTIVE);
+  upf_usage_report_init (&report, vec_len (active->urr));
+
   if (ISSET_BIT (msg->grp.fields, SESSION_MODIFICATION_REQUEST_QUERY_URR) &&
       vec_len (msg->query_urr) != 0)
     {
@@ -2497,12 +2545,12 @@ handle_session_modification_request (sx_msg_t * req,
       {
 	upf_urr_t *urr;
 
-	if (!(urr = sx_get_urr (sess, SX_ACTIVE, qry->urr_id)))
+	if (!(urr = sx_get_urr_by_id (active, qry->urr_id)))
 	  continue;
 
-	build_usage_report (sess, NULL, urr,
-			    USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT, now,
-			    &resp.usage_report);
+	upf_usage_report_trigger (&report, urr - active->urr,
+				  USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT,
+				  urr->liusa_bitmap, now);
       }
     }
   else
@@ -2510,24 +2558,15 @@ handle_session_modification_request (sx_msg_t * req,
 	(msg->grp.fields, SESSION_MODIFICATION_REQUEST_SXSMREQ_FLAGS)
 	&& msg->sxsmreq_flags & SXSMREQ_QAURR)
     {
-      struct rules *active;
-
-      active = sx_get_rules (sess, SX_ACTIVE);
       if (vec_len (active->urr) != 0)
 	{
-	  upf_urr_t *urr;
-
-	  SET_BIT (resp.grp.fields,
-		   SESSION_MODIFICATION_RESPONSE_USAGE_REPORT);
-
-	  vec_foreach (urr, active->urr)
-	  {
-	    build_usage_report (sess, NULL, urr,
-				USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT, now,
-				&resp.usage_report);
-	  }
+	  SET_BIT (resp.grp.fields, SESSION_MODIFICATION_RESPONSE_USAGE_REPORT);
+	  upf_usage_report_set (&report, USAGE_REPORT_TRIGGER_IMMEDIATE_REPORT, now);
 	}
     }
+
+  upf_usage_report_build (sess, NULL, active->urr, now, &report, &resp.usage_report);
+  upf_usage_report_free (&report);
 
 out_update_finish:
   sx_update_finish (sess);
@@ -2558,9 +2597,9 @@ handle_session_deletion_request (sx_msg_t * req,
 {
   sx_server_main_t *sxsm = &sx_server_main;
   pfcp_session_deletion_response_t resp;
+  struct rules *active;
   f64 now = sxsm->now;
   upf_session_t *sess;
-  struct rules *active;
   u64 cp_seid = 0;
   int r = 0;
 
@@ -2575,7 +2614,7 @@ handle_session_deletion_request (sx_msg_t * req,
       resp.response.cause = PFCP_CAUSE_SESSION_CONTEXT_NOT_FOUND;
 
       r = -1;
-      goto out_send_resp;
+      goto out_send_resp_no_session;
     }
 
   cp_seid = sess->cp_seid;
@@ -2590,16 +2629,14 @@ handle_session_deletion_request (sx_msg_t * req,
   active = sx_get_rules (sess, SX_ACTIVE);
   if (vec_len (active->urr) != 0)
     {
-      upf_urr_t *urr;
+      upf_usage_report_t report;
 
       SET_BIT (resp.grp.fields, SESSION_DELETION_RESPONSE_USAGE_REPORT);
 
-      vec_foreach (urr, active->urr)
-      {
-	build_usage_report (sess, NULL, urr,
-			    USAGE_REPORT_TRIGGER_TERMINATION_REPORT, now,
-			    &resp.usage_report);
-      }
+      upf_usage_report_init (&report, vec_len (active->urr));
+      upf_usage_report_set (&report, USAGE_REPORT_TRIGGER_TERMINATION_REPORT, now);
+      upf_usage_report_build (sess, NULL, active->urr, now, &report, &resp.usage_report);
+      upf_usage_report_free (&report);
     }
 
 out_send_resp:
@@ -2609,6 +2646,7 @@ out_send_resp:
       resp.response.cause = PFCP_CAUSE_REQUEST_ACCEPTED;
     }
 
+out_send_resp_no_session:
   upf_pfcp_send_response (req, cp_seid, PFCP_SESSION_DELETION_RESPONSE,
 			  &resp.grp);
 

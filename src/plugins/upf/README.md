@@ -25,7 +25,8 @@ Working features
 * IPv4 -- inner and outer
 * IPv6 -- inner and outer
 * Usage Reporting Rules (URR)
-* Sx Session Reports
+* PFCP Session Reports
+* Linked Usage Reports
 
 No yet working
 --------------

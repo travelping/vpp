@@ -666,8 +666,10 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
   upf_main_t *gtm = &upf_main;
   u32 si = sx - gtm->sessions;
   upf_event_urr_data_t * ev;
+  upf_usage_report_t report;
   struct rules *active;
   upf_urr_t *urr;
+  int send = 0;
 
   active = sx_get_rules (sx, SX_ACTIVE);
 
@@ -683,6 +685,8 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
   SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_USAGE_REPORT);
 
+  upf_usage_report_init (&report, vec_len (active->urr));
+
   vec_foreach (ev, uev)
   {
     urr = sx_get_urr_by_id (active, ev->urr_id);
@@ -691,8 +695,10 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
     if (ev->trigger & URR_START_OF_TRAFFIC)
       {
-	build_usage_report (sx, ue, urr, USAGE_REPORT_TRIGGER_START_OF_TRAFFIC,
-			    now, &req.usage_report);
+	upf_usage_report_trigger (&report, urr - active->urr,
+				  USAGE_REPORT_TRIGGER_START_OF_TRAFFIC,
+				  urr->liusa_bitmap, now);
+	send = 1;
 
 	if (urr->traffic_timer.handle == ~0)
 	  {
@@ -723,15 +729,20 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
     if (trigger != 0)
       {
-	build_usage_report (sx, ue, urr, trigger, now, &req.usage_report);
+	upf_usage_report_trigger (&report, urr - active->urr, trigger,
+				  urr->liusa_bitmap, now);
+	send = 1;
       }
   }
 
-  if (vec_len(req.usage_report) != 0)
-    upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
-					  &req.grp);
+  if (send)
+    {
+      upf_usage_report_build (sx, ue, active->urr, now, &report, &req.usage_report);
+      upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST, &req.grp);
+    }
 
   pfcp_free_msg (PFCP_SESSION_REPORT_REQUEST, &req.grp);
+  upf_usage_report_free (&report);
 }
 
 void
@@ -834,8 +845,9 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   pfcp_session_report_request_t req;
   upf_main_t *gtm = &upf_main;
   u32 si = sx - gtm->sessions;
+  upf_usage_report_t report;
   struct rules *active;
-  upf_urr_t *urr;
+  u32 idx;
 
 #if CLIB_DEBUG > 2
   f64 vnow = vlib_time_now (gtm->vlib_main);
@@ -870,10 +882,13 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	}
     }
 
-  vec_foreach (urr, active->urr)
+  upf_usage_report_init (&report, vec_len (active->urr));
+
+  vec_foreach_index (idx, active->urr)
   {
-    u32 trigger = 0;
+    upf_urr_t *urr = vec_elt_at_index (active->urr, idx);
     f64 trigger_now = now;
+    u32 trigger = 0;
 
 #define urr_check(V, NOW)				\
     (((V).base != 0) && ((V).period != 0) &&		\
@@ -1000,7 +1015,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 	req.report_type |= REPORT_TYPE_USAR;
 	SET_BIT (req.grp.fields, SESSION_REPORT_REQUEST_USAGE_REPORT);
 
-	build_usage_report (sx, NULL, urr, trigger, trigger_now, &req.usage_report);
+	upf_usage_report_trigger (&report, idx, trigger, urr->liusa_bitmap, trigger_now);
 
 	// clear reporting on the time based triggers, until rearmed by update
 	urr->triggers &= ~(REPORTING_TRIGGER_TIME_THRESHOLD |
@@ -1009,10 +1024,13 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
   }
 
   if (req.report_type != 0)
-    upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST,
-					  &req.grp);
+    {
+      upf_usage_report_build (sx, NULL, active->urr, now, &report, &req.usage_report);
+      upf_pfcp_server_send_session_request (sx, PFCP_SESSION_REPORT_REQUEST, &req.grp);
+    }
 
   pfcp_free_msg (PFCP_SESSION_REPORT_REQUEST, &req.grp);
+  upf_usage_report_free (&report);
 }
 
 #if CLIB_DEBUG > 10
