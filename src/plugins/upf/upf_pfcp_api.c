@@ -440,7 +440,7 @@ handle_heartbeat_response (sx_msg_t * req, pfcp_simple_response_t * msg)
     }
   else
     {
-      clib_warning ("restarting HB timer\n");
+      gtp_debug ("restarting HB timer\n");
       n->heartbeat_handle = upf_pfcp_server_start_timer
 	(PFCP_SERVER_HB_TIMER, n - gtm->nodes, PFCP_HB_INTERVAL);
     }
