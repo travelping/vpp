@@ -1392,10 +1392,12 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 	      upf_ip46_get_resolving_interface (fib_index, &ohc->ip, is_ip4);
 	    if (~0 == create->forward.dst_sw_if_index)
 	      {
-		gtp_debug
-		  ("FAR: %d, No route to %U in VRF %d\n",
+		clib_warning
+		  ("FAR: %d, No route to %U in fib index %d\n",
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
-		   create->forward.table_id);
+		   is_ip4 ? ip4_fib_get (fib_index)->table_id :
+		   ip6_fib_get (fib_index)->table_id);
+
 		failed_rule_id->id = far->far_id;
 		r = -1;
 		vec_pop (rules->far);
@@ -1534,9 +1536,11 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 	    if (~0 == update->forward.dst_sw_if_index)
 	      {
 		gtp_debug
-		  ("FAR: %d, No route to %U in VRF %d\n",
+		  ("FAR: %d, No route to %U in table %d\n",
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
-		   update->forward.table_id);
+		   is_ip4 ? ip4_fib_get (fib_index)->table_id :
+		   ip6_fib_get (fib_index)->table_id);
+
 		failed_rule_id->id = far->far_id;
 		r = -1;
 		break;
