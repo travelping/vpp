@@ -1723,7 +1723,8 @@ free_node_id (void *p)
 {
   pfcp_node_id_t *v = p;
 
-  vec_free (v->fqdn);
+  if (v->type == NID_FQDN)
+    vec_free (v->fqdn);
 }
 
 static u8 *
