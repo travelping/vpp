@@ -1,9 +1,9 @@
 diff --git a/scapy/contrib/pfcp.py b/scapy/contrib/pfcp.py
 new file mode 100644
-index 00000000..1b2f2cb9
+index 00000000..ed2add5f
 --- /dev/null
 +++ b/scapy/contrib/pfcp.py
-@@ -0,0 +1,2551 @@
+@@ -0,0 +1,2669 @@
 +#! /usr/bin/env python
 +
 +# Copyright (C) 2019 Travelping GmbH <info@travelping.com>
@@ -22,43 +22,48 @@ index 00000000..1b2f2cb9
 +# You should have received a copy of the GNU General Public License
 +# along with Scapy. If not, see <http://www.gnu.org/licenses/>.
 +
-+# scapy.contrib.description = 3GPP Packet Forwarding Control Protocol (3GPP TS 29.244)
++# 3GPP TS 29.244
++
++# scapy.contrib.description = 3GPP Packet Forwarding Control Protocol
 +# scapy.contrib.status = loads
 +
 +import struct
 +
-+
 +from scapy.compat import chb, orb
 +from scapy.error import warning
-+from scapy.fields import BitEnumField, BitField, ByteEnumField,\
-+     ShortEnumField, ByteField,\
-+     ConditionalField, FieldLenField, FieldListField, FlagsField, IntField, \
-+     IPField, PacketListField, ShortField, StrFixedLenField, StrLenField, \
-+     XBitField, XByteField, XIntField, XLongField, ThreeBytesField
-+from scapy.layers.inet import IP, UDP
-+from scapy.layers.inet6 import IPv6, IP6Field
-+from scapy.layers.ppp import PPP
-+from scapy.modules.six.moves import range
-+####from scapy.data import IANA_ENTERPRISE_NUMBERS
-+from scapy.packet import bind_layers, bind_bottom_up, bind_top_down, \
++from scapy.fields import Field, BitEnumField, BitField, ByteEnumField, \
++    ShortEnumField, ByteField, IntField, LongField, \
++    ConditionalField, FieldLenField, BitFieldLenField, FieldListField, \
++    IPField, MACField, PacketListField, ShortField, \
++    StrLenField, StrField, XBitField, XByteField, XIntField, XLongField, \
++    ThreeBytesField, SignedIntField, MultipleTypeField
++from scapy.layers.inet import UDP
++from scapy.layers.inet6 import IP6Field
++try:
++    from scapy.fields import SignedLongField
++except ImportError:
++    class SignedLongField(Field):
++        def __init__(self, name, default):
++            Field.__init__(self, name, default, "q")
++try:
++    from scapy.data import IANA_ENTERPRISE_NUMBERS
++except ImportError:
++    IANA_ENTERPRISE_NUMBERS = {
++        9: "ciscoSystems",
++        35: "Nortel Networks",
++        43: "3Com",
++        311: "Microsoft",
++        2636: "Juniper Networks, Inc.",
++        4526: "Netgear",
++        5771: "Cisco Systems, Inc.",
++        5842: "Cisco Systems",
++        11129: "Google, Inc",
++        16885: "Nortel Networks",
++        18681: "Travelping GmbH",
++    }
++from scapy.packet import bind_layers, bind_bottom_up, \
 +    Packet, Raw
-+from scapy.volatile import RandInt, RandIP, RandIP6, RandNum, RandString, \
-+     RandShort
-+
-+# FIXME: rm this (compat with older scapy)
-+IANA_ENTERPRISE_NUMBERS = {
-+    9: "ciscoSystems",
-+    35: "Nortel Networks",
-+    43: "3Com",
-+    311: "Microsoft",
-+    2636: "Juniper Networks, Inc.",
-+    4526: "Netgear",
-+    5771: "Cisco Systems, Inc.",
-+    5842: "Cisco Systems",
-+    11129: "Google, Inc",
-+    16885: "Nortel Networks",
-+    18681: "Travelping GmbH",
-+}
++from scapy.volatile import RandNum, RandBin
 +
 +PFCPmessageType = {
 +    1: "heartbeat_request",
@@ -220,7 +225,7 @@ index 00000000..1b2f2cb9
 +    130: "Remove Traffic Endpoint",
 +    131: "Traffic Endpoint ID",
 +    132: "Ethernet Packet Filter",
-+    133: "MAC address",
++    133: "MAC Address",
 +    134: "C-TAG",
 +    135: "S-TAG",
 +    136: "Ethertype",
@@ -291,6 +296,114 @@ index 00000000..1b2f2cb9
 +    3: "SIP URI",
 +}
 +
++GateStatus = {
++    0: "OPEN",
++    1: "CLOSED",
++    2: "CLOSED_RESERVED_2",
++    3: "CLOSED_RESERVED_3",
++}
++
++TimerUnit = {
++    0: '2 seconds',
++    1: '1 minute',
++    2: '10 minutes',
++    3: '1 hour',
++    4: '10 hours',
++    7: 'infinite',
++}
++
++OuterHeaderRemovalDescription = {
++    0: "GTP-U/UDP/IPv4",
++    1: "GTP-U/UDP/IPv6",
++    2: "UDP/IPv4",
++    3: "UDP/IPv6",
++    4: "IPv4",
++    5: "IPv6",
++    6: "GTP-U/UDP/IP",
++    7: "VLAN S-TAG",
++    8: "S-TAG and C-TAG",
++}
++
++NodeIdType = {
++    0: "IPv4",
++    1: "IPv6",
++    2: "FQDN",
++}
++
++FqCSIDNodeIdType = {
++    0: "IPv4",
++    1: "IPv6",
++    2: "MCCMNCId",
++}
++
++FlowDirection = {
++    0: "Unspecified",
++    1: "Downlink",  # traffic to the UE
++    2: "Uplink",    # traffic from the UE
++    3: "Bidirectional",
++    4: "Unspecified4",
++    5: "Unspecified5",
++    6: "Unspecified6",
++    7: "Unspecified7",
++}
++
++TimeUnit = {
++    0: "minute",
++    1: "6 minutes",
++    2: "hour",
++    3: "day",
++    4: "week",
++    5: "min5",  # same as 0 (minute)
++    6: "min6",  # same as 0 (minute)
++    7: "min7",  # same as 0 (minute)
++}
++
++HeaderType = {
++    0: "HTTP",
++}
++
++PDNType = {
++    0: "IPv4",
++    1: "IPv6",
++    2: "IPv4v6",
++    3: "Non-IP",
++    4: "Ethernet",
++}
++
++RuleIDType = {
++    0: "PDR",
++    1: "FAR",
++    2: "QER",
++    3: "URR",
++    4: "BAR",
++    # TODO: other values should be interpreted as '1' if received
++}
++
++BaseTimeInterval = {
++    0: "CTP",
++    1: "DTP",
++}
++
++InterfaceType = {
++    0: "S1-U",
++    1: "S5 /S8-U",
++    2: "S4-U",
++    3: "S11-U",
++    4: "S12-U",
++    5: "Gn/Gp-U",
++    6: "S2a-U",
++    7: "S2b-U",
++    8: "eNodeB GTP-U interface for DL data forwarding",
++    9: "eNodeB GTP-U interface for UL data forwarding",
++    10: "SGW/UPF GTP-U interface for DL data forwarding",
++    11: "N3 3GPP Access",
++    12: "N3 Trusted Non-3GPP Access",
++    13: "N3 Untrusted Non-3GPP Access",
++    14: "N3 for data forwarding",
++    15: "N9",
++}
++
++
 +class PFCPLengthMixin(object):
 +    def post_build(self, p, pay):
 +        p += pay
@@ -299,32 +412,34 @@ index 00000000..1b2f2cb9
 +            p = p[:2] + struct.pack("!H", tmp_len) + p[4:]
 +        return p
 +
++
 +class PFCP(PFCPLengthMixin, Packet):
 +    # 3GPP TS 29.244 V15.6.0 (2019-07)
 +    # without the version
 +    name = "PFCP (v1) Header"
 +    fields_desc = [
 +        BitField("version", 1, 3),
-+        BitField("spare_b2", 0, 1),
-+        BitField("spare_b3", 0, 1),
-+        BitField("spare_b4", 0, 1),
++        XBitField("spare_b2", 0, 1),
++        XBitField("spare_b3", 0, 1),
++        XBitField("spare_b4", 0, 1),
 +        BitField("MP", 0, 1),
 +        BitField("S", 1, 1),
 +        ByteEnumField("message_type", None, PFCPmessageType),
 +        ShortField("length", None),
 +        ConditionalField(XLongField("seid", 0),
-+                             lambda pkt:pkt.S == 1),
-+        ThreeBytesField("seq", RandShort()),
++                         lambda pkt:pkt.S == 1),
++        ThreeBytesField("seq", 0),
 +        ConditionalField(BitField("priority", 0, 4),
-+                             lambda pkt:pkt.MP == 1),
++                         lambda pkt:pkt.MP == 1),
 +        ConditionalField(BitField("spare_p", 0, 4),
-+                             lambda pkt:pkt.MP == 1),
++                         lambda pkt:pkt.MP == 1),
 +        ConditionalField(ByteField("spare_oct", 0),
-+                             lambda pkt:pkt.MP == 0),
++                         lambda pkt:pkt.MP == 0),
 +    ]
 +
 +    def hashret(self):
-+        return struct.pack("B", self.version) + struct.pack("I", self.seq) + self.payload.hashret()
++        return struct.pack("B", self.version) + struct.pack("I", self.seq) + \
++            self.payload.hashret()
 +
 +    def answers(self, other):
 +        return (isinstance(other, PFCP) and
@@ -353,6 +468,40 @@ index 00000000..1b2f2cb9
 +        s = b"".join(chb(len(x)) + x for x in s.split(b"."))
 +        return s
 +
++
++class ExtraDataField(StrField):
++    def __init__(self, name, default=b""):
++        StrField.__init__(self, name, default)
++
++    def addfield(self, pkt, s, val):
++        return s + self.i2m(pkt, val)
++
++    def getfield(self, pkt, s):
++        # + 4 accounts for the ietype and length fields
++        p = len(pkt.original) - len(s)
++        length = pkt.length + 4 - p
++        return s[length:], self.m2i(pkt, s[:length])
++
++    def randval(self):
++        return RandBin(RandNum(0, 2))
++
++
++class Int40Field(Field):
++    def __init__(self, name, default):
++        Field.__init__(self, name, default, "BI")
++
++    def addfield(self, pkt, s, val):
++        val = self.i2m(pkt, val)
++        return s + struct.pack("!BI", val >> 32, val & 0xffffffff)
++
++    def getfield(self, pkt, s):
++        hi, lo = struct.unpack("!BI", s[:5])
++        return s[5:], self.m2i(pkt, (hi << 32) + lo)
++
++    def randval(self):
++        return RandNum(0, 2**40 - 1)
++
++
 +def IE_Dispatcher(s):
 +    """Choose the correct Information Element class."""
 +
@@ -367,541 +516,809 @@ index 00000000..1b2f2cb9
 +
 +    return cls(s)
 +
++
 +class IE_Base(PFCPLengthMixin, Packet):
++    default_length = None
++
++    def __init__(self, *args, **kwargs):
++        self.fields_desc[0].default = self.ie_type
++        self.fields_desc[1].default = self.default_length
++        super(IE_Base, self).__init__(*args, **kwargs)
++
 +    def extract_padding(self, pkt):
 +        return "", pkt
 +
-+class IE_CreatePDR(IE_Base):
-+    name = "IE Create PDR"
-+    fields_desc = [ShortEnumField("ietype", 1, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
-+
-+class IE_PDI(IE_Base):
-+    name = "IE PDI"
-+    fields_desc = [ShortEnumField("ietype", 2, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
-+
-+class IE_CreateFAR(IE_Base):
-+    name = "IE Create FAR"
 +    fields_desc = [
-+        ShortEnumField("ietype", 3, IEType),
-+        ShortField("length", None),
-+        PacketListField("IE_list", None, IE_Dispatcher,
-+                            length_from=lambda pkt: pkt.length)
++        ShortEnumField("ietype", 0, IEType),
++        ShortField("length", None)
 +    ]
 +
-+class IE_ForwardingParameters(IE_Base):
++
++class IE_Compound(IE_Base):
++    fields_desc = IE_Base.fields_desc + [
++        PacketListField("IE_list", None, IE_Dispatcher,
++                        length_from=lambda pkt: pkt.length)
++    ]
++
++
++class IE_CreatePDR(IE_Compound):
++    name = "IE Create PDR"
++    ie_type = 1
++
++
++class IE_PDI(IE_Compound):
++    name = "IE PDI"
++    ie_type = 2
++
++
++class IE_CreateFAR(IE_Compound):
++    name = "IE Create FAR"
++    ie_type = 3
++
++
++class IE_ForwardingParameters(IE_Compound):
 +    name = "IE Forwarding Parameters"
-+    fields_desc = [ShortEnumField("ietype", 4, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 4
 +
-+class IE_DuplicatingParameters(IE_Base):
++
++class IE_DuplicatingParameters(IE_Compound):
 +    name = "IE Duplicating Parameters"
-+    fields_desc = [ShortEnumField("ietype", 5, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 5
 +
-+class IE_CreateURR(IE_Base):
++
++class IE_CreateURR(IE_Compound):
 +    name = "IE Create URR"
-+    fields_desc = [ShortEnumField("ietype", 6, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 6
 +
-+class IE_CreateQER(IE_Base):
++
++class IE_CreateQER(IE_Compound):
 +    name = "IE Create QER"
-+    fields_desc = [ShortEnumField("ietype", 7, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 7
 +
-+class IE_CreatedPDR(IE_Base):
++
++class IE_CreatedPDR(IE_Compound):
 +    name = "IE Created PDR"
-+    fields_desc = [ShortEnumField("ietype", 8, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 8
 +
-+class IE_UpdatePDR(IE_Base):
++
++class IE_UpdatePDR(IE_Compound):
 +    name = "IE Update PDR"
-+    fields_desc = [ShortEnumField("ietype", 9, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 9
 +
-+class IE_UpdateFAR(IE_Base):
++
++class IE_UpdateFAR(IE_Compound):
 +    name = "IE Update FAR"
-+    fields_desc = [ShortEnumField("ietype", 10, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 10
 +
-+class IE_UpdateForwardingParameters(IE_Base):
++
++class IE_UpdateForwardingParameters(IE_Compound):
 +    name = "IE Update Forwarding Parameters"
-+    fields_desc = [ShortEnumField("ietype", 11, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 11
 +
-+class IE_UpdateBAR_SRR(IE_Base):
++
++class IE_UpdateBAR_SRR(IE_Compound):
 +    name = "IE Update BAR (PFCP Session Report Response)"
-+    fields_desc = [ShortEnumField("ietype", 12, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 12
 +
-+class IE_UpdateURR(IE_Base):
++
++class IE_UpdateURR(IE_Compound):
 +    name = "IE Update URR"
-+    fields_desc = [ShortEnumField("ietype", 13, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 13
 +
-+class IE_UpdateQER(IE_Base):
++
++class IE_UpdateQER(IE_Compound):
 +    name = "IE Update QER"
-+    fields_desc = [ShortEnumField("ietype", 14, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 14
 +
-+class IE_RemovePDR(IE_Base):
++
++class IE_RemovePDR(IE_Compound):
 +    name = "IE Remove PDR"
-+    fields_desc = [ShortEnumField("ietype", 15, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 15
 +
-+class IE_RemoveFAR(IE_Base):
++
++class IE_RemoveFAR(IE_Compound):
 +    name = "IE Remove FAR"
-+    fields_desc = [ShortEnumField("ietype", 16, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 16
 +
-+class IE_RemoveURR(IE_Base):
++
++class IE_RemoveURR(IE_Compound):
 +    name = "IE Remove URR"
-+    fields_desc = [ShortEnumField("ietype", 17, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 17
 +
-+class IE_RemoveQER(IE_Base):
++
++class IE_RemoveQER(IE_Compound):
 +    name = "IE Remove QER"
-+    fields_desc = [ShortEnumField("ietype", 18, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
++    ie_type = 18
++
++
++class IE_LoadControlInformation(IE_Compound):
++    name = "IE Load Control Information"
++    ie_type = 51
++
++
++class IE_OverloadControlInformation(IE_Compound):
++    name = "IE Overload Control Information"
++    ie_type = 54
++
++
++class IE_ApplicationID_PFDs(IE_Compound):
++    name = "IE Application ID's PFDs"
++    ie_type = 58
++
++
++class IE_PFDContext(IE_Compound):
++    name = "IE PFD context"
++    ie_type = 59
++
++
++class IE_ApplicationDetectionInformation(IE_Compound):
++    name = "IE Application Detection Information"
++    ie_type = 68
++
++
++class IE_QueryURR(IE_Compound):
++    name = "IE Query URR"
++    ie_type = 77
++
++
++class IE_UsageReport_SMR(IE_Compound):
++    name = "IE Usage Report (Session Modification Response)"
++    ie_type = 78
++
++
++class IE_UsageReport_SDR(IE_Compound):
++    name = "IE Usage Report (Session Deletion Response)"
++    ie_type = 79
++
++
++class IE_UsageReport_SRR(IE_Compound):
++    name = "IE Usage Report (Session Report Request)"
++    ie_type = 80
++
++
++class IE_DownlinkDataReport(IE_Compound):
++    name = "IE Downlink Data Report"
++    ie_type = 83
++
++
++class IE_Create_BAR(IE_Compound):
++    name = "IE Create BAR"
++    ie_type = 85
++
++
++class IE_Update_BAR_SMR(IE_Compound):
++    name = "IE Update BAR (Session Modification Request)"
++    ie_type = 86
++
++
++class IE_Remove_BAR(IE_Compound):
++    name = "IE Remove BAR"
++    ie_type = 87
++
++
++class IE_ErrorIndicationReport(IE_Compound):
++    name = "IE Error Indication Report"
++    ie_type = 99
++
++
++class IE_UserPlanePathFailureReport(IE_Compound):
++    name = "IE User Plane Path Failure Report"
++    ie_type = 102
++
++
++class IE_UpdateDuplicatingParameters(IE_Compound):
++    name = "IE Update Duplicating Parameters"
++    ie_type = 105
++
++
++class IE_AggregatedURRs(IE_Compound):
++    name = "IE Aggregated URRs"
++    ie_type = 118
++
++
++class IE_CreateTrafficEndpoint(IE_Compound):
++    name = "IE Create Traffic Endpoint"
++    ie_type = 127
++
++
++class IE_CreatedTrafficEndpoint(IE_Compound):
++    name = "IE Created Traffic Endpoint"
++    ie_type = 128
++
++
++class IE_UpdateTrafficEndpoint(IE_Compound):
++    name = "IE Update Traffic Endpoint"
++    ie_type = 129
++
++
++class IE_RemoveTrafficEndpoint(IE_Compound):
++    name = "IE Remove Traffic Endpoint"
++    ie_type = 130
++
++
++class IE_EthernetPacketFilter(IE_Compound):
++    name = "IE Ethernet Packet Filter"
++    ie_type = 132
++
++
++class IE_EthernetTrafficInformation(IE_Compound):
++    name = "IE Ethernet Traffic Information"
++    ie_type = 143
++
++
++class IE_AdditionalMonitoringTime(IE_Compound):
++    name = "IE Additional Monitoring Time"
++    ie_type = 147
++
 +
 +class IE_Cause(IE_Base):
++    ie_type = 19
 +    name = "IE Cause"
-+    fields_desc = [ShortEnumField("ietype", 19, IEType),
-+                   ShortField("length", None),
-+                   ByteEnumField("cause", None, CauseValues)]
++    fields_desc = IE_Base.fields_desc + [
++        ByteEnumField("cause", None, CauseValues)
++    ]
++
 +
 +class IE_SourceInterface(IE_Base):
 +    name = "IE Source Interface"
-+    fields_desc = [
-+        ShortEnumField("ietype", 20, IEType),
-+        ShortField("length", None),
++    ie_type = 20
++    fields_desc = IE_Base.fields_desc + [
 +        XBitField("spare", 0, 4),
 +        BitEnumField("interface", "Access", 4, SourceInterface),
++        ExtraDataField("extra_data"),
 +    ]
 +
-+class IE_FqTEID(IE_Base):
++
++class IE_FTEID(IE_Base):
 +    name = "IE F-TEID"
-+    fields_desc = [ShortEnumField("ietype", 21, IEType),
-+                   ShortField("length", None),
-+                   XBitField("spare", 0, 4),
-+                   BitField("CHID", 0, 1),
-+                   BitField("CH", 0, 1),
-+                   BitField("V6", 0, 1),
-+                   BitField("V4", 0, 1),
-+                   ConditionalField(XIntField("TEID", 0), lambda x: x.CH == 0),
-+                   ConditionalField(IPField("ipv4", RandIP()),
-+                                    lambda x: x.V4 == 1 and x.CH == 0),
-+                   ConditionalField(IP6Field("ipv6", RandIP6()),
-+                                    lambda x: x.V6 == 1 and x.CH == 0),
-+                   ConditionalField(ByteField("CHOOSE ID", 0),
-+                                    lambda x: x.CHID == 1)]
++    ie_type = 21
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitField("CHID", 0, 1),
++        BitField("CH", 0, 1),
++        BitField("V6", 0, 1),
++        BitField("V4", 0, 1),
++        ConditionalField(XIntField("TEID", 0), lambda x: x.CH == 0),
++        ConditionalField(IPField("ipv4", 0),
++                         lambda x: x.V4 == 1 and x.CH == 0),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x: x.V6 == 1 and x.CH == 0),
++        ConditionalField(ByteField("choose_id", 0),
++                         lambda x: x.CHID == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_NetworkInstance(IE_Base):
 +    name = "IE Network Instance"
-+    fields_desc = [
-+        ShortEnumField("ietype", 22, IEType),
-+        ShortField("length", None),
-+        APNStrLenField("network_instance", "",
-+                           length_from=lambda x: x.length)
++    ie_type = 22
++    fields_desc = IE_Base.fields_desc + [
++        APNStrLenField("instance", "", length_from=lambda x: x.length)
 +    ]
++
 +
 +class IE_SDF_Filter(IE_Base):
 +    name = "IE SDF Filter"
-+    fields_desc = [
-+        ShortEnumField("ietype", 23, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 3),
++    ie_type = 23
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 3),
 +        BitField("BID", 0, 1),
 +        BitField("FL", 0, 1),
 +        BitField("SPI", 0, 1),
 +        BitField("TTC", 0, 1),
 +        BitField("FD", 0, 1),
 +        ByteField("spare_oct", 0),
-+        ConditionalField(FieldLenField("flow_desc_length", None, length_of="flow_desc"),
-+                             lambda pkt: pkt.FD == 1),
-+        ConditionalField(StrLenField("flow_desc", "", length_from=lambda pkt: pkt.flow_desc_length),
-+                             lambda pkt: pkt.FD == 1),
-+        ConditionalField(ByteField("traffic_class", 0), lambda pkt: pkt.TTC == 1),
-+        ConditionalField(ByteField("traffic_mask", 0), lambda pkt: pkt.TTC == 1),
-+        ConditionalField(IntField("security_parameter_index", 0), lambda pkt: pkt.SPI == 1),
-+        ConditionalField(ThreeBytesField("flow_label", 0), lambda pkt: pkt.FL == 1),
-+        ConditionalField(IntField("sdf_filter_id", 0), lambda pkt: pkt.BID == 1),
++        ConditionalField(FieldLenField("flow_description_length", None,
++                                       length_of="flow_description"),
++                         lambda pkt: pkt.FD == 1),
++        ConditionalField(StrLenField("flow_description", "",
++                                     length_from=lambda pkt:
++                                     pkt.flow_description_length),
++                         lambda pkt: pkt.FD == 1),
++        ConditionalField(ByteField("tos_traffic_class", 0),
++                         lambda pkt: pkt.TTC == 1),
++        ConditionalField(ByteField("tos_traffic_mask", 0),
++                         lambda pkt: pkt.TTC == 1),
++        ConditionalField(IntField("security_parameter_index", 0),
++                         lambda pkt: pkt.SPI == 1),
++        ConditionalField(ThreeBytesField("flow_label", 0),
++                         lambda pkt: pkt.FL == 1),
++        ConditionalField(IntField("sdf_filter_id", 0),
++                         lambda pkt: pkt.BID == 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_ApplicationId(IE_Base):
 +    name = "IE Application ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 24, IEType),
-+        FieldLenField("length", None, length_of="app_id"),
-+        StrLenField("app_id", "", length_from=lambda x: x.length),
++    ie_type = 24
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("id", "", length_from=lambda x: x.length),
 +    ]
++
 +
 +class IE_GateStatus(IE_Base):
 +    name = "IE Gate Status"
-+    fields_desc = [ShortEnumField("ietype", 25, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 25
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitEnumField("ul", "OPEN", 2, GateStatus),
++        BitEnumField("dl", "OPEN", 2, GateStatus),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_MBR(IE_Base):
 +    name = "IE MBR"
-+    fields_desc = [ShortEnumField("ietype", 26, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 26
++    fields_desc = IE_Base.fields_desc + [
++        Int40Field("ul", 0),
++        Int40Field("dl", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_GBR(IE_Base):
 +    name = "IE GBR"
-+    fields_desc = [ShortEnumField("ietype", 27, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 27
++    fields_desc = IE_Base.fields_desc + [
++        Int40Field("ul", 0),
++        Int40Field("dl", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_QERCorrelationId(IE_Base):
 +    name = "IE QER Correlation ID"
-+    fields_desc = [ShortEnumField("ietype", 28, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 28
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_Precedence(IE_Base):
 +    name = "IE Precedence"
-+    fields_desc = [
-+        ShortEnumField("ietype", 29, IEType),
-+        ShortField("length", None),
-+        IntField("precedence", RandInt()),
-+        ConditionalField(
-+            StrLenField("data", "", length_from=lambda x: x.length - 4),
-+            lambda x: x.length is not None and x.length > 4),
++    ie_type = 29
++    fields_desc = IE_Base.fields_desc + [
++        IntField("precedence", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_TransportLevelMarking(IE_Base):
 +    name = "IE Transport Level Marking"
-+    fields_desc = [ShortEnumField("ietype", 30, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 30
++    fields_desc = IE_Base.fields_desc + [
++        XByteField("tos", 0),
++        XByteField("traffic_class", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_VolumeThreshold(IE_Base):
 +    name = "IE Volume Threshold"
-+    fields_desc = [ShortEnumField("ietype", 31, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 31
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("DLVOL", 0, 1),
++        BitField("ULVOL", 0, 1),
++        BitField("TOVOL", 0, 1),
++        ConditionalField(XLongField("total", 0), lambda x: x.TOVOL == 1),
++        ConditionalField(XLongField("uplink", 0), lambda x: x.ULVOL == 1),
++        ConditionalField(XLongField("downlink", 0), lambda x: x.DLVOL == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_TimeThreshold(IE_Base):
 +    name = "IE Time Threshold"
-+    fields_desc = [ShortEnumField("ietype", 32, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 32
++    fields_desc = IE_Base.fields_desc + [
++        IntField("threshold", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_MonitoringTime(IE_Base):
 +    name = "IE Monitoring Time"
-+    fields_desc = [ShortEnumField("ietype", 33, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 33
++    fields_desc = IE_Base.fields_desc + [
++        IntField("time_value", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SubsequentVolumeThreshold(IE_Base):
 +    name = "IE Subsequent Volume Threshold"
-+    fields_desc = [ShortEnumField("ietype", 34, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 34
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("DLVOL", 0, 1),
++        BitField("ULVOL", 0, 1),
++        BitField("TOVOL", 0, 1),
++        ConditionalField(XLongField("total", 0), lambda x: x.TOVOL == 1),
++        ConditionalField(XLongField("uplink", 0), lambda x: x.ULVOL == 1),
++        ConditionalField(XLongField("downlink", 0), lambda x: x.DLVOL == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SubsequentTimeThreshold(IE_Base):
 +    name = "IE Subsequent Time Threshold"
-+    fields_desc = [ShortEnumField("ietype", 35, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 35
++    fields_desc = IE_Base.fields_desc + [
++        IntField("threshold", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_InactivityDetectionTime(IE_Base):
 +    name = "IE Inactivity Detection Time"
-+    fields_desc = [ShortEnumField("ietype", 36, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 36
++    fields_desc = IE_Base.fields_desc + [
++        IntField("time_value", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_ReportingTriggers(IE_Base):
 +    name = "IE Reporting Triggers"
-+    fields_desc = [
-+        ShortEnumField("ietype", 37, IEType),
-+        ShortField("length", None),
-+        BitField("LIUSA", 0, 1),
-+        BitField("DROTH", 0, 1),
-+        BitField("STOPT", 0, 1),
-+        BitField("START", 0, 1),
-+        BitField("QUHTI", 0, 1),
-+        BitField("TIMTH", 0, 1),
-+        BitField("VOLTH", 0, 1),
-+        BitField("PERIO", 0, 1),
-+        BitField("spare", 0, 2),
-+        BitField("EVEQU", 0, 1),
-+        BitField("EVETH", 0, 1),
-+        BitField("MACAR", 0, 1),
-+        BitField("ENVCL", 0, 1),
-+        BitField("TIMQU", 0, 1),
-+        BitField("VOLQU", 0, 1),
++    ie_type = 37
++    fields_desc = IE_Base.fields_desc + [
++        BitField("linked_usage_reporting", 0, 1),
++        BitField("dropped_dl_traffic_threshold", 0, 1),
++        BitField("stop_of_traffic", 0, 1),
++        BitField("start_of_traffic", 0, 1),
++        BitField("quota_holding_time", 0, 1),
++        BitField("time_threshold", 0, 1),
++        BitField("volume_threshold", 0, 1),
++        BitField("periodic_reporting", 0, 1),
++        XBitField("spare", 0, 2),
++        BitField("event_quota", 0, 1),
++        BitField("event_threshold", 0, 1),
++        BitField("mac_addresses_reporting", 0, 1),
++        BitField("envelope_closure", 0, 1),
++        BitField("time_quota", 0, 1),
++        BitField("volume_quota", 0, 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_RedirectInformation(IE_Base):
 +    name = "IE Redirect Information"
-+    fields_desc = [
-+        ShortEnumField("ietype", 38, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 4),
-+        BitEnumField("redirect_address_type", "IPv4 address", 4, RedirectAddressType),
-+        FieldLenField("addr_len", None, length_of="addr"),
-+        StrLenField("addr", "", length_from=lambda pkt: pkt.addr_len)
-+        # TODO: this IE may contain extra data. Spec:
-+        # "These octet(s) is/are present only if explicitly specified"
++    ie_type = 38
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitEnumField("type", "IPv4 address", 4, RedirectAddressType),
++        FieldLenField("address_length", None, length_of="address"),
++        StrLenField("address", "", length_from=lambda pkt: pkt.address_length),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_ReportType(IE_Base):
 +    name = "IE Report Type"
-+    fields_desc = [
-+        ShortEnumField("ietype", 39, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 4),
++    ie_type = 39
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
 +        BitField("UPIR", 0, 1),
 +        BitField("ERIR", 0, 1),
 +        BitField("USAR", 0, 1),
 +        BitField("DLDR", 0, 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_OffendingIE(IE_Base):
 +    name = "IE Offending IE"
-+    fields_desc = [
-+        ShortEnumField("ietype", 40, IEType),
-+        ShortField("length", None),
-+        ShortEnumField("offending_ie_type", None, IEType)
++    ie_type = 40
++    fields_desc = IE_Base.fields_desc + [
++        ShortEnumField("type", None, IEType)
 +    ]
++
 +
 +class IE_ForwardingPolicy(IE_Base):
 +    name = "IE Forwarding Policy"
-+    fields_desc = [ShortEnumField("ietype", 41, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 41
++    fields_desc = IE_Base.fields_desc + [
++        FieldLenField("policy_identifier_length", None,
++                      length_of="policy_identifier", fmt="B"),
++        StrLenField("policy_identifier", "",
++                    length_from=lambda pkt: pkt.policy_identifier_length)
++    ]
++
 +
 +class IE_DestinationInterface(IE_Base):
 +    name = "IE Destination Interface"
-+    fields_desc = [
-+        ShortEnumField("ietype", 42, IEType),
-+        ShortField("length", None),
++    ie_type = 42
++    fields_desc = IE_Base.fields_desc + [
 +        XBitField("spare", 0, 4),
 +        BitEnumField("interface", "Access", 4, DestinationInterface),
++        ExtraDataField("extra_data"),
 +    ]
 +
 +
 +class IE_UPFunctionFeatures(IE_Base):
 +    name = "IE UP Function Features"
-+    fields_desc = [ShortEnumField("ietype", 43, IEType),
-+                   ShortField("length", 2),
-+                   ConditionalField(BitField("TREU", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("HEEU", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("PFDM", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("FTUP", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("TRST", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("DLBD", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("DDND", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("BUCP", None, 1), lambda x: x.length > 0),
-+                   ConditionalField(BitField("spare", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("PFDE", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("FRRT", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("TRACE", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("QUOAC", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("UDBC", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("PDIU", None, 1), lambda x: x.length > 1),
-+                   ConditionalField(BitField("EMPU", None, 1), lambda x: x.length > 1)]
++    ie_type = 43
++    default_length = 2
++    fields_desc = IE_Base.fields_desc + [
++        ConditionalField(BitField("TREU", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("HEEU", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("PFDM", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("FTUP", None, 1), lambda x: x.length > 0),
++
++        ConditionalField(BitField("TRST", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("DLBD", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("DDND", None, 1), lambda x: x.length > 0),
++        ConditionalField(BitField("BUCP", None, 1), lambda x: x.length > 0),
++
++        ConditionalField(BitField("spare", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("PFDE", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("FRRT", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("TRACE", None, 1), lambda x: x.length > 1),
++
++        ConditionalField(BitField("QUOAC", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("UDBC", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("PDIU", None, 1), lambda x: x.length > 1),
++        ConditionalField(BitField("EMPU", None, 1), lambda x: x.length > 1),
++
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_ApplyAction(IE_Base):
 +    name = "IE Apply Action"
-+    fields_desc = [
-+        ShortEnumField("ietype", 44, IEType),
-+        ShortField("length", None),
++    ie_type = 44
++    fields_desc = IE_Base.fields_desc + [
 +        XBitField("spare", None, 3),
 +        BitField("DUPL", 0, 1),
 +        BitField("NOCP", 0, 1),
 +        BitField("BUFF", 0, 1),
 +        BitField("FORW", 0, 1),
 +        BitField("DROP", 0, 1),
-+        ConditionalField(
-+            StrLenField("data", "", length_from=lambda x: x.length - 1),
-+            lambda x: x.length is not None and x.length > 1)]
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DownlinkDataServiceInformation(IE_Base):
 +    name = "IE Downlink Data Service Information"
-+    fields_desc = [ShortEnumField("ietype", 45, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 45
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", None, 6),
++        BitField("QFII", 0, 1),
++        BitField("PPI", 0, 1),
++        ConditionalField(
++            XBitField("spare_2", None, 2),
++            lambda x: x.PPI == 1),
++        ConditionalField(
++            XBitField("ppi_val", None, 6),
++            lambda x: x.PPI == 1),
++        ConditionalField(
++            XBitField("spare_3", None, 2),
++            lambda x: x.QFII == 1),
++        ConditionalField(
++            XBitField("qfi_val", None, 6),
++            lambda x: x.QFII == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DownlinkDataNotificationDelay(IE_Base):
 +    name = "IE Downlink Data Notification Delay"
-+    fields_desc = [ShortEnumField("ietype", 46, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 46
++    fields_desc = IE_Base.fields_desc + [
++        ByteField("delay", 0),  # in multiples of 50
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DLBufferingDuration(IE_Base):
 +    name = "IE DL Buffering Duration"
-+    fields_desc = [ShortEnumField("ietype", 47, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 47
++    fields_desc = IE_Base.fields_desc + [
++        BitEnumField("timer_unit", "2 seconds", 3, TimerUnit),
++        BitField("timer_value", 0, 5),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DLBufferingSuggestedPacketCount(IE_Base):
 +    name = "IE DL Buffering Suggested Packet Count"
-+    fields_desc = [ShortEnumField("ietype", 48, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 48
++    fields_desc = IE_Base.fields_desc + [
++        MultipleTypeField([
++            (
++                ByteField("count", 0),
++                (lambda x: x.length == 1,
++                 lambda x, val: x.length == 1 or
++                 (x.length is None and val < 256)),
++            ),
++            (
++                ShortField("count", 0),
++                (lambda x: x.length == 2,
++                 lambda x, val: x.length == 1 or
++                 (x.length is None and val >= 256))
++            ),
++        ], ByteField("count", 0))
++    ]
++
 +
 +class IE_PFCPSMReqFlags(IE_Base):
 +    name = "IE PFCPSMReq-Flags"
-+    fields_desc = [ShortEnumField("ietype", 49, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 49
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 5),
++        BitField("QUARR", 0, 1),
++        BitField("SNDEM", 0, 1),
++        BitField("DROBU", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_PFCPSRRspFlags(IE_Base):
 +    name = "IE PFCPSRRsp-Flags"
-+    fields_desc = [ShortEnumField("ietype", 50, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 50
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 7),
++        BitField("DROBU", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_LoadControlInformation(IE_Base):
-+    name = "IE Load Control Information"
-+    fields_desc = [ShortEnumField("ietype", 51, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_SequenceNumber(IE_Base):
 +    name = "IE Sequence Number"
-+    fields_desc = [ShortEnumField("ietype", 52, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 52
++    fields_desc = IE_Base.fields_desc + [
++        IntField("number", 0),
++    ]
++
 +
 +class IE_Metric(IE_Base):
 +    name = "IE Metric"
-+    fields_desc = [ShortEnumField("ietype", 53, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 53
++    fields_desc = IE_Base.fields_desc + [
++        ByteField("metric", 0),
++    ]
 +
-+class IE_OverloadControlInformation(IE_Base):
-+    name = "IE Overload Control Information"
-+    fields_desc = [ShortEnumField("ietype", 54, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_Timer(IE_Base):
 +    name = "IE Timer"
-+    fields_desc = [ShortEnumField("ietype", 55, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 55
++    fields_desc = IE_Base.fields_desc + [
++        BitEnumField("timer_unit", "2 seconds", 3, TimerUnit),
++        BitField("timer_value", 0, 5),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_PDR_Id(IE_Base):
 +    name = "IE PDR ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 56, IEType),
-+        ShortField("length", None),
-+        ShortField("pdr_id", RandShort()),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 2),
-+                             lambda x: x.length is not None and x.length > 2)
++    ie_type = 56
++    fields_desc = IE_Base.fields_desc + [
++        ShortField("id", 0),
++        ExtraDataField("extra_data"),
 +    ]
 +
-+class IE_FqSEID(IE_Base):
++
++class IE_FSEID(IE_Base):
 +    name = "IE F-SEID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 57, IEType),
-+        ShortField("length", None),
++    ie_type = 57
++    fields_desc = IE_Base.fields_desc + [
 +        XBitField("spare", 0, 6),
 +        BitField("v4", 0, 1),
 +        BitField("v6", 0, 1),
 +        XLongField("seid", 0),
-+        ConditionalField(IPField("ipv4", RandIP()),
-+                             lambda x: x.v4 == 1),
-+        ConditionalField(IP6Field("ipv6", RandIP6()),
-+                             lambda x: x.v6 == 1)
++        ConditionalField(IPField("ipv4", 0),
++                         lambda x: x.v4 == 1),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x: x.v6 == 1),
++        ExtraDataField("extra_data"),
 +    ]
 +
-+class IE_ApplicationID_PFDs(IE_Base):
-+    name = "IE Application ID's PFDs"
-+    fields_desc = [ShortEnumField("ietype", 58, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_PFDContext(IE_Base):
-+    name = "IE PFD context"
-+    fields_desc = [ShortEnumField("ietype", 59, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+NodeIdType = {
-+    0: "IPv4",
-+    1: "IPv6",
-+    2: "FQDN",
-+}
 +
 +class IE_NodeId(IE_Base):
 +    name = "IE Node ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 60, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 4),
-+        BitEnumField("node_id_type", "IPv4", 4, NodeIdType),
-+        ConditionalField(IPField("ipv4", RandIP()),
-+                             lambda x: x.node_id_type == 0),
-+        ConditionalField(IP6Field("ipv6", RandIP6()),
-+                             lambda x: x.node_id_type == 1),
++    ie_type = 60
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitEnumField("id_type", "IPv4", 4, NodeIdType),
++        ConditionalField(IPField("ipv4", 0),
++                         lambda x: x.id_type == 0),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x: x.id_type == 1),
 +        ConditionalField(
-+            APNStrLenField("node_id", "", length_from=lambda x: x.length - 1),
-+            lambda x: x.node_id_type == 2),
++            APNStrLenField("id", "", length_from=lambda x: x.length - 1),
++            lambda x: x.id_type == 2),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_PFDContents(IE_Base):
 +    name = "IE PFD contents"
-+    fields_desc = [ShortEnumField("ietype", 61, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 61
++    fields_desc = IE_Base.fields_desc + [
++        BitField("ADNP", 0, 1),
++        BitField("AURL", 0, 1),
++        BitField("AFD", 0, 1),
++        BitField("DNP", 0, 1),
++        BitField("CP", 0, 1),
++        BitField("DN", 0, 1),
++        BitField("URL", 0, 1),
++        BitField("FD", 0, 1),
++        ByteField("spare_2", 0),
++        ConditionalField(FieldLenField("flow_length", None, length_of="flow"),
++                         lambda pkt: pkt.FD == 1),
++        ConditionalField(StrLenField("flow", "",
++                                     length_from=lambda pkt: pkt.flow_length),
++                         lambda pkt: pkt.FD == 1),
++        ConditionalField(FieldLenField("url_length", None, length_of="url"),
++                         lambda pkt: pkt.URL == 1),
++        ConditionalField(StrLenField("url", "",
++                                     length_from=lambda pkt: pkt.url_length),
++                         lambda pkt: pkt.URL == 1),
++        ConditionalField(FieldLenField("domain_length", None,
++                                       length_of="domain"),
++                         lambda pkt: pkt.DN == 1),
++        ConditionalField(
++            StrLenField("domain", "",
++                        length_from=lambda pkt: pkt.domain_length),
++            lambda pkt: pkt.DN == 1),
++        ConditionalField(FieldLenField("custom_length", None,
++                                       length_of="custom"),
++                         lambda pkt: pkt.CP == 1),
++        ConditionalField(
++            StrLenField("custom", "",
++                        length_from=lambda pkt: pkt.custom_length),
++            lambda pkt: pkt.CP == 1),
++        ConditionalField(FieldLenField("dnp_length", None, length_of="dnp"),
++                         lambda pkt: pkt.DNP == 1),
++        ConditionalField(StrLenField("dnp", "",
++                                     length_from=lambda pkt: pkt.dnp_length),
++                         lambda pkt: pkt.DNP == 1),
++        ConditionalField(FieldLenField("additional_flow_length", None,
++                                       length_of="additional_flow"),
++                         lambda pkt: pkt.AFD == 1),
++        ConditionalField(
++            StrLenField("additional_flow", "",
++                        length_from=lambda pkt: pkt.additional_flow_length),
++            lambda pkt: pkt.AFD == 1),
++        ConditionalField(FieldLenField("additional_url_length", None,
++                                       length_of="additional_url"),
++                         lambda pkt: pkt.AURL == 1),
++        ConditionalField(
++            StrLenField("additional_url", "",
++                        length_from=lambda pkt: pkt.additional_url_length),
++            lambda pkt: pkt.AURL == 1),
++        ConditionalField(
++            FieldLenField("additional_dn_dnp_length", None,
++                          length_of="additional_dn_dnp"),
++            lambda pkt: pkt.ADNP == 1),
++        ConditionalField(
++            StrLenField("additional_dn_dnp", "",
++                        length_from=lambda pkt: pkt.additional_dn_dnp_length),
++            lambda pkt: pkt.ADNP == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_MeasurementMethod(IE_Base):
 +    name = "IE Measurement Method"
-+    fields_desc = [
-+        ShortEnumField("ietype", 62, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 5),
++    ie_type = 62
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
 +        BitField("EVENT", 0, 1),
 +        BitField("VOLUM", 0, 1),
 +        BitField("DURAT", 0, 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_UsageReportTrigger(IE_Base):
 +    name = "IE Usage Report Trigger"
-+    fields_desc = [
-+        ShortEnumField("ietype", 63, IEType),
-+        ShortField("length", None),
++    ie_type = 63
++    fields_desc = IE_Base.fields_desc + [
 +        BitField("IMMER", 0, 1),
 +        BitField("DROTH", 0, 1),
 +        BitField("STOPT", 0, 1),
@@ -918,395 +1335,510 @@ index 00000000..1b2f2cb9
 +        BitField("LIUSA", 0, 1),
 +        BitField("TIMQU", 0, 1),
 +        BitField("VOLQU", 0, 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_MeasurementPeriod(IE_Base):
 +    name = "IE Measurement Period"
-+    fields_desc = [
-+        ShortEnumField("ietype", 64, IEType),
-+        ShortField("length", None),
-+        IntField("measurement_period", 0),
++    ie_type = 64
++    fields_desc = IE_Base.fields_desc + [
++        IntField("period", 0),
++        ExtraDataField("extra_data"),
 +    ]
-+    # TODO: test this
-+    # TODO: this IE may contain extra data. Spec:
-+    # "These octet(s) is/are present only if explicitly specified"
++
 +
 +class IE_FqCSID(IE_Base):
 +    name = "IE FQ-CSID"
-+    fields_desc = [ShortEnumField("ietype", 65, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 65
++    fields_desc = IE_Base.fields_desc + [
++        BitEnumField("node_id_type", "IPv4", 4, FqCSIDNodeIdType),
++        BitFieldLenField("num_csids", None, 4, count_of="csids"),
++        ConditionalField(IPField("ipv4", 0),
++                         lambda x: x.node_id_type == 0),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x: x.node_id_type == 1),
++        ConditionalField(
++            # FIXME: split (value = mcc * 1000 + mnc)
++            BitField("mcc_mnc", 0, 20),
++            lambda x: x.node_id_type == 2),
++        # "Least significant 12 bits is a 12 bit integer assigned by
++        # an operator to an MME, SGW-C, SGW-U, PGW-C or PGW-U."
++        ConditionalField(
++            BitField("extra_id", 0, 12),
++            lambda x: x.node_id_type == 2),
++        FieldListField("csids", None, ShortField("csid", 0),
++                       count_from=lambda x: x.num_csids),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_VolumeMeasurement(IE_Base):
 +    name = "IE Volume Measurement"
-+    fields_desc = [
-+        ShortEnumField("ietype", 66, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 5),
++    ie_type = 66
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
 +        BitField("DLVOL", 0, 1),
 +        BitField("ULVOL", 0, 1),
 +        BitField("TOVOL", 0, 1),
-+        ConditionalField(XLongField("total_volume", 0), lambda x: x.TOVOL == 1),
-+        ConditionalField(XLongField("uplink_volume", 0), lambda x: x.ULVOL == 1),
-+        ConditionalField(XLongField("downlink_volume", 0), lambda x: x.DLVOL == 1),
++        ConditionalField(XLongField("total", 0), lambda x: x.TOVOL == 1),
++        ConditionalField(XLongField("uplink", 0), lambda x: x.ULVOL == 1),
++        ConditionalField(XLongField("downlink", 0), lambda x: x.DLVOL == 1),
++        ExtraDataField("extra_data"),
 +    ]
-+    # TODO: this IE may contain extra data. Spec:
-+    # "These octet(s) is/are present only if explicitly specified"
++
 +
 +class IE_DurationMeasurement(IE_Base):
 +    name = "IE Duration Measurement"
-+    fields_desc = [
-+        ShortEnumField("ietype", 67, IEType),
-+        ShortField("length", None),
++    ie_type = 67
++    fields_desc = IE_Base.fields_desc + [
 +        IntField("duration", 0),
++        ExtraDataField("extra_data"),
 +    ]
-+    # TODO: this IE may contain extra data. Spec:
-+    # "These octet(s) is/are present only if explicitly specified"
 +
-+class IE_ApplicationDetectionInformation(IE_Base):
-+    name = "IE Application Detection Information"
-+    fields_desc = [ShortEnumField("ietype", 68, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_TimeOfFirstPacket(IE_Base):
 +    name = "IE Time of First Packet"
-+    fields_desc = [ShortEnumField("ietype", 69, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 69
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_TimeOfLastPacket(IE_Base):
 +    name = "IE Time of Last Packet"
-+    fields_desc = [ShortEnumField("ietype", 70, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 70
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_QuotaHoldingTime(IE_Base):
 +    name = "IE Quota Holding Time"
-+    fields_desc = [ShortEnumField("ietype", 71, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 71
++    fields_desc = IE_Base.fields_desc + [
++        IntField("time_value", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DroppedDLTrafficThreshold(IE_Base):
 +    name = "IE Dropped DL Traffic Threshold"
-+    fields_desc = [ShortEnumField("ietype", 72, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 72
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 6),
++        BitField("DLBY", 0, 1),
++        BitField("DLPA", 0, 1),
++        ConditionalField(LongField("packet_count", 0),
++                         lambda x: x.DLPA == 1),
++        ConditionalField(LongField("byte_count", 0),
++                         lambda x: x.DLBY == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_VolumeQuota(IE_Base):
 +    name = "IE Volume Quota"
-+    fields_desc = [ShortEnumField("ietype", 73, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 73
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("DLVOL", 0, 1),
++        BitField("ULVOL", 0, 1),
++        BitField("TOVOL", 0, 1),
++        ConditionalField(XLongField("total", 0), lambda x: x.TOVOL == 1),
++        ConditionalField(XLongField("uplink", 0), lambda x: x.ULVOL == 1),
++        ConditionalField(XLongField("downlink", 0), lambda x: x.DLVOL == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_TimeQuota(IE_Base):
 +    name = "IE Time Quota"
-+    fields_desc = [
-+        ShortEnumField("ietype", 74, IEType),
-+        ShortField("length", None),
-+        IntField("time_quota", 0),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 4),
-+                             lambda x: x.length is not None and x.length > 4)
++    ie_type = 74
++    fields_desc = IE_Base.fields_desc + [
++        IntField("quota", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_StartTime(IE_Base):
 +    name = "IE Start Time"
-+    fields_desc = [
-+        ShortEnumField("ietype", 75, IEType),
-+        ShortField("length", None),
++    ie_type = 75
++    fields_desc = IE_Base.fields_desc + [
 +        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_EndTime(IE_Base):
 +    name = "IE End Time"
-+    fields_desc = [
-+        ShortEnumField("ietype", 76, IEType),
-+        ShortField("length", None),
++    ie_type = 76
++    fields_desc = IE_Base.fields_desc + [
 +        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
 +    ]
 +
-+class IE_QueryURR(IE_Base):
-+    name = "IE Query URR"
-+    fields_desc = [
-+        ShortEnumField("ietype", 77, IEType),
-+        ShortField("length", None),
-+        PacketListField("IE_list", [], IE_Dispatcher)
-+    ]
-+
-+class IE_UsageReport_SMR(IE_Base):
-+    name = "IE Usage Report (Session Modification Response)"
-+    fields_desc = [ShortEnumField("ietype", 78, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
-+
-+class IE_UsageReport_SDR(IE_Base):
-+    name = "IE Usage Report (Session Deletion Response)"
-+    fields_desc = [ShortEnumField("ietype", 79, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
-+
-+class IE_UsageReport_SRR(IE_Base):
-+    name = "IE Usage Report (Session Report Request)"
-+    fields_desc = [ShortEnumField("ietype", 80, IEType),
-+                   ShortField("length", None),
-+                   PacketListField("IE_list", None, IE_Dispatcher,
-+                                   length_from=lambda pkt: pkt.length)]
 +
 +class IE_URR_Id(IE_Base):
 +    name = "IE URR ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 81, IEType),
-+        ShortField("length", None),
-+        IntField("urr_id", RandInt()),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 4),
-+                             lambda x: x.length is not None and x.length > 4)
++    ie_type = 81
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_LinkedURR_Id(IE_Base):
 +    name = "IE Linked URR ID"
-+    fields_desc = [ShortEnumField("ietype", 82, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 82
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_DownlinkDataReport(IE_Base):
-+    name = "IE Downlink Data Report"
-+    fields_desc = [ShortEnumField("ietype", 83, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_OuterHeaderCreation(IE_Base):
 +    name = "IE Outer Header Creation"
-+    fields_desc = [ShortEnumField("ietype", 84, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 84
++    fields_desc = IE_Base.fields_desc + [
++        BitField("STAG", 0, 1),
++        BitField("CTAG", 0, 1),
++        BitField("IPV6", 0, 1),
++        BitField("IPV4", 0, 1),
++        BitField("UDPIPV6", 0, 1),
++        BitField("UDPIPV4", 0, 1),
++        BitField("GTPUUDPIPV6", 0, 1),
++        BitField("GTPUUDPIPV4", 0, 1),
++        ByteField("spare", 0),
++        ConditionalField(XIntField("TEID", 0),
++                         lambda x: x.GTPUUDPIPV4 == 1 or x.GTPUUDPIPV6 == 1),
++        ConditionalField(IPField("ipv4", 0),
++                         lambda x:
++                         x.IPV4 == 1 or x.UDPIPV4 == 1 or x.GTPUUDPIPV4 == 1),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x:
++                         x.IPV6 == 1 or x.UDPIPV6 == 1 or x.GTPUUDPIPV6 == 1),
++        ConditionalField(ShortField("port", 0),
++                         lambda x: x.UDPIPV4 == 1 or x.UDPIPV6 == 1),
++        ConditionalField(ThreeBytesField("ctag", 0),
++                         lambda x: x.CTAG == 1),
++        ConditionalField(ThreeBytesField("stag", 0),
++                         lambda x: x.STAG == 1),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_Create_BAR(IE_Base):
-+    name = "IE Create BAR"
-+    fields_desc = [ShortEnumField("ietype", 85, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_Update_BAR_SMR(IE_Base):
-+    name = "IE Update BAR (Session Modification Request)"
-+    fields_desc = [ShortEnumField("ietype", 86, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_Remove_BAR(IE_Base):
-+    name = "IE Remove BAR"
-+    fields_desc = [ShortEnumField("ietype", 87, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_BAR_Id(IE_Base):
 +    name = "IE BAR ID"
-+    fields_desc = [ShortEnumField("ietype", 88, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 88
++    fields_desc = IE_Base.fields_desc + [
++        ByteField("id", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_CPFunctionFeatures(IE_Base):
 +    name = "IE CP Function Features"
-+    fields_desc = [ShortEnumField("ietype", 89, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 89
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 6),
++        BitField("OVRL", 0, 1),
++        BitField("LOAD", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_UsageInformation(IE_Base):
 +    name = "IE Usage Information"
-+    fields_desc = [ShortEnumField("ietype", 90, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 90
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitField("UBE", 0, 1),
++        BitField("UAE", 0, 1),
++        BitField("AFT", 0, 1),
++        BitField("BEF", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_ApplicationInstanceId(IE_Base):
 +    name = "IE Application Instance ID"
-+    fields_desc = [ShortEnumField("ietype", 91, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 91
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("id", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_FlowInformation(IE_Base):
 +    name = "IE Flow Information"
-+    fields_desc = [ShortEnumField("ietype", 92, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 92
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitEnumField("direction", "Unspecified", 3, FlowDirection),
++        FieldLenField("flow_length", None, length_of="flow"),
++        StrLenField("flow", "", length_from=lambda x: x.flow_length),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_UE_IP_Address(IE_Base):
 +    name = "IE UE IP Address"
-+    fields_desc = [
-+        ShortEnumField("ietype", 93, IEType),
-+        ShortField("length", None),
-+        BitField("spare", 0, 5),
-+        BitField("SD", 0, 1), # source or dest
++    ie_type = 93
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("SD", 0, 1),  # source or dest
 +        BitField("V4", 0, 1),
 +        BitField("V6", 0, 1),
-+        ConditionalField(IPField("ipv4", RandIP()), lambda x: x.V4 == 1),
-+        ConditionalField(IP6Field("ipv6", RandIP6()), lambda x: x.V6 == 1),
++        ConditionalField(IPField("ipv4", 0), lambda x: x.V4 == 1),
++        ConditionalField(IP6Field("ipv6", 0), lambda x: x.V6 == 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_PacketRate(IE_Base):
 +    name = "IE Packet Rate"
-+    fields_desc = [ShortEnumField("ietype", 94, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 94
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 6),
++        BitField("DLPR", 0, 1),
++        BitField("ULPR", 0, 1),
++        ConditionalField(BitField("spare_2", 0, 5), lambda x: x.ULPR == 1),
++        ConditionalField(BitEnumField("ul_time_unit", "minute", 3, TimeUnit),
++                         lambda x: x.ULPR == 1),
++        ConditionalField(ShortField("ul_max_packet_rate", 0),
++                         lambda x: x.ULPR == 1),
++        ConditionalField(BitField("spare_3", 0, 5), lambda x: x.DLPR == 1),
++        ConditionalField(BitEnumField("dl_time_unit", "minute", 3, TimeUnit),
++                         lambda x: x.DLPR == 1),
++        ConditionalField(ShortField("dl_max_packet_rate", 0),
++                         lambda x: x.DLPR == 1),
++        ExtraDataField("extra_data"),
++    ]
 +
-+OuterHeaderRemovalDescription = {
-+    0: "GTP-U/UDP/IPv4",
-+    1: "GTP-U/UDP/IPv6",
-+    2: "UDP/IPv4",
-+    3: "UDP/IPv6",
-+    4: "IPv4",
-+    5: "IPv6",
-+    6: "GTP-U/UDP/IP",
-+    7: "VLAN S-TAG",
-+    8: "S-TAG and C-TAG",
-+}
 +
 +class IE_OuterHeaderRemoval(IE_Base):
 +    name = "IE Outer Header Removal"
-+    fields_desc = [
-+        ShortEnumField("ietype", 95, IEType),
-+        ShortField("length", None),
-+        ByteEnumField("outer_header_removal", None, OuterHeaderRemovalDescription),
-+        ConditionalField(XBitField("spare", None, 7), lambda x: x.length is not None and x.length > 1),
-+        ConditionalField(BitField("pdu_session_container", None, 1), lambda x: x.length is not None and x.length > 1),
++    ie_type = 95
++    fields_desc = IE_Base.fields_desc + [
++        ByteEnumField("header", None, OuterHeaderRemovalDescription),
++        ConditionalField(XBitField("spare", None, 7),
++                         lambda x: x.length is not None and x.length > 1),
++        ConditionalField(BitField("pdu_session_container", None, 1),
++                         lambda x: x.length is not None and x.length > 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_RecoveryTimeStamp(IE_Base):
 +    name = "IE Recovery Time Stamp"
-+    fields_desc = [
-+        ShortEnumField("ietype", 96, IEType),
-+        ShortField("length", 4),
-+        IntField("recovery_time_stamp", RandInt())]
++    ie_type = 96
++    default_length = 4
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_DLFlowLevelMarking(IE_Base):
 +    name = "IE DL Flow Level Marking"
-+    fields_desc = [ShortEnumField("ietype", 97, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 97
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 6),
++        BitField("SCI", 0, 1),
++        BitField("TTC", 0, 1),
++        ConditionalField(ByteField("traffic_class", 0), lambda x: x.TTC),
++        ConditionalField(ByteField("traffic_class_mask", 0), lambda x: x.TTC),
++        ConditionalField(ByteField("service_class_indicator", 0),
++                         lambda x: x.SCI),
++        ConditionalField(ByteField("spare_2", 0), lambda x: x.SCI),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_HeaderEnrichment(IE_Base):
 +    name = "IE Header Enrichment"
-+    fields_desc = [ShortEnumField("ietype", 98, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 98
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 3),
++        BitEnumField("header_type", "HTTP", 5, HeaderType),
++        FieldLenField("name_length", None, fmt="B", length_of="name"),
++        StrLenField("name", "", length_from=lambda x: x.name_length),
++        FieldLenField("value_length", None, fmt="B", length_of="value"),
++        StrLenField("value", "", length_from=lambda x: x.value_length),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_ErrorIndicationReport(IE_Base):
-+    name = "IE Error Indication Report"
-+    fields_desc = [ShortEnumField("ietype", 99, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_MeasurementInformation(IE_Base):
 +    name = "IE Measurement Information"
-+    fields_desc = [ShortEnumField("ietype", 100, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 100
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 3),
++        BitField("MNOP", 0, 1),
++        BitField("ISTM", 0, 1),
++        BitField("RADI", 0, 1),
++        BitField("INAM", 0, 1),
++        BitField("MBQE", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_NodeReportType(IE_Base):
 +    name = "IE Node Report Type"
-+    fields_desc = [ShortEnumField("ietype", 101, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 101
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 7),
++        BitField("UPFR", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_UserPlanePathFailureReport(IE_Base):
-+    name = "IE User Plane Path Failure Report"
-+    fields_desc = [ShortEnumField("ietype", 102, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_RemoteGTP_U_Peer(IE_Base):
 +    name = "IE Remote GTP-U Peer"
-+    fields_desc = [ShortEnumField("ietype", 103, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 103
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 4),
++        BitField("NI", 0, 1),
++        BitField("DI", 0, 1),
++        BitField("V4", 0, 1),
++        BitField("V6", 0, 1),
++        ConditionalField(IPField("ipv4", 0), lambda x: x.V4 == 1),
++        ConditionalField(IP6Field("ipv6", 0), lambda x: x.V6 == 1),
++        ConditionalField(ByteField("dest_interface_length", 1),
++                         lambda x: x.DI == 1),
++        ConditionalField(XBitField("spare_2", 0, 4), lambda x: x.DI == 1),
++        ConditionalField(
++            BitEnumField("dest_interface", "Access", 4, DestinationInterface),
++            lambda x: x.DI == 1),
++        ConditionalField(
++            FieldLenField("network_instance_length", 1,
++                          length_of="network_instance"),
++            lambda x: x.NI == 1),
++        ConditionalField(
++            APNStrLenField("network_instance", "",
++                           length_from=lambda x: x.network_instance_length),
++            lambda x: x.NI == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_UR_SEQN(IE_Base):
 +    name = "IE UR-SEQN"
-+    fields_desc = [
-+        ShortEnumField("ietype", 104, IEType),
-+        ShortField("length", None),
-+        IntField("ur_seqn", RandInt()),
++    ie_type = 104
++    fields_desc = IE_Base.fields_desc + [
++        IntField("number", 0),
 +    ]
 +
-+class IE_UpdateDuplicatingParameters(IE_Base):
-+    name = "IE Update Duplicating Parameters"
-+    fields_desc = [ShortEnumField("ietype", 105, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_ActivatePredefinedRules(IE_Base):
 +    name = "IE Activate Predefined Rules"
-+    fields_desc = [ShortEnumField("ietype", 106, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 106
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("name", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_DeactivatePredefinedRules(IE_Base):
 +    name = "IE Deactivate Predefined Rules"
-+    fields_desc = [ShortEnumField("ietype", 107, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 107
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("name", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_FAR_Id(IE_Base):
 +    name = "IE FAR ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 108, IEType),
-+        ShortField("length", None),
-+        IntField("far_id", RandInt()),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 4),
-+                             lambda x: x.length is not None and x.length > 4)
++    ie_type = 108
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_QER_Id(IE_Base):
 +    name = "IE QER ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 109, IEType),
-+        ShortField("length", None),
-+        IntField("qer_id", RandInt()),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 4),
-+                             lambda x: x.length is not None and x.length > 4)
++    ie_type = 109
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_OCIFlags(IE_Base):
 +    name = "IE OCI Flags"
-+    fields_desc = [ShortEnumField("ietype", 110, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 110
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 7),
++        BitField("AOCI", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_PFCPAssociationReleaseRequest(IE_Base):
 +    name = "IE PFCP Association Release Request"
-+    fields_desc = [ShortEnumField("ietype", 111, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 111
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 7),
++        BitField("SARR", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_GracefulReleasePeriod(IE_Base):
 +    name = "IE Graceful Release Period"
-+    fields_desc = [ShortEnumField("ietype", 112, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 112
++    fields_desc = IE_Base.fields_desc + [
++        BitEnumField("release_timer_unit", "2 seconds", 3, TimerUnit),
++        BitField("release_timer_value", 0, 5),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_PDNType(IE_Base):
 +    name = "IE PDN Type"
-+    fields_desc = [ShortEnumField("ietype", 113, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 113
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitEnumField("pdn_type", "IPv4", 3, PDNType),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_FailedRuleId(IE_Base):
 +    name = "IE Failed Rule ID"
-+    fields_desc = [ShortEnumField("ietype", 114, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 114
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 3),
++        BitEnumField("type", "PDR", 5, RuleIDType),
++        ConditionalField(ShortField("pdr_id", 0),
++                         lambda x: x.type == 0),
++        ConditionalField(IntField("far_id", 0),
++                         lambda x: x.type == 1 or x.type > 4),
++        ConditionalField(IntField("qer_id", 0), lambda x: x.type == 2),
++        ConditionalField(IntField("urr_id", 0), lambda x: x.type == 3),
++        ConditionalField(ByteField("bar_id", 0),
++                         lambda x: x.type == 4),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_TimeQuotaMechanism(IE_Base):
 +    name = "IE Time Quota Mechanism"
-+    fields_desc = [ShortEnumField("ietype", 115, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 115
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 6),
++        BitEnumField("base_time_interval_type", "CTP", 2, BaseTimeInterval),
++        IntField("interval", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_UserPlaneIPResourceInformation(IE_Base):
 +    name = "IE User Plane IP Resource Information"
-+    fields_desc = [
-+        ShortEnumField("ietype", 116, IEType),
-+        ShortField("length", None),
++    ie_type = 116
++    fields_desc = IE_Base.fields_desc + [
 +        XBitField("spare", 0, 1),
 +        BitField("ASSOSI", 0, 1),
 +        BitField("ASSONI", 0, 1),
@@ -1314,918 +1846,466 @@ index 00000000..1b2f2cb9
 +        BitField("V6", 0, 1),
 +        BitField("V4", 0, 1),
 +        ConditionalField(XByteField("teid_range", 0), lambda x: x.TEIDRI != 0),
-+        ConditionalField(IPField("ipv4", RandIP()), lambda x: x.V4 == 1),
-+        ConditionalField(IP6Field("ipv6", RandIP6()),
-+                             lambda x: x.V6 == 1),
-+                             ConditionalField(
-+                                 APNStrLenField(
-+                                     "network_instance", "",
-+                                     length_from=lambda x: x.length - 1 - (1 if x.TEIDRI != 0 else 0) - (x.V4 * 4) - (x.V6 * 16) - x.ASSOSI),
-+                                 lambda x: x.ASSONI == 1),
++        ConditionalField(IPField("ipv4", 0), lambda x: x.V4 == 1),
++        ConditionalField(IP6Field("ipv6", 0),
++                         lambda x: x.V6 == 1),
++        ConditionalField(
++            APNStrLenField("network_instance", "",
++                           length_from=lambda x:
++                           x.length - 1 - (1 if x.TEIDRI != 0 else 0) -
++                           (x.V4 * 4) - (x.V6 * 16) - x.ASSOSI),
++            lambda x: x.ASSONI == 1),
 +        ConditionalField(XBitField("spare", None, 4), lambda x: x.ASSOSI == 1),
-+        ConditionalField(BitEnumField("interface", "Access", 4, SourceInterface),
-+                             lambda x: x.ASSOSI == 1)
++        ConditionalField(
++            BitEnumField("interface", "Access", 4, SourceInterface),
++            lambda x: x.ASSOSI == 1),
++        ExtraDataField("extra_data"),
 +    ]
++
 +
 +class IE_UserPlaneInactivityTimer(IE_Base):
 +    name = "IE User Plane Inactivity Timer"
-+    fields_desc = [ShortEnumField("ietype", 117, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 117
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timer", 0),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_AggregatedURRs(IE_Base):
-+    name = "IE Aggregated URRs"
-+    fields_desc = [ShortEnumField("ietype", 118, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_Multiplier(IE_Base):
 +    name = "IE Multiplier"
-+    fields_desc = [ShortEnumField("ietype", 119, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 119
++    fields_desc = IE_Base.fields_desc + [
++        SignedLongField("digits", 0),
++        SignedIntField("exponent", 0),
++    ]
++
 +
 +class IE_AggregatedURR_Id(IE_Base):
 +    name = "IE Aggregated URR ID"
-+    fields_desc = [
-+        ShortEnumField("ietype", 120, IEType),
-+        ShortField("length", None),
-+        ConditionalField(IntField("URRid", RandInt()), lambda x: x.length > 3),
-+        ConditionalField(StrLenField("data", "", length_from=lambda x: x.length - 4),
-+                             lambda x: x.length is not None and x.length > 4),
++    ie_type = 120
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
 +    ]
++
 +
 +class IE_SubsequentVolumeQuota(IE_Base):
 +    name = "IE Subsequent Volume Quota"
-+    fields_desc = [ShortEnumField("ietype", 121, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 121
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("DLVOL", 0, 1),
++        BitField("ULVOL", 0, 1),
++        BitField("TOVOL", 0, 1),
++        ConditionalField(XLongField("total", 0), lambda x: x.TOVOL == 1),
++        ConditionalField(XLongField("uplink", 0), lambda x: x.ULVOL == 1),
++        ConditionalField(XLongField("downlink", 0), lambda x: x.DLVOL == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SubsequentTimeQuota(IE_Base):
 +    name = "IE Subsequent Time Quota"
-+    fields_desc = [ShortEnumField("ietype", 122, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 122
++    fields_desc = IE_Base.fields_desc + [
++        IntField("quota", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_RQI(IE_Base):
 +    name = "IE RQI"
-+    fields_desc = [ShortEnumField("ietype", 123, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 123
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 7),
++        BitField("RQI", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_QFI(IE_Base):
 +    name = "IE QFI"
-+    fields_desc = [ShortEnumField("ietype", 124, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 124
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", None, 2),
++        BitField("QFI", 0, 6),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_QueryURRReference(IE_Base):
 +    name = "IE Query URR Reference"
-+    fields_desc = [ShortEnumField("ietype", 125, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 125
++    fields_desc = IE_Base.fields_desc + [
++        IntField("reference", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_AdditionalUsageReportsInformation(IE_Base):
 +    name = "IE Additional Usage Reports Information"
-+    fields_desc = [ShortEnumField("ietype", 126, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 126
++    fields_desc = IE_Base.fields_desc + [
++        BitField("AURI", 0, 1),
++        BitField("reports", 0, 15),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_CreateTrafficEndpoint(IE_Base):
-+    name = "IE Create Traffic Endpoint"
-+    fields_desc = [ShortEnumField("ietype", 127, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_CreatedTrafficEndpoint(IE_Base):
-+    name = "IE Created Traffic Endpoint"
-+    fields_desc = [ShortEnumField("ietype", 128, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_UpdateTrafficEndpoint(IE_Base):
-+    name = "IE Update Traffic Endpoint"
-+    fields_desc = [ShortEnumField("ietype", 129, IEType),
-+                   ShortField("length", None),
-+                   ]
-+
-+class IE_RemoveTrafficEndpoint(IE_Base):
-+    name = "IE Remove Traffic Endpoint"
-+    fields_desc = [ShortEnumField("ietype", 130, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_TrafficEndpointId(IE_Base):
 +    name = "IE Traffic Endpoint ID"
-+    fields_desc = [ShortEnumField("ietype", 131, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 131
++    fields_desc = IE_Base.fields_desc + [
++        ByteField("id", 0),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_EthernetPacketFilter(IE_Base):
-+    name = "IE Ethernet Packet Filter"
-+    fields_desc = [ShortEnumField("ietype", 132, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
-+class IE_MACaddress(IE_Base):
-+    name = "IE MAC address"
-+    fields_desc = [ShortEnumField("ietype", 133, IEType),
-+                   ShortField("length", None),
-+                   ]
++class IE_MACAddress(IE_Base):
++    name = "IE MAC Address"
++    ie_type = 133
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitField("UDES", 0, 1),
++        BitField("USOU", 0, 1),
++        BitField("DEST", 0, 1),
++        BitField("SOUR", 0, 1),
++        ConditionalField(MACField("source_mac", 0),
++                         lambda x: x.SOUR == 1),
++        ConditionalField(MACField("destination_mac", 0),
++                         lambda x: x.DEST == 1),
++        ConditionalField(MACField("upper_source_mac", 0),
++                         lambda x: x.USOU == 1),
++        ConditionalField(MACField("upper_destination_mac", 0),
++                         lambda x: x.UDES == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_C_TAG(IE_Base):
 +    name = "IE C-TAG"
-+    fields_desc = [ShortEnumField("ietype", 134, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 134
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 5),
++        BitField("VID", 0, 1),
++        BitField("DEI", 0, 1),
++        BitField("PCP", 0, 1),
++        # TODO: fix cvid_value
++        ConditionalField(
++            BitField("cvid_value_hi", 0, 4), lambda x: x.VID == 1),
++        ConditionalField(BitField("spare_2", 0, 4), lambda x: x.VID == 0),
++        ConditionalField(BitField("dei_flag", 0, 1), lambda x: x.DEI == 1),
++        ConditionalField(BitField("spare_3", 0, 1), lambda x: x.DEI == 0),
++        ConditionalField(BitField("pcp_value", 0, 3), lambda x: x.PCP == 1),
++        ConditionalField(BitField("spare_4", 0, 3), lambda x: x.PCP == 0),
++        ConditionalField(ByteField("cvid_value_low", 0),
++                         lambda x: x.VID == 1),
++        ConditionalField(ByteField("spare_5", 0), lambda x: x.VID == 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_S_TAG(IE_Base):
 +    name = "IE S-TAG"
-+    fields_desc = [ShortEnumField("ietype", 135, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 135
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 5),
++        BitField("VID", 0, 1),
++        BitField("DEI", 0, 1),
++        BitField("PCP", 0, 1),
++        # TODO: fix svid_value
++        ConditionalField(BitField("svid_value_hi", 0, 4),
++                         lambda x: x.VID == 1),
++        ConditionalField(BitField("spare_2", 0, 4), lambda x: x.VID == 0),
++        ConditionalField(BitField("dei_flag", 0, 1), lambda x: x.DEI == 1),
++        ConditionalField(BitField("spare_3", 0, 1), lambda x: x.DEI == 0),
++        ConditionalField(BitField("pcp_value", 0, 3), lambda x: x.PCP == 1),
++        ConditionalField(BitField("spare_4", 0, 3), lambda x: x.PCP == 0),
++        ConditionalField(ByteField("svid_value_low", 0),
++                         lambda x: x.VID == 1),
++        ConditionalField(ByteField("spare_5", 0), lambda x: x.VID == 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_Ethertype(IE_Base):
 +    name = "IE Ethertype"
-+    fields_desc = [ShortEnumField("ietype", 136, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 136
++    fields_desc = IE_Base.fields_desc + [
++        ShortField("type", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_Proxying(IE_Base):
 +    name = "IE Proxying"
-+    fields_desc = [ShortEnumField("ietype", 137, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 137
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 6),
++        BitField("INS", 0, 1),
++        BitField("ARP", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EthernetFilterId(IE_Base):
 +    name = "IE Ethernet Filter ID"
-+    fields_desc = [ShortEnumField("ietype", 138, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 138
++    fields_desc = IE_Base.fields_desc + [
++        IntField("id", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EthernetFilterProperties(IE_Base):
 +    name = "IE Ethernet Filter Properties"
-+    fields_desc = [ShortEnumField("ietype", 139, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 139
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 7),
++        BitField("BIDE", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SuggestedBufferingPacketsCount(IE_Base):
 +    name = "IE Suggested Buffering Packets Count"
-+    fields_desc = [ShortEnumField("ietype", 140, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 140
++    fields_desc = IE_Base.fields_desc + [
++        ByteField("count", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_UserId(IE_Base):
 +    name = "IE User ID"
-+    fields_desc = [ShortEnumField("ietype", 141, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 141
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 4),
++        BitField("NAIF", 0, 1),
++        BitField("MSISDNF", 0, 1),
++        BitField("IMEIF", 0, 1),
++        BitField("IMSIF", 0, 1),
++        ConditionalField(
++            FieldLenField("imsi_length", None, length_of="imsi", fmt="B"),
++            lambda x: x.IMSIF == 1),
++        ConditionalField(
++            StrLenField("imsi", "", length_from=lambda x: x.imsi_length),
++            lambda x: x.IMSIF == 1),
++        ConditionalField(
++            FieldLenField("imei_length", None, length_of="imei", fmt="B"),
++            lambda x: x.IMEIF == 1),
++        ConditionalField(
++            StrLenField("imei", "", length_from=lambda x: x.imei_length),
++            lambda x: x.IMEIF == 1),
++        ConditionalField(
++            FieldLenField("msisdn_length", None, length_of="msisdn", fmt="B"),
++            lambda x: x.MSISDNF == 1),
++        ConditionalField(
++            StrLenField("msisdn", "", length_from=lambda x: x.msisdn_length),
++            lambda x: x.MSISDNF == 1),
++        ConditionalField(
++            FieldLenField("nai_length", None, length_of="nai", fmt="B"),
++            lambda x: x.NAIF == 1),
++        ConditionalField(
++            StrLenField("nai", "", length_from=lambda x: x.nai_length),
++            lambda x: x.NAIF == 1),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EthernetPDUSessionInformation(IE_Base):
 +    name = "IE Ethernet PDU Session Information"
-+    fields_desc = [ShortEnumField("ietype", 142, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 142
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 7),
++        BitField("ETHI", 0, 1),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_EthernetTrafficInformation(IE_Base):
-+    name = "IE Ethernet Traffic Information"
-+    fields_desc = [ShortEnumField("ietype", 143, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_MACAddressesDetected(IE_Base):
 +    name = "IE MAC Addresses Detected"
-+    fields_desc = [ShortEnumField("ietype", 144, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 144
++    fields_desc = IE_Base.fields_desc + [
++        FieldLenField("num_macs", None, count_of="macs", fmt="B"),
++        FieldListField("macs", None, MACField("mac", 0),
++                       count_from=lambda x: x.num_macs),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_MACAddressesRemoved(IE_Base):
 +    name = "IE MAC Addresses Removed"
-+    fields_desc = [ShortEnumField("ietype", 145, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 145
++    fields_desc = IE_Base.fields_desc + [
++        FieldLenField("num_macs", None, count_of="macs", fmt="B"),
++        FieldListField("macs", None, MACField("mac", 0),
++                       count_from=lambda x: x.num_macs),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EthernetInactivityTimer(IE_Base):
 +    name = "IE Ethernet Inactivity Timer"
-+    fields_desc = [ShortEnumField("ietype", 146, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 146
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timer", 0),
++        ExtraDataField("extra_data"),
++    ]
 +
-+class IE_AdditionalMonitoringTime(IE_Base):
-+    name = "IE Additional Monitoring Time"
-+    fields_desc = [ShortEnumField("ietype", 147, IEType),
-+                   ShortField("length", None),
-+                   ]
 +
 +class IE_EventQuota(IE_Base):
 +    name = "IE Event Quota"
-+    fields_desc = [ShortEnumField("ietype", 148, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 148
++    fields_desc = IE_Base.fields_desc + [
++        IntField("event_quota", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EventThreshold(IE_Base):
 +    name = "IE Event Threshold"
-+    fields_desc = [ShortEnumField("ietype", 149, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 149
++    fields_desc = IE_Base.fields_desc + [
++        IntField("event_threshold", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SubsequentEventQuota(IE_Base):
 +    name = "IE Subsequent Event Quota"
-+    fields_desc = [ShortEnumField("ietype", 150, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 150
++    fields_desc = IE_Base.fields_desc + [
++        IntField("subsequent_event_quota", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_SubsequentEventThreshold(IE_Base):
 +    name = "IE Subsequent Event Threshold"
-+    fields_desc = [ShortEnumField("ietype", 151, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 151
++    fields_desc = IE_Base.fields_desc + [
++        IntField("subsequent_event_threshold", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_TraceInformation(IE_Base):
++    # TODO: more detailed decoding
++    # TODO: fix IP address handling
 +    name = "IE Trace Information"
-+    fields_desc = [ShortEnumField("ietype", 152, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 152
++    fields_desc = IE_Base.fields_desc + [
++        BitField("mcc_digit_2", 0, 4),
++        BitField("mcc_digit_1", 0, 4),
++        BitField("mnc_digit_3", 0, 4),
++        BitField("mcc_digit_3", 0, 4),
++        BitField("mnc_digit_2", 0, 4),
++        BitField("mnc_digit_1", 0, 4),
++        ThreeBytesField("trace_id", 0),  # FIXME
++        FieldLenField("triggering_events_length", None,
++                      length_of="triggering_events", fmt="B"),
++        StrLenField("triggering_events", "",
++                    length_from=lambda x: x.triggering_events_length),
++        ByteField("session_trace_depth", 0),
++        FieldLenField("list_of_interfaces_length", None,
++                      length_of="list_of_interfaces", fmt="B"),
++        StrLenField("list_of_interfaces", "",
++                    length_from=lambda x: x.list_of_interfaces_length),
++        FieldLenField("ip_address_length", None,
++                      length_of="ip_address", fmt="B"),
++        StrLenField("ip_address", "",
++                    length_from=lambda x: x.ip_address_length),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_FramedRoute(IE_Base):
 +    name = "IE Framed-Route"
-+    fields_desc = [ShortEnumField("ietype", 153, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 153
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("framed_route", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_FramedRouting(IE_Base):
 +    name = "IE Framed-Routing"
-+    fields_desc = [ShortEnumField("ietype", 154, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 154
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("framed_routing", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_FramedIPv6Route(IE_Base):
 +    name = "IE Framed-IPv6-Route"
-+    fields_desc = [ShortEnumField("ietype", 155, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 155
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("framed_ipv6_route", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_EventTimeStamp(IE_Base):
 +    name = "IE Event Time Stamp"
-+    fields_desc = [ShortEnumField("ietype", 156, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 156
++    fields_desc = IE_Base.fields_desc + [
++        IntField("timestamp", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_AveragingWindow(IE_Base):
 +    name = "IE Averaging Window"
-+    fields_desc = [ShortEnumField("ietype", 157, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 157
++    fields_desc = IE_Base.fields_desc + [
++        IntField("averaging_window", 0),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_PagingPolicyIndicator(IE_Base):
 +    name = "IE Paging Policy Indicator"
-+    fields_desc = [ShortEnumField("ietype", 158, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 158
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare", 0, 5),
++        BitField("ppi", 0, 3),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_APN_DNN(IE_Base):
 +    name = "IE APN/DNN"
-+    fields_desc = [ShortEnumField("ietype", 159, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 159
++    fields_desc = IE_Base.fields_desc + [
++        APNStrLenField("apn_dnn", "", length_from=lambda x: x.length)
++    ]
++
 +
 +class IE_3GPP_InterfaceType(IE_Base):
 +    name = "IE 3GPP Interface Type"
-+    fields_desc = [ShortEnumField("ietype", 160, IEType),
-+                   ShortField("length", None),
-+                   ]
++    ie_type = 160
++    fields_desc = IE_Base.fields_desc + [
++        XBitField("spare_1", 0, 2),
++        BitEnumField("interface_type", "S1-U", 6, InterfaceType),
++        ExtraDataField("extra_data"),
++    ]
++
 +
 +class IE_EnterpriseSpecific(IE_Base):
 +    name = "Enterpise Specific"
-+    fields_desc = [
-+        ShortEnumField("ietype", None, IEType),
-+        ShortField("length", None),
++    ie_type = None
++    fields_desc = IE_Base.fields_desc + [
 +        ShortEnumField("enterprise_id", None, IANA_ENTERPRISE_NUMBERS),
-+        # TODO: should be binary
 +        StrLenField("data", "", length_from=lambda x: x.length - 2),
 +    ]
 +
++
 +class IE_NotImplemented(IE_Base):
 +    name = "IE not implemented"
-+    fields_desc = [ShortEnumField("ietype", 0, IEType),
-+                   ShortField("length", None),
-+                   StrLenField("data", "", length_from=lambda x: x.length)]
++    ie_type = 0
++    fields_desc = IE_Base.fields_desc + [
++        StrLenField("data", "", length_from=lambda x: x.length)
++    ]
 +
-+# class IE_IPv4(gtp.IE_Base):
-+#     name = "IE IPv4"
-+#     fields_desc = [ByteEnumField("ietype", 74, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    IPField("address", RandIP())]
-+#
-+# class IE_MEI(gtp.IE_Base):
-+#     name = "IE MEI"
-+#     fields_desc = [ByteEnumField("ietype", 75, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    LongField("MEI", 0)]
-+#
-+# class IE_EPSBearerID(gtp.IE_Base):
-+#     name = "IE EPS Bearer ID"
-+#     fields_desc = [ByteEnumField("ietype", 73, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteField("EBI", 0)]
-+#
-+#
-+# class IE_RAT(gtp.IE_Base):
-+#     name = "IE RAT"
-+#     fields_desc = [ByteEnumField("ietype", 82, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteEnumField("RAT_type", None, RATType)]
-+#
-+#
-+# class IE_ServingNetwork(gtp.IE_Base):
-+#     name = "IE Serving Network"
-+#     fields_desc = [ByteEnumField("ietype", 83, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    gtp.TBCDByteField("MCC", "", 2),
-+#                    gtp.TBCDByteField("MNC", "", 1)]
-+#
-+#
-+# class ULI_RAI(gtp.IE_Base):
-+#     name = "IE Tracking Area Identity"
-+#     fields_desc = [
-+#         gtp.TBCDByteField("MCC", "", 2),
-+#         # MNC: if the third digit of MCC is 0xf, then the length of
-+#         # MNC is 1 byte
-+#         gtp.TBCDByteField("MNC", "", 1),
-+#         ShortField("LAC", 0),
-+#         ShortField("RAC", 0)]
-+#
-+#
-+# class ULI_SAI(gtp.IE_Base):
-+#     name = "IE Tracking Area Identity"
-+#     fields_desc = [
-+#         gtp.TBCDByteField("MCC", "", 2),
-+#         gtp.TBCDByteField("MNC", "", 1),
-+#         ShortField("LAC", 0),
-+#         ShortField("SAC", 0)]
-+#
-+#
-+# class ULI_TAI(gtp.IE_Base):
-+#     name = "IE Tracking Area Identity"
-+#     fields_desc = [
-+#         gtp.TBCDByteField("MCC", "", 2),
-+#         gtp.TBCDByteField("MNC", "", 1),
-+#         ShortField("TAC", 0)]
-+#
-+#
-+# class ULI_ECGI(gtp.IE_Base):
-+#     name = "IE E-UTRAN Cell Identifier"
-+#     fields_desc = [
-+#         gtp.TBCDByteField("MCC", "", 2),
-+#         gtp.TBCDByteField("MNC", "", 1),
-+#         BitField("spare", 0, 4),
-+#         BitField("ECI", 0, 28)]
-+#
-+#
-+# class IE_ULI(gtp.IE_Base):
-+#     name = "IE ULI"
-+#     fields_desc = [ByteEnumField("ietype", 86, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("spare", 0, 2),
-+#                    BitField("LAI_Present", 0, 1),
-+#                    BitField("ECGI_Present", 0, 1),
-+#                    BitField("TAI_Present", 0, 1),
-+#                    BitField("RAI_Present", 0, 1),
-+#                    BitField("SAI_Present", 0, 1),
-+#                    BitField("CGI_Present", 0, 1),
-+#                    ConditionalField(
-+#         PacketField("SAI", 0, ULI_SAI), lambda pkt: bool(pkt.SAI_Present)),
-+#         ConditionalField(
-+#         PacketField("RAI", 0, ULI_RAI), lambda pkt: bool(pkt.RAI_Present)),
-+#         ConditionalField(
-+#         PacketField("TAI", 0, ULI_TAI), lambda pkt: bool(pkt.TAI_Present)),
-+#         ConditionalField(PacketField("ECGI", 0, ULI_ECGI),
-+#                          lambda pkt: bool(pkt.ECGI_Present))]
-+#
-+#
-+# class IE_FTEID(gtp.IE_Base):
-+#     name = "IE F-TEID"
-+#     fields_desc = [ByteEnumField("ietype", 87, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("ipv4_present", 0, 1),
-+#                    BitField("ipv6_present", 0, 1),
-+#                    BitField("InterfaceType", 0, 6),
-+#                    XIntField("GRE_Key", 0),
-+#                    ConditionalField(
-+#         IPField("ipv4", RandIP()), lambda pkt: pkt.ipv4_present),
-+#         ConditionalField(XBitField("ipv6", "2001::", 128),
-+#                          lambda pkt: pkt.ipv6_present)]
-+#
-+#
-+# class IE_BearerContext(gtp.IE_Base):
-+#     name = "IE Bearer Context"
-+#     fields_desc = [ByteEnumField("ietype", 93, IEType),
-+#                    ShortField("length", 0),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    PacketListField("IE_list", None, IE_Dispatcher,
-+#                                    length_from=lambda pkt: pkt.length)]
-+#
-+#
-+#
-+#
-+# class IE_IMSI(gtp.IE_Base):
-+#     name = "IE IMSI"
-+#     fields_desc = [ByteEnumField("ietype", 1, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    gtp.TBCDByteField("IMSI", "33607080910",
-+#                                      length_from=lambda x: x.length)]
-+#
-+#
-+# class IE_Cause(gtp.IE_Base):
-+#     name = "IE Cause"
-+#     fields_desc = [ByteEnumField("ietype", 2, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteEnumField("Cause", 1, CauseValues),
-+#                    BitField("spare", 0, 5),
-+#                    BitField("PCE", 0, 1),
-+#                    BitField("BCE", 0, 1),
-+#                    BitField("CS", 0, 1)]
-+#
-+#
-+# class IE_RecoveryRestart(gtp.IE_Base):
-+#     name = "IE Recovery Restart"
-+#     fields_desc = [ByteEnumField("ietype", 3, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteField("restart_counter", 0)]
-+#
-+#
-+# class IE_APN(gtp.IE_Base):
-+#     name = "IE APN"
-+#     fields_desc = [ByteEnumField("ietype", 71, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    gtp.APNStrLenField("APN", "internet",
-+#                                       length_from=lambda x: x.length)]
-+#
-+#
-+# class IE_AMBR(gtp.IE_Base):
-+#     name = "IE AMBR"
-+#     fields_desc = [ByteEnumField("ietype", 72, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    IntField("AMBR_Uplink", 0),
-+#                    IntField("AMBR_Downlink", 0)]
-+#
-+#
-+# class IE_MSISDN(gtp.IE_Base):
-+#     name = "IE MSISDN"
-+#     fields_desc = [ByteEnumField("ietype", 76, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    gtp.TBCDByteField("digits", "33123456789",
-+#                                      length_from=lambda x: x.length)]
-+#
-+#
-+# class IE_Indication(gtp.IE_Base):
-+#     name = "IE Cause"
-+#     fields_desc = [ByteEnumField("ietype", 77, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("DAF", 0, 1),
-+#                    BitField("DTF", 0, 1),
-+#                    BitField("HI", 0, 1),
-+#                    BitField("DFI", 0, 1),
-+#                    BitField("OI", 0, 1),
-+#                    BitField("ISRSI", 0, 1),
-+#                    BitField("ISRAI", 0, 1),
-+#                    BitField("SGWCI", 0, 1),
-+#                    BitField("SQCI", 0, 1),
-+#                    BitField("UIMSI", 0, 1),
-+#                    BitField("CFSI", 0, 1),
-+#                    BitField("CRSI", 0, 1),
-+#                    BitField("PS", 0, 1),
-+#                    BitField("PT", 0, 1),
-+#                    BitField("SI", 0, 1),
-+#                    BitField("MSV", 0, 1),
-+#
-+#                    ConditionalField(
-+#                        BitField("RetLoc", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("PBIC", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("SRNI", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("S6AF", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("S4AF", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("MBMDT", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("ISRAU", 0, 1), lambda pkt: pkt.length > 2),
-+#                    ConditionalField(
-+#                        BitField("CCRSI", 0, 1), lambda pkt: pkt.length > 2),
-+#
-+#                    ConditionalField(
-+#         BitField("CPRAI", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("ARRL", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("PPOFF", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("PPON", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("PPSI", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("CSFBI", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("CLII", 0, 1), lambda pkt: pkt.length > 3),
-+#         ConditionalField(
-+#         BitField("CPSR", 0, 1), lambda pkt: pkt.length > 3),
-+#
-+#     ]
-+#
-+#
-+# PDN_TYPES = {
-+#     1: "IPv4",
-+#     2: "IPv6",
-+#     3: "IPv4/IPv6",
-+# }
-+#
-+# PCO_OPTION_TYPES = {
-+#     3: "IPv4",
-+#     129: "Primary DNS Server IP address",
-+#     130: "Primary NBNS Server IP address",
-+#     131: "Secondary DNS Server IP address",
-+#     132: "Secondary NBNS Server IP address",
-+# }
-+#
-+#
-+# class PCO_Option(Packet):
-+#     def extract_padding(self, pkt):
-+#         return "", pkt
-+#
-+#
-+# class PCO_IPv4(PCO_Option):
-+#     name = "IPv4"
-+#     fields_desc = [ByteEnumField("type", None, PCO_OPTION_TYPES),
-+#                    ByteField("length", 0),
-+#                    IPField("address", RandIP())]
-+#
-+#
-+# class PCO_Primary_DNS(PCO_Option):
-+#     name = "Primary DNS Server IP Address"
-+#     fields_desc = [ByteEnumField("type", None, PCO_OPTION_TYPES),
-+#                    ByteField("length", 0),
-+#                    IPField("address", RandIP())]
-+#
-+#
-+# class PCO_Primary_NBNS(PCO_Option):
-+#     name = "Primary DNS Server IP Address"
-+#     fields_desc = [ByteEnumField("type", None, PCO_OPTION_TYPES),
-+#                    ByteField("length", 0),
-+#                    IPField("address", RandIP())]
-+#
-+#
-+# class PCO_Secondary_DNS(PCO_Option):
-+#     name = "Secondary DNS Server IP Address"
-+#     fields_desc = [ByteEnumField("type", None, PCO_OPTION_TYPES),
-+#                    ByteField("length", 0),
-+#                    IPField("address", RandIP())]
-+#
-+#
-+# class PCO_Secondary_NBNS(PCO_Option):
-+#     name = "Secondary NBNS Server IP Address"
-+#     fields_desc = [ByteEnumField("type", None, PCO_OPTION_TYPES),
-+#                    ByteField("length", 0),
-+#                    IPField("address", RandIP())]
-+#
-+#
-+# PCO_PROTOCOL_TYPES = {
-+#     0x0001: 'P-CSCF IPv6 Address Request',
-+#     0x0003: 'DNS Server IPv6 Address Request',
-+#     0x0005: 'MS Support of Network Requested Bearer Control indicator',
-+#     0x000a: 'IP Allocation via NAS',
-+#     0x000d: 'DNS Server IPv4 Address Request',
-+#     0x000c: 'P-CSCF IPv4 Address Request',
-+#     0x0010: 'IPv4 Link MTU Request',
-+#     0x8021: 'IPCP',
-+#     0xc023: 'Password Authentication Protocol',
-+#     0xc223: 'Challenge Handshake Authentication Protocol',
-+# }
-+#
-+# PCO_OPTION_CLASSES = {
-+#     3: PCO_IPv4,
-+#     129: PCO_Primary_DNS,
-+#     130: PCO_Primary_NBNS,
-+#     131: PCO_Secondary_DNS,
-+#     132: PCO_Secondary_NBNS,
-+# }
-+#
-+#
-+# def PCO_option_dispatcher(s):
-+#     """Choose the correct PCO element."""
-+#     option = orb(s[0])
-+#
-+#     cls = PCO_OPTION_CLASSES.get(option, Raw)
-+#     return cls(s)
-+#
-+#
-+# def len_options(pkt):
-+#     return pkt.length - 4 if pkt.length else 0
-+#
-+#
-+# class PCO_P_CSCF_IPv6_Address_Request(PCO_Option):
-+#     name = "PCO PCO-P CSCF IPv6 Address Request"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ConditionalField(XBitField("address",
-+#                                               "2001:db8:0:42::", 128),
-+#                                     lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_DNS_Server_IPv6(PCO_Option):
-+#     name = "PCO DNS Server IPv6 Address Request"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ConditionalField(XBitField("address",
-+#                                               "2001:db8:0:42::", 128),
-+#                                     lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_SOF(PCO_Option):
-+#     name = "PCO MS Support of Network Requested Bearer Control indicator"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ]
-+#
-+#
-+# class PCO_PPP(PCO_Option):
-+#     name = "PPP IP Control Protocol"
-+#     fields_desc = [ByteField("Code", 0),
-+#                    ByteField("Identifier", 0),
-+#                    ShortField("length", 0),
-+#                    PacketListField("Options", None, PCO_option_dispatcher,
-+#                                    length_from=len_options)]
-+#
-+#     def extract_padding(self, pkt):
-+#         return "", pkt
-+#
-+#
-+# class PCO_IP_Allocation_via_NAS(PCO_Option):
-+#     name = "PCO IP Address allocation via NAS Signaling"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    PacketListField("Options", None, PCO_option_dispatcher,
-+#                                    length_from=len_options)]
-+#
-+#
-+# class PCO_P_CSCF_IPv4_Address_Request(PCO_Option):
-+#     name = "PCO PCO-P CSCF IPv4 Address Request"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ConditionalField(IPField("address", RandIP()),
-+#                                     lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_DNS_Server_IPv4(PCO_Option):
-+#     name = "PCO DNS Server IPv4 Address Request"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ConditionalField(IPField("address", RandIP()),
-+#                                     lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_IPv4_Link_MTU_Request(PCO_Option):
-+#     name = "PCO IPv4 Link MTU Request"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    ConditionalField(ShortField("MTU_size", 1500),
-+#                                     lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_IPCP(PCO_Option):
-+#     name = "PCO Internet Protocol Control Protocol"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    PacketField("PPP", None, PCO_PPP)]
-+#
-+#
-+# class PCO_PPP_Auth(PCO_Option):
-+#     name = "PPP Password Authentication Protocol"
-+#     fields_desc = [ByteField("Code", 0),
-+#                    ByteField("Identifier", 0),
-+#                    ShortField("length", 0),
-+#                    ByteField("PeerID_length", 0),
-+#                    ConditionalField(StrFixedLenField(
-+#                        "PeerID",
-+#                        "",
-+#                        length_from=lambda pkt: pkt.PeerID_length),
-+#                        lambda pkt: pkt.PeerID_length),
-+#                    ByteField("Password_length", 0),
-+#                    ConditionalField(
-+#                        StrFixedLenField(
-+#                            "Password",
-+#                            "",
-+#                            length_from=lambda pkt: pkt.Password_length),
-+#                        lambda pkt: pkt.Password_length)]
-+#
-+#
-+# class PCO_PasswordAuthentificationProtocol(PCO_Option):
-+#     name = "PCO Password Authentication Protocol"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    PacketField("PPP", None, PCO_PPP_Auth)]
-+#
-+#
-+# class PCO_PPP_Challenge(PCO_Option):
-+#     name = "PPP Password Authentication Protocol"
-+#     fields_desc = [ByteField("Code", 0),
-+#                    ByteField("Identifier", 0),
-+#                    ShortField("length", 0),
-+#                    ByteField("value_size", 0),
-+#                    ConditionalField(StrFixedLenField(
-+#                        "value", "",
-+#                        length_from=lambda pkt: pkt.value_size),
-+#                        lambda pkt: pkt.value_size),
-+#                    ConditionalField(StrFixedLenField(
-+#                        "name", "",
-+#                        length_from=lambda pkt: pkt.length - pkt.value_size - 5),  # noqa: E501
-+#                        lambda pkt: pkt.length)]
-+#
-+#
-+# class PCO_ChallengeHandshakeAuthenticationProtocol(PCO_Option):
-+#     name = "PCO Password Authentication Protocol"
-+#     fields_desc = [ShortEnumField("type", None, PCO_PROTOCOL_TYPES),
-+#                    ByteField("length", 0),
-+#                    PacketField("PPP", None, PCO_PPP_Challenge)]
-+#
-+#
-+# PCO_PROTOCOL_CLASSES = {
-+#     0x0001: PCO_P_CSCF_IPv6_Address_Request,
-+#     0x0003: PCO_DNS_Server_IPv6,
-+#     0x0005: PCO_SOF,
-+#     0x000a: PCO_IP_Allocation_via_NAS,
-+#     0x000c: PCO_P_CSCF_IPv4_Address_Request,
-+#     0x000d: PCO_DNS_Server_IPv4,
-+#     0x0010: PCO_IPv4_Link_MTU_Request,
-+#     0x8021: PCO_IPCP,
-+#     0xc023: PCO_PasswordAuthentificationProtocol,
-+#     0xc223: PCO_ChallengeHandshakeAuthenticationProtocol,
-+# }
-+#
-+#
-+# def PCO_protocol_dispatcher(s):
-+#     """Choose the correct PCO element."""
-+#     proto_num = orb(s[0]) * 256 + orb(s[1])
-+#     cls = PCO_PROTOCOL_CLASSES.get(proto_num, Raw)
-+#     return cls(s)
-+#
-+#
-+# class IE_PCO(gtp.IE_Base):
-+#     name = "IE Protocol Configuration Options"
-+#     fields_desc = [ByteEnumField("ietype", 78, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("Extension", 0, 1),
-+#                    BitField("spare", 0, 4),
-+#                    BitField("PPP", 0, 3),
-+#                    PacketListField("Protocols", None, PCO_protocol_dispatcher,
-+#                                    length_from=lambda pkt: pkt.length - 1)]
-+#
-+#
-+# class IE_PAA(gtp.IE_Base):
-+#     name = "IE PAA"
-+#     fields_desc = [ByteEnumField("ietype", 79, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("spare", 0, 5),
-+#                    BitEnumField("PDN_type", None, 3, PDN_TYPES),
-+#                    ConditionalField(
-+#                        ByteField("ipv6_prefix_length", 8),
-+#                        lambda pkt: pkt.PDN_type in (2, 3)),
-+#                    ConditionalField(
-+#                        XBitField("ipv6", "2001:db8:0:42::", 128),
-+#                        lambda pkt: pkt.PDN_type in (2, 3)),
-+#                    ConditionalField(
-+#                        IPField("ipv4", 0), lambda pkt: pkt.PDN_type in (1, 3)),
-+#                    ]
-+#
-+#
-+# class IE_Bearer_QoS(gtp.IE_Base):
-+#     name = "IE Bearer Quality of Service"
-+#     fields_desc = [ByteEnumField("ietype", 80, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("spare", 0, 1),
-+#                    BitField("PCI", 0, 1),
-+#                    BitField("PriorityLevel", 0, 4),
-+#                    BitField("spare", 0, 1),
-+#                    BitField("PVI", 0, 1),
-+#                    ByteField("QCI", 0),
-+#                    BitField("MaxBitRateForUplink", 0, 40),
-+#                    BitField("MaxBitRateForDownlink", 0, 40),
-+#                    BitField("GuaranteedBitRateForUplink", 0, 40),
-+#                    BitField("GuaranteedBitRateForDownlink", 0, 40)]
-+#
-+#
-+# class IE_ChargingID(gtp.IE_Base):
-+#     name = "IE Charging ID"
-+#     fields_desc = [ByteEnumField("ietype", 94, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    IntField("ChargingID", 0)]
-+#
-+#
-+# class IE_ChargingCharacteristics(gtp.IE_Base):
-+#     name = "IE Charging ID"
-+#     fields_desc = [ByteEnumField("ietype", 95, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    XShortField("ChargingCharacteristric", 0)]
-+#
-+#
-+# class IE_PDN_type(gtp.IE_Base):
-+#     name = "IE PDN Type"
-+#     fields_desc = [ByteEnumField("ietype", 99, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("spare", 0, 5),
-+#                    BitEnumField("PDN_type", None, 3, PDN_TYPES)]
-+#
-+#
-+# class IE_UE_Timezone(gtp.IE_Base):
-+#     name = "IE UE Time zone"
-+#     fields_desc = [ByteEnumField("ietype", 114, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteField("Timezone", 0),
-+#                    ByteField("DST", 0)]
-+#
-+#
-+# class IE_Port_Number(gtp.IE_Base):
-+#     name = "IE Port Number"
-+#     fields_desc = [ByteEnumField("ietype", 126, IEType),
-+#                    ShortField("length", 2),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ShortField("PortNumber", RandShort())]
-+#
-+#
-+# class IE_APN_Restriction(gtp.IE_Base):
-+#     name = "IE APN Restriction"
-+#     fields_desc = [ByteEnumField("ietype", 127, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    ByteField("APN_Restriction", 0)]
-+#
-+#
-+# class IE_SelectionMode(gtp.IE_Base):
-+#     name = "IE Selection Mode"
-+#     fields_desc = [ByteEnumField("ietype", 128, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    BitField("spare", 0, 6),
-+#                    BitField("SelectionMode", 0, 2)]
-+#
-+#
-+# class IE_MMBR(gtp.IE_Base):
-+#     name = "IE Max MBR/APN-AMBR (MMBR)"
-+#     fields_desc = [ByteEnumField("ietype", 72, IEType),
-+#                    ShortField("length", None),
-+#                    BitField("CR_flag", 0, 4),
-+#                    BitField("instance", 0, 4),
-+#                    IntField("uplink_rate", 0),
-+#                    IntField("downlink_rate", 0)]
-+#
 +
 +ietypecls = {
 +    1: IE_CreatePDR,
@@ -2248,7 +2328,7 @@ index 00000000..1b2f2cb9
 +    18: IE_RemoveQER,
 +    19: IE_Cause,
 +    20: IE_SourceInterface,
-+    21: IE_FqTEID,
++    21: IE_FTEID,
 +    22: IE_NetworkInstance,
 +    23: IE_SDF_Filter,
 +    24: IE_ApplicationId,
@@ -2284,7 +2364,7 @@ index 00000000..1b2f2cb9
 +    54: IE_OverloadControlInformation,
 +    55: IE_Timer,
 +    56: IE_PDR_Id,
-+    57: IE_FqSEID,
++    57: IE_FSEID,
 +    58: IE_ApplicationID_PFDs,
 +    59: IE_PFDContext,
 +    60: IE_NodeId,
@@ -2360,7 +2440,7 @@ index 00000000..1b2f2cb9
 +    130: IE_RemoveTrafficEndpoint,
 +    131: IE_TrafficEndpointId,
 +    132: IE_EthernetPacketFilter,
-+    133: IE_MACaddress,
++    133: IE_MACAddress,
 +    134: IE_C_TAG,
 +    135: IE_S_TAG,
 +    136: IE_Ethertype,
@@ -2399,21 +2479,28 @@ index 00000000..1b2f2cb9
 +# class PFCPMessage(Packet):
 +#     fields_desc = [PacketListField("IE_list", None, IE_Dispatcher)]
 +
++
 +class PFCPHeartbeatRequest(Packet):
 +    name = "PFCP Heartbeat Request"
-+    fields_desc = [PacketListField("IE_list", [IE_RecoveryTimeStamp()
-+                                              ], IE_Dispatcher)]
++    fields_desc = [
++        PacketListField("IE_list", [IE_RecoveryTimeStamp()], IE_Dispatcher)
++    ]
++
 +
 +class PFCPHeartbeatResponse(Packet):
 +    name = "PFCP Heartbeat Response"
-+    fields_desc = [PacketListField("IE_list", [IE_RecoveryTimeStamp()
-+                                              ], IE_Dispatcher)]
++    fields_desc = [
++        PacketListField("IE_list", [IE_RecoveryTimeStamp()], IE_Dispatcher)
++    ]
++
 +    def answers(self, other):
 +        return isinstance(other, PFCPHeartbeatRequest)
++
 +
 +class PFCPPFDManagementRequest(Packet):
 +    name = "PFCP PFD Management Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPPFDManagementResponse(Packet):
 +    name = "PFCP PFD Management Response"
@@ -2422,9 +2509,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPPFDManagementRequest)
 +
++
 +class PFCPAssociationSetupRequest(Packet):
 +    name = "PFCP Association Setup Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPAssociationSetupResponse(Packet):
 +    name = "PFCP Association Setup Response"
@@ -2432,6 +2521,7 @@ index 00000000..1b2f2cb9
 +
 +    def answers(self, other):
 +        return isinstance(other, PFCPAssociationSetupRequest)
++
 +
 +class PFCPAssociationUpdateRequest(Packet):
 +    name = "PFCP Association Update Request"
@@ -2445,6 +2535,7 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPAssociationUpdateRequest)
 +
++
 +class PFCPAssociationReleaseRequest(Packet):
 +    name = "PFCP Association Release Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
@@ -2457,15 +2548,17 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPAssociationReleaseRequest)
 +
++
 +class PFCPVersionNotSupportedResponse(Packet):
 +    name = "PFCP Version Not Supported Response"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
-+
 +    # TODO: answers()
++
 +
 +class PFCPNodeReportRequest(Packet):
 +    name = "PFCP Node Report Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPNodeReportResponse(Packet):
 +    name = "PFCP Node Report Response"
@@ -2474,9 +2567,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPNodeReportRequest)
 +
++
 +class PFCPSessionSetDeletionRequest(Packet):
 +    name = "PFCP Session Set Deletion Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPSessionSetDeletionResponse(Packet):
 +    name = "PFCP Session Set Deletion Response"
@@ -2485,9 +2580,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPSessionSetDeletionRequest)
 +
++
 +class PFCPSessionEstablishmentRequest(Packet):
 +    name = "PFCP Session Establishment Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPSessionEstablishmentResponse(Packet):
 +    name = "PFCP Session Establishment Response"
@@ -2496,9 +2593,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPSessionEstablishmentRequest)
 +
++
 +class PFCPSessionModificationRequest(Packet):
 +    name = "PFCP Session Modification Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPSessionModificationResponse(Packet):
 +    name = "PFCP Session Modification Response"
@@ -2507,9 +2606,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPSessionModificationRequest)
 +
++
 +class PFCPSessionDeletionRequest(Packet):
 +    name = "PFCP Session Deletion Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPSessionDeletionResponse(Packet):
 +    name = "PFCP Session Deletion Response"
@@ -2518,9 +2619,11 @@ index 00000000..1b2f2cb9
 +    def answers(self, other):
 +        return isinstance(other, PFCPSessionDeletionRequest)
 +
++
 +class PFCPSessionReportRequest(Packet):
 +    name = "PFCP Session Report Request"
 +    fields_desc = [PacketListField("IE_list", [], IE_Dispatcher)]
++
 +
 +class PFCPSessionReportResponse(Packet):
 +    name = "PFCP Session Report Response"
@@ -2528,6 +2631,7 @@ index 00000000..1b2f2cb9
 +
 +    def answers(self, other):
 +        return isinstance(other, PFCPSessionReportRequest)
++
 +
 +bind_bottom_up(UDP, PFCP, dport=8805)
 +bind_bottom_up(UDP, PFCP, sport=8805)
@@ -2547,20 +2651,34 @@ index 00000000..1b2f2cb9
 +bind_layers(PFCP, PFCPNodeReportResponse, message_type=13)
 +bind_layers(PFCP, PFCPSessionSetDeletionRequest, message_type=14)
 +bind_layers(PFCP, PFCPSessionSetDeletionResponse, message_type=15)
-+bind_layers(PFCP, PFCPSessionEstablishmentRequest, message_type=50, S=1)
-+bind_layers(PFCP, PFCPSessionEstablishmentResponse, message_type=51, S=1)
-+bind_layers(PFCP, PFCPSessionModificationRequest, message_type=52, S=1)
-+bind_layers(PFCP, PFCPSessionModificationResponse, message_type=53, S=1)
-+bind_layers(PFCP, PFCPSessionDeletionRequest, message_type=54, S=1)
-+bind_layers(PFCP, PFCPSessionDeletionResponse, message_type=55, S=1)
-+bind_layers(PFCP, PFCPSessionReportRequest, message_type=56, S=1)
-+bind_layers(PFCP, PFCPSessionReportResponse, message_type=57, S=1)
++bind_layers(PFCP, PFCPSessionEstablishmentRequest, message_type=50)
++bind_layers(PFCP, PFCPSessionEstablishmentResponse, message_type=51)
++bind_layers(PFCP, PFCPSessionModificationRequest, message_type=52)
++bind_layers(PFCP, PFCPSessionModificationResponse, message_type=53)
++bind_layers(PFCP, PFCPSessionDeletionRequest, message_type=54)
++bind_layers(PFCP, PFCPSessionDeletionResponse, message_type=55)
++bind_layers(PFCP, PFCPSessionReportRequest, message_type=56)
++bind_layers(PFCP, PFCPSessionReportResponse, message_type=57)
++
++# FIXME: the following fails with pfcplib-generated pcaps:
++# bind_layers(PFCP, PFCPSessionEstablishmentRequest, message_type=50, S=1)
++# bind_layers(PFCP, PFCPSessionEstablishmentResponse, message_type=51, S=1)
++# bind_layers(PFCP, PFCPSessionModificationRequest, message_type=52, S=1)
++# bind_layers(PFCP, PFCPSessionModificationResponse, message_type=53, S=1)
++# bind_layers(PFCP, PFCPSessionDeletionRequest, message_type=54, S=1)
++# bind_layers(PFCP, PFCPSessionDeletionResponse, message_type=55, S=1)
++# bind_layers(PFCP, PFCPSessionReportRequest, message_type=56, S=1)
++# bind_layers(PFCP, PFCPSessionReportResponse, message_type=57, S=1)
++
++# TODO: limit possible child IEs based on IE type
++
++IE_UE_IP_Address(SD=0, V4=0, V6=0, spare=0)
 diff --git a/test/contrib/pfcp.uts b/test/contrib/pfcp.uts
 new file mode 100644
-index 00000000..67dc0906
+index 00000000..ec6a7100
 --- /dev/null
 +++ b/test/contrib/pfcp.uts
-@@ -0,0 +1,578 @@
+@@ -0,0 +1,791 @@
 +% PFCP tests
 +
 +# Type the following command to launch start the tests:
@@ -2568,14 +2686,182 @@ index 00000000..67dc0906
 +
 ++ Build packets & dissect
 +
++= Verify IEs
++
++import scapy.contrib.pfcp as pfcp_mod
++
++skip_IEs = [
++    IE_Base,
++    IE_Compound
++]
++
++for name, cls in pfcp_mod.__dict__.items():
++    if name.startswith("IE_") and type(cls) == Packet_metaclass and cls not in skip_IEs:
++        print("testing %s" % name)
++        pkt = cls()
++        bs = bytes(pkt)
++        restored = cls(bs)
++        assert bytes(restored) == bs
++        # TODO: also test packet field equality
++
++= Verify PCAPs
++
++~ pcaps
++
++# the following can be useful while adding more IE types
++# (e.g. updating for a newer version of the spec)
++
++def command(pkt):
++    f = []
++    for fn, fv in sorted(six.iteritems(pkt.fields), key=lambda item: item[0]):
++        if fn in ("length", "message_type"):
++            continue
++        if fn == "ietype" and not isinstance(pkt, IE_EnterpriseSpecific) and \
++           not isinstance(pkt, IE_NotImplemented):
++            continue
++        if fn.startswith("num_") or fn.endswith("_length"):
++            continue
++        if fv is None:
++            continue
++        fld = pkt.get_field(fn)
++        if isinstance(fld, ConditionalField) and not fld._evalcond(pkt):
++            continue
++        # if fv == fld.default:
++        #     continue
++        if isinstance(fv, (list, dict, set)) and len(fv) == 0:
++            continue
++        if isinstance(fv, Packet):
++            fv = command(fv)
++        elif fld.islist and fld.holds_packets and isinstance(fv, list):
++            fv = "[%s]" % ",".join(map(command, fv))
++        elif isinstance(fld, FlagsField):
++            fv = int(fv)
++        else:
++            fv = repr(fv)
++        f.append("%s=%s" % (fn, fv))
++    c = "%s(%s)" % (pkt.__class__.__name__, ", ".join(f))
++    if not isinstance(pkt.payload, NoPayload):
++        pc = command(pkt.payload)
++        if pc:
++            c += "/" + pc
++    return c
++
++broken_ies = set([])
++
++broken_ie_types = set([
++    cls.ie_type for cls in broken_ies
++])
++
++ignore = set([])
++
++def find_raw_or_not_implemented(pkt, prefix=""):
++    if prefix in ignore:
++        return False, False
++    if hasattr(pkt, "IE_list"):
++        prev = None
++        found_any = False
++        for n, ie in enumerate(pkt.IE_list, 1):
++            if type(ie) in broken_ies:
++                return False, False
++            name = "%s-%d-%s" % (prefix, n, type(ie).__name__)
++            found, leaf = find_raw_or_not_implemented(ie, prefix=name)
++            if found:
++                found_any = True
++            if found and leaf:
++                print("gotcha: %s %r" % (prefix, ie))
++                bs = b""
++                if prev is not None:
++                    bs = bytes(prev)
++                bs += bytes(ie)
++                if prev is not None:
++                    prev.show2()
++                ie.show2()
++                print("%s -- bad val: %s" % (prefix, bytes_hex(bs).decode()))
++                if len(bs) > 4:
++                    l = bs[2] * 256 + bs[3]
++                    if len(bs) >= l + 4:
++                        print("bad val (length-limited): %s" % bytes_hex(bs[:l + 4]).decode())
++                print("bad val (short): %s" % bytes_hex(bytes(ie)).decode())
++            prev = ie
++        return found_any, False
++    if isinstance(pkt, Raw):
++        bs = bytes(pkt)
++        if len(bs) > 4:
++            ie_type = bs[0] * 256 + bs[1]
++            if ie_type in broken_ie_types:
++                return False, True
++        return True, True
++    if isinstance(pkt, Padding) or isinstance(pkt, IE_NotImplemented):
++        return True, True
++    return False, True
++
++def find_mismatching_command(pkt, prefix=""):
++    c = command(pkt)
++    if hasattr(pkt, "IE_list"):
++        for n, ie in enumerate(pkt.IE_list, 1):
++            name = "%s-%d-%s" % (prefix, n, type(ie).__name__)
++            find_mismatching_command(ie, prefix=name)
++    if bytes(eval(c)) != bytes(pkt):
++        print(prefix)
++        print("ORIG: %s" % bytes_hex(bytes(pkt)))
++        print("EVAL: %s" % bytes_hex(bytes(eval(c))))
++        raise AssertionError("bad command: %s" % c)
++
++for n, pkt in enumerate(rdpcap("test/pcaps/pfcp.pcap"), 1):
++    if PFCP in pkt:
++        # if IE_DLBufferingSuggestedPacketCount in pkt:
++        #     continue
++        pkt0 = pkt[PFCP]
++        if IE_NotImplemented in pkt0 or Raw in pkt0 or IE_NotImplemented in pkt0 or Padding in pkt0:
++            found, leaf = find_raw_or_not_implemented(pkt, prefix=str(n))
++            if not found:
++                # ignored
++                continue
++            pkt0.show2()
++            raise AssertionError("IE_NotImplemented / Raw / Padding detected")
++        bs = bytes(pkt0)
++        pkt1 = PFCP(bs)
++        # TODO: diff show2() result
++        c0 = command(pkt0)
++        c1 = command(pkt1)
++        pkt2 = eval(c1)
++        c2 = command(pkt2)
++        if bytes(pkt2) != bs:
++            find_mismatching_command(pkt0, prefix=str(n))
++            print(bytes_hex(bytes(pkt2)))
++            print(bytes_hex(bs))
++            raise AssertionError("bytes(pkt2) != bs")
++        if bs != pkt0.original:
++            print(bytes_hex(bs))
++            print(bytes_hex(pkt0.original))
++            raise AssertionError("bs != pkt0.original")
++        if bytes(pkt1) != bs:
++            print(bytes_hex(bytes(pkt1)))
++            print(bytes_hex(bs))
++            raise AssertionError("bytes(pkt1) != bs")
++        if c0 != c1:
++            print("COMMAND MISMATCH:\n----\n%s\n----\n%s\n\n" % (c0, c1))
++            pkt0.show2()
++            pkt1.show2()
++            print(bytes_hex(bytes(pkt0)))
++            print("packet index: %d\n" % n)
++            raise AssertionError("c0 != c1")
++        if c0 != c2:
++            print("EVAL COMMAND MISMATCH:\n----\n%s\n----\n%s\n\n" % (c0, c2))
++            pkt0.show2()
++            pkt2.show2()
++            print(bytes_hex(bytes(pkt0)))
++            print("packet index: %d\n" % n)
++            raise AssertionError("c0 != c2")
++
 += Build and dissect PFCP Association Setup Request
 +
 +pfcpASReqBytes = hex_bytes("200500160000010000600004e1a47d08003c0006020465726777")
 +
 +pfcpASReq = PFCP(version=1, S=0, seq=1) / \
 +  PFCPAssociationSetupRequest(IE_list=[
-+      IE_RecoveryTimeStamp(recovery_time_stamp=3785653512),
-+      IE_NodeId(node_id_type="FQDN", node_id="ergw")
++      IE_RecoveryTimeStamp(timestamp=3785653512),
++      IE_NodeId(id_type="FQDN", id="ergw")
 +  ])
 +
 +# print("%r" % bytes(pfcpASReq))
@@ -2592,23 +2878,21 @@ index 00000000..67dc0906
 +assert isinstance(ies[0], IE_RecoveryTimeStamp)
 +assert ies[0].ietype == 96
 +assert ies[0].length == 4
-+assert ies[0].recovery_time_stamp == 3785653512
++assert ies[0].timestamp == 3785653512
 +assert isinstance(ies[1], IE_NodeId)
 +assert ies[1].ietype == 60
 +assert ies[1].length == 6
-+assert ies[1].node_id_type == 2
-+assert ies[1].node_id == b"ergw"
++assert ies[1].id_type == 2
++assert ies[1].id == b"ergw"
 +
 += Build and dissect PFCP Association Setup Response
 +
 +pfcpASRespBytes = hex_bytes("2006008c00000100001300010100600004e1a47af9002b00020001007400092980ac1201020263708002006448f9767070207631392e30382e312d3339377e673465333431343066612d6469727479206275696c7420627920726f6f74206f6e206275696c646b697473616e64626f7820617420576564204465632031312031353a30323a3535205554432032303139")
 +
-+PFCP(pfcpASRespBytes).show()
-+
 +pfcpASResp = PFCP(version=1, S=0, seq=1) / \
 +  PFCPAssociationSetupResponse(IE_list=[
 +      IE_Cause(cause="Request accepted"),
-+      IE_RecoveryTimeStamp(recovery_time_stamp=3785652985),
++      IE_RecoveryTimeStamp(timestamp=3785652985),
 +      IE_UPFunctionFeatures(
 +          TREU=0, HEEU=0, PFDM=0, FTUP=0, TRST=0, DLBD=0, DDND=0, BUCP=0,
 +          spare=0, PFDE=0, FRRT=0, TRACE=0, QUOAC=0, UDBC=0, PDIU=0, EMPU=1),
@@ -2617,11 +2901,12 @@ index 00000000..67dc0906
 +          ipv4="172.18.1.2", network_instance="cp"),
 +      IE_EnterpriseSpecific(
 +          ietype=32770,
-+          enterprise_id="Travelping GmbH",
++          enterprise_id=18681,
 +          data="vpp v19.08.1-397~g4e34140fa-dirty built by root on buildkitsandbox at Wed Dec 11 15:02:55 UTC 2019")
 +   ])
 +
 +
++pfcpASResp.show2()
 +assert bytes(pfcpASResp) == pfcpASRespBytes
 +
 +pfcpASResp = PFCP(pfcpASRespBytes)
@@ -2639,7 +2924,7 @@ index 00000000..67dc0906
 +assert isinstance(ies[1], IE_RecoveryTimeStamp)
 +assert ies[1].ietype == 96
 +assert ies[1].length == 4
-+assert ies[1].recovery_time_stamp == 3785652985
++assert ies[1].timestamp == 3785652985
 +assert isinstance(ies[2], IE_UPFunctionFeatures)
 +assert ies[2].ietype == 43
 +assert ies[2].length == 2
@@ -2683,46 +2968,46 @@ index 00000000..67dc0906
 +  PFCPSessionEstablishmentRequest(IE_list=[
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=2),
++          IE_FAR_Id(id=2),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="Access"),
-+              IE_NetworkInstance(network_instance="access"),
++              IE_NetworkInstance(instance="access"),
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(DROP=1),
-+          IE_FAR_Id(far_id=1)
++          IE_FAR_Id(id=1)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=2),
-+          IE_OuterHeaderRemoval(outer_header_removal="GTP-U/UDP/IPv4"),
++          IE_FAR_Id(id=2),
++          IE_OuterHeaderRemoval(header="GTP-U/UDP/IPv4"),
 +          IE_PDI(IE_list=[
-+              IE_FqTEID(V4=1, TEID=0x104c9033, ipv4="172.18.1.2"),
-+              IE_NetworkInstance(network_instance="cp"),
++              IE_FTEID(V4=1, TEID=0x104c9033, ipv4="172.18.1.2"),
++              IE_NetworkInstance(instance="cp"),
 +              IE_SourceInterface(interface="CP-function"),
 +          ]),
-+          IE_PDR_Id(pdr_id=2),
++          IE_PDR_Id(id=2),
 +          IE_Precedence(precedence=100)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=1),
++          IE_FAR_Id(id=1),
 +          IE_PDI(IE_list=[
-+              IE_NetworkInstance(network_instance="access"),
-+              IE_SDF_Filter(FD=1, flow_desc="permit out ip from any to any"),
++              IE_NetworkInstance(instance="access"),
++              IE_SDF_Filter(FD=1, flow_description="permit out ip from any to any"),
 +              IE_SourceInterface(interface="Access"),
 +          ]),
-+          IE_PDR_Id(pdr_id=1),
++          IE_PDR_Id(id=1),
 +          IE_Precedence(precedence=65000),
-+          IE_URR_Id(urr_id=1)
++          IE_URR_Id(id=1)
 +      ]),
 +      IE_CreateURR(IE_list=[
 +          IE_MeasurementMethod(EVENT=1),
-+          IE_ReportingTriggers(START=1),
-+          IE_TimeQuota(time_quota=60),
-+          IE_URR_Id(urr_id=1)
++          IE_ReportingTriggers(start_of_traffic=1),
++          IE_TimeQuota(quota=60),
++          IE_URR_Id(id=1)
 +      ]),
-+      IE_FqSEID(v4=1, seid=0xffde7210bf97810a, ipv4="172.18.1.1"),
-+      IE_NodeId(node_id_type="FQDN", node_id="ergw")
++      IE_FSEID(v4=1, seid=0xffde7210bf97810a, ipv4="172.18.1.1"),
++      IE_NodeId(id_type="FQDN", id="ergw")
 +    ])
 +
 +assert bytes(pfcpSEReq1) == pfcpSEReq1Bytes
@@ -2733,98 +3018,98 @@ index 00000000..67dc0906
 +pfcpSEReq2 = PFCP(seq=8) / PFCPSessionEstablishmentRequest(IE_list=[
 +    IE_CreateFAR(IE_list=[
 +        IE_ApplyAction(FORW=1),
-+        IE_FAR_Id(far_id=4),
++        IE_FAR_Id(id=4),
 +        IE_ForwardingParameters(IE_list=[
 +            IE_DestinationInterface(interface="SGi-LAN/N6-LAN"),
-+            IE_NetworkInstance(network_instance="sgi"),
-+            IE_RedirectInformation(redirect_address_type="URL", addr="http://example.com"),
++            IE_NetworkInstance(instance="sgi"),
++            IE_RedirectInformation(type="URL", address="http://example.com"),
 +        ])
 +    ]),
 +    IE_CreateFAR(IE_list=[
 +        IE_ApplyAction(FORW=1),
-+        IE_FAR_Id(far_id=2),
++        IE_FAR_Id(id=2),
 +        IE_ForwardingParameters(IE_list=[
 +            IE_DestinationInterface(interface="SGi-LAN/N6-LAN"),
-+            IE_NetworkInstance(network_instance="sgi"),
++            IE_NetworkInstance(instance="sgi"),
 +        ])
 +    ]),
 +    IE_CreateFAR(IE_list=[
 +        IE_ApplyAction(FORW=1),
-+        IE_FAR_Id(far_id=3),
++        IE_FAR_Id(id=3),
 +        IE_ForwardingParameters(IE_list=[
 +            IE_DestinationInterface(interface="Access"),
-+            IE_NetworkInstance(network_instance="access")
++            IE_NetworkInstance(instance="access")
 +        ])
 +    ]),
 +    IE_CreateFAR(IE_list=[
 +        IE_ApplyAction(FORW=1),
-+        IE_FAR_Id(far_id=1),
++        IE_FAR_Id(id=1),
 +        IE_ForwardingParameters(IE_list=[
 +            IE_DestinationInterface(interface="Access"),
-+            IE_NetworkInstance(network_instance="access")
++            IE_NetworkInstance(instance="access")
 +        ])
 +    ]),
 +    IE_CreatePDR(IE_list=[
-+        IE_FAR_Id(far_id=4),
++        IE_FAR_Id(id=4),
 +        IE_PDI(IE_list=[
-+            IE_NetworkInstance(network_instance="access"),
++            IE_NetworkInstance(instance="access"),
 +            IE_SDF_Filter(
-+                FD=1, flow_desc_length=42, flow_desc="permit out ip from 198.19.65.4 to assigned"),
++                FD=1, flow_description="permit out ip from 198.19.65.4 to assigned"),
 +            IE_SourceInterface(interface="Access"),
 +            IE_UE_IP_Address(ipv4="10.192.0.0", V4=1)
 +        ]),
-+        IE_PDR_Id(pdr_id=4),
++        IE_PDR_Id(id=4),
 +        IE_Precedence(precedence=100),
-+        IE_URR_Id(urr_id=2)
++        IE_URR_Id(id=2)
 +    ]),
 +    IE_CreatePDR(IE_list=[
-+        IE_FAR_Id(far_id=2),
++        IE_FAR_Id(id=2),
 +        IE_PDI(IE_list=[
-+            IE_NetworkInstance(network_instance="access"),
-+            IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.2 to assigned"),
++            IE_NetworkInstance(instance="access"),
++            IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.2 to assigned"),
 +            IE_SourceInterface(interface="Access"),
 +            IE_UE_IP_Address(ipv4="10.192.0.0", V4=1)
 +        ]),
-+        IE_PDR_Id(pdr_id=2),
++        IE_PDR_Id(id=2),
 +        IE_Precedence(precedence=200),
-+        IE_URR_Id(urr_id=1)
++        IE_URR_Id(id=1)
 +    ]),
 +    IE_CreatePDR(IE_list=[
-+        IE_FAR_Id(far_id=3),
++        IE_FAR_Id(id=3),
 +        IE_PDI(IE_list=[
-+            IE_NetworkInstance(network_instance="sgi"),
-+            IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.4 to assigned"),
++            IE_NetworkInstance(instance="sgi"),
++            IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.4 to assigned"),
 +            IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
 +            IE_UE_IP_Address(ipv4="10.192.0.0", SD=1, V4=1)
 +        ]),
-+        IE_PDR_Id(pdr_id=3),
++        IE_PDR_Id(id=3),
 +        IE_Precedence(precedence=100),
-+        IE_URR_Id(urr_id=2)
++        IE_URR_Id(id=2)
 +    ]),
 +    IE_CreatePDR(IE_list=[
-+        IE_FAR_Id(far_id=1),
++        IE_FAR_Id(id=1),
 +        IE_PDI(IE_list=[
-+            IE_NetworkInstance(network_instance="sgi"),
-+            IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.2 to assigned"),
++            IE_NetworkInstance(instance="sgi"),
++            IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.2 to assigned"),
 +            IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
 +            IE_UE_IP_Address(ipv4="10.192.0.0", SD=1, V4=1)
 +        ]),
-+        IE_PDR_Id(pdr_id=1),
++        IE_PDR_Id(id=1),
 +        IE_Precedence(precedence=200),
-+        IE_URR_Id(urr_id=1)
++        IE_URR_Id(id=1)
 +    ]),
 +    IE_CreateURR(IE_list=[
 +        IE_MeasurementMethod(VOLUM=1),
 +        IE_ReportingTriggers(),
-+        IE_URR_Id(urr_id=2)
++        IE_URR_Id(id=2)
 +    ]),
 +    IE_CreateURR(IE_list=[
 +        IE_MeasurementMethod(VOLUM=1),
 +        IE_ReportingTriggers(),
-+        IE_URR_Id(urr_id=1)
++        IE_URR_Id(id=1)
 +    ]),
-+    IE_FqSEID(ipv4="172.18.1.1", v4=1, seid=0xffde7210d971c146),
-+    IE_NodeId(node_id_type="FQDN", node_id="ergw")])
++    IE_FSEID(ipv4="172.18.1.1", v4=1, seid=0xffde7210d971c146),
++    IE_NodeId(id_type="FQDN", id="ergw")])
 +
 +assert bytes(pfcpSEReq2) == pfcpSEReq2Bytes
 +assert bytes(PFCP(pfcpSEReq2Bytes)) == pfcpSEReq2Bytes
@@ -2835,142 +3120,142 @@ index 00000000..67dc0906
 +  PFCPSessionEstablishmentRequest(IE_list=[
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=6),
++          IE_FAR_Id(id=6),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="SGi-LAN/N6-LAN"),
-+              IE_NetworkInstance(network_instance="sgi")
++              IE_NetworkInstance(instance="sgi")
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=4),
++          IE_FAR_Id(id=4),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="SGi-LAN/N6-LAN"),
-+              IE_NetworkInstance(network_instance="sgi"),
-+              IE_RedirectInformation(redirect_address_type="URL", addr="http://example.com")
++              IE_NetworkInstance(instance="sgi"),
++              IE_RedirectInformation(type="URL", address="http://example.com")
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=2),
++          IE_FAR_Id(id=2),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="SGi-LAN/N6-LAN"),
-+              IE_NetworkInstance(network_instance="sgi")
++              IE_NetworkInstance(instance="sgi")
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=5),
++          IE_FAR_Id(id=5),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="Access"),
-+              IE_NetworkInstance(network_instance="access")
++              IE_NetworkInstance(instance="access")
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=3),
++          IE_FAR_Id(id=3),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="Access"),
-+              IE_NetworkInstance(network_instance="access")
++              IE_NetworkInstance(instance="access")
 +          ])
 +      ]),
 +      IE_CreateFAR(IE_list=[
 +          IE_ApplyAction(FORW=1),
-+          IE_FAR_Id(far_id=1),
++          IE_FAR_Id(id=1),
 +          IE_ForwardingParameters(IE_list=[
 +              IE_DestinationInterface(interface="Access"),
-+              IE_NetworkInstance(network_instance="access")
++              IE_NetworkInstance(instance="access")
 +          ])
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=6),
++          IE_FAR_Id(id=6),
 +          IE_PDI(IE_list=[
-+              IE_ApplicationId(app_id="TST"),
-+              IE_NetworkInstance(network_instance="access"),
++              IE_ApplicationId(id="TST"),
++              IE_NetworkInstance(instance="access"),
 +              IE_SourceInterface(interface="Access"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=6),
++          IE_PDR_Id(id=6),
 +          IE_Precedence(precedence=150),
-+          IE_URR_Id(urr_id=3)
++          IE_URR_Id(id=3)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=4),
++          IE_FAR_Id(id=4),
 +          IE_PDI(IE_list=[
-+              IE_NetworkInstance(network_instance="access"),
-+              IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.4 to assigned"),
++              IE_NetworkInstance(instance="access"),
++              IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.4 to assigned"),
 +              IE_SourceInterface(interface="Access"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=4),
++          IE_PDR_Id(id=4),
 +          IE_Precedence(precedence=100),
-+          IE_URR_Id(urr_id=2)
++          IE_URR_Id(id=2)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=2),
++          IE_FAR_Id(id=2),
 +          IE_PDI(IE_list=[
-+              IE_NetworkInstance(network_instance="access"),
-+              IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.2 to assigned"),
++              IE_NetworkInstance(instance="access"),
++              IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.2 to assigned"),
 +              IE_SourceInterface(interface="Access"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=2),
++          IE_PDR_Id(id=2),
 +          IE_Precedence(precedence=200),
-+          IE_URR_Id(urr_id=1)
++          IE_URR_Id(id=1)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=5),
++          IE_FAR_Id(id=5),
 +          IE_PDI(IE_list=[
-+              IE_ApplicationId(app_id="TST"),
-+              IE_NetworkInstance(network_instance="sgi"),
++              IE_ApplicationId(id="TST"),
++              IE_NetworkInstance(instance="sgi"),
 +              IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', SD=1, V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=5),
++          IE_PDR_Id(id=5),
 +          IE_Precedence(precedence=150),
-+          IE_URR_Id(urr_id=3)
++          IE_URR_Id(id=3)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=3),
++          IE_FAR_Id(id=3),
 +          IE_PDI(IE_list=[
-+              IE_NetworkInstance(network_instance="sgi"),
-+              IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.4 to assigned"),
++              IE_NetworkInstance(instance="sgi"),
++              IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.4 to assigned"),
 +              IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', SD=1, V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=3),
++          IE_PDR_Id(id=3),
 +          IE_Precedence(precedence=100),
-+          IE_URR_Id(urr_id=2)
++          IE_URR_Id(id=2)
 +      ]),
 +      IE_CreatePDR(IE_list=[
-+          IE_FAR_Id(far_id=1),
++          IE_FAR_Id(id=1),
 +          IE_PDI(IE_list=[
-+              IE_NetworkInstance(network_instance="sgi"),
-+              IE_SDF_Filter(FD=1, flow_desc="permit out ip from 198.19.65.2 to assigned"),
++              IE_NetworkInstance(instance="sgi"),
++              IE_SDF_Filter(FD=1, flow_description="permit out ip from 198.19.65.2 to assigned"),
 +              IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
 +              IE_UE_IP_Address(ipv4='10.192.0.0', SD=1, V4=1)
 +          ]),
-+          IE_PDR_Id(pdr_id=1),
++          IE_PDR_Id(id=1),
 +          IE_Precedence(precedence=200),
-+          IE_URR_Id(urr_id=1)
++          IE_URR_Id(id=1)
 +      ]),
 +      IE_CreateURR(IE_list=[
 +          IE_MeasurementMethod(VOLUM=1),
 +          IE_ReportingTriggers(),
-+          IE_URR_Id(urr_id=2)
++          IE_URR_Id(id=2)
 +      ]),
 +      IE_CreateURR(IE_list=[
 +          IE_MeasurementMethod(VOLUM=1, DURAT=1),
 +          IE_ReportingTriggers(),
-+          IE_URR_Id(urr_id=3)
++          IE_URR_Id(id=3)
 +      ]),
 +      IE_CreateURR(IE_list=[
 +          IE_MeasurementMethod(VOLUM=1),
 +          IE_ReportingTriggers(),
-+          IE_URR_Id(urr_id=1)
++          IE_URR_Id(id=1)
 +      ]),
-+      IE_FqSEID(ipv4='172.18.1.1', v4=1, seid=0xffde7211a5ab800a),
-+      IE_NodeId(node_id_type="FQDN", node_id="ergw")
++      IE_FSEID(ipv4='172.18.1.1', v4=1, seid=0xffde7211a5ab800a),
++      IE_NodeId(id_type="FQDN", id="ergw")
 +  ])
 +
 +assert bytes(pfcpSEReq3) == pfcpSEReq3Bytes
@@ -2983,7 +3268,7 @@ index 00000000..67dc0906
 +pfcpSEResp = PFCP(version=1, S=1, seq=2, seid=0xffde7210bf97810a) / \
 +  PFCPSessionEstablishmentResponse(IE_list=[
 +      IE_Cause(cause="Request accepted"),
-+      IE_FqSEID(ipv4="172.18.1.2", v4=1, seid=0xffde7210bf97810a),
++      IE_FSEID(ipv4="172.18.1.2", v4=1, seid=0xffde7210bf97810a),
 +  ])
 +
 +assert bytes(pfcpSEResp) == pfcpSERespBytes
@@ -2996,7 +3281,7 @@ index 00000000..67dc0906
 +
 +pfcpHReq = PFCP(version=1, S=0, seq=3) / \
 +  PFCPHeartbeatRequest(IE_list=[
-+      IE_RecoveryTimeStamp(recovery_time_stamp=3785653512)
++      IE_RecoveryTimeStamp(timestamp=3785653512)
 +  ])
 +
 +assert bytes(pfcpHReq) == pfcpHReqBytes
@@ -3008,7 +3293,7 @@ index 00000000..67dc0906
 +
 +pfcpHResp = PFCP(version=1, S=0, seq=3) / \
 +  PFCPHeartbeatResponse(IE_list=[
-+      IE_RecoveryTimeStamp(recovery_time_stamp=3785652985)
++      IE_RecoveryTimeStamp(timestamp=3785652985)
 +  ])
 +
 +assert bytes(pfcpHResp) == pfcpHRespBytes
@@ -3023,8 +3308,8 @@ index 00000000..67dc0906
 +  PFCPSessionReportRequest(IE_list=[
 +      IE_ReportType(USAR=1),
 +      IE_UsageReport_SRR(IE_list=[
-+          IE_URR_Id(urr_id=1),
-+          IE_UR_SEQN(ur_seqn=1),
++          IE_URR_Id(id=1),
++          IE_UR_SEQN(number=1),
 +          IE_UsageReportTrigger(START=1),
 +          IE_UE_IP_Address(ipv4="10.192.0.1", V4=1)
 +      ])
@@ -3039,31 +3324,47 @@ index 00000000..67dc0906
 +  PFCPSessionReportRequest(IE_list=[
 +      IE_ReportType(USAR=1),
 +      IE_UsageReport_SRR(IE_list=[
-+          IE_URR_Id(urr_id=3),
-+          IE_UR_SEQN(ur_seqn=24),
++          IE_URR_Id(id=3),
++          IE_UR_SEQN(number=24),
 +          IE_UsageReportTrigger(PERIO=1),
 +          IE_StartTime(timestamp=3786688391),
 +          IE_EndTime(timestamp=3786688401),
 +          IE_VolumeMeasurement(
-+              DLVOL=1, ULVOL=1, TOVOL=1, total_volume=0, uplink_volume=0, downlink_volume=0),
++              DLVOL=1, ULVOL=1, TOVOL=1, total=0, uplink=0, downlink=0),
 +          IE_DurationMeasurement(duration=10),
 +          IE_EnterpriseSpecific(
 +              ietype=32771,
-+              enterprise_id="Travelping GmbH",
++              enterprise_id=18681,
 +              data=b'\xe1\xb4G\x917\xcb\xd8\x00'),
 +          IE_EnterpriseSpecific(
 +              ietype=32772,
-+              enterprise_id="Travelping GmbH",
++              enterprise_id=18681,
 +              data=b'\xe1\xb4G\x877\xcb\xd8\x00'),
 +          IE_EnterpriseSpecific(
 +              ietype=32773,
-+              enterprise_id="Travelping GmbH",
++              enterprise_id=18681,
 +              data=b'\xe1\xb4G\x917\xcb\xd8\x00')
 +      ])
 +  ])
 +
 +assert bytes(pfcpSRReq2) == pfcpSRReq2Bytes
 +assert bytes(PFCP(pfcpSRReq2Bytes)) == pfcpSRReq2Bytes
++
++pfcpSRReq3Bytes = hex_bytes("21380035a2a2aa9ad7f316fd0000010000270001020050002000510004000000010068000400000000003f0003100000005d000502ac100202")
++
++pfcpSRReq3 = PFCP(seq=1, seid=11719116762396169981) / \
++    PFCPSessionReportRequest(IE_list=[
++        IE_ReportType(USAR=1),
++        IE_UsageReport_SRR(IE_list=[
++            IE_URR_Id(id=1),
++            IE_UR_SEQN(number=0),
++            IE_UsageReportTrigger(START=1, extra_data=b'\x00'),
++            IE_UE_IP_Address(ipv4='172.16.2.2', V4=1)
++        ])
++    ])
++
++assert bytes(pfcpSRReq3) == pfcpSRReq3Bytes
++assert bytes(PFCP(pfcpSRReq3Bytes)) == pfcpSRReq3Bytes
 +
 += Build and dissect PFCP Session Report Response
 +
@@ -3085,7 +3386,7 @@ index 00000000..67dc0906
 +
 +pfcpSMReq = PFCP(version=1, seq=6, seid=0xffde72125aeb00a3) / \
 +    PFCPSessionModificationRequest(IE_list=[
-+        IE_QueryURR(IE_list=[IE_URR_Id(urr_id=1)])
++        IE_QueryURR(IE_list=[IE_URR_Id(id=1)])
 +    ])
 +assert bytes(pfcpSMReq) == pfcpSMReqBytes
 +assert bytes(PFCP(pfcpSMReqBytes)) == pfcpSMReqBytes
@@ -3098,8 +3399,8 @@ index 00000000..67dc0906
 +    PFCPSessionModificationResponse(IE_list=[
 +        IE_Cause(cause=1),
 +        IE_UsageReport_SMR(IE_list=[
-+            IE_URR_Id(urr_id=1),
-+            IE_UR_SEQN(ur_seqn=0),
++            IE_URR_Id(id=1),
++            IE_UR_SEQN(number=0),
 +            IE_UsageReportTrigger(IMMER=1),
 +            IE_StartTime(timestamp=3782115066),
 +            IE_EndTime(timestamp=3782115066),
@@ -3115,27 +3416,61 @@ index 00000000..67dc0906
 +assert bytes(PFCP(pfcpSMRespBytes)) == pfcpSMRespBytes
 +assert pfcpSMResp.answers(pfcpSMReq)
 +
++= Verify IEs
++
++from difflib import unified_diff
++cases = [
++    dict(
++        hex="0054000a0100010000000a177645",
++        expect=IE_OuterHeaderCreation(GTPUUDPIPV4=1, TEID=0x01000000, ipv4="10.23.118.69")),
++    dict(
++        hex="002900050461626364",
++        expect=IE_ForwardingPolicy(policy_identifier="abcd")),
++    dict(
++        hex="002e0001ae",
++        expect=IE_DownlinkDataNotificationDelay(delay=174)),
++    dict(
++        hex="003d00020000",
++        expect=IE_PFDContents()),
++    dict(
++        hex="005e00070300205903e95d",
++        expect=IE_PacketRate(ULPR=1, DLPR=1,
++                             ul_time_unit="minute", ul_max_packet_rate=8281,
++                             dl_time_unit="day", dl_max_packet_rate=59741)),
++    dict(
++        hex="00850007010906638dccd5",
++        expect=IE_MACAddress(SOUR=1, source_mac="09:06:63:8d:cc:d5")),
++    dict(
++        hex="00540014080017d0bd69dceb747a1e036c0f9c8d4af115d0",
++        expect=IE_OuterHeaderCreation(UDPIPV6=1,
++                                      ipv6="17d0:bd69:dceb:747a:1e03:6c0f:9c8d:4af1",
++                                      port=5584)),
++    dict(
++        hex="006700050280df69b2",
++        expect=IE_RemoteGTP_U_Peer(V4=1, ipv4="128.223.105.178")),
++]
++
++for case in cases:
++    bs = hex_bytes(case["hex"])
++    exp = case["expect"]
++    dissected = type(exp)(bs)
++    exp_text = exp.show2(dump=True)
++    dissected_text = dissected.show2(dump=True)
++    if exp_text != dissected_text:
++        print("---\n%s\n---\n%s\n" % (exp_text, dissected_text))
++        for line in unified_diff(exp_text.split("\n"), dissected_text.split("\n"),
++                                 fromfile="expected", tofile="dissected"):
++            print(line)
++        raise AssertionError("text mismatch")
++    assert bytes(dissected) == bs
++    assert bytes(exp) == bs
++
 +# from difflib import unified_diff
 +# expected = PFCP(pfcpSRReq2Bytes).show2(dump=True).split("\n")
 +# actual = pfcpSRReq2.show2(dump=True).split("\n")
 +# for line in unified_diff(expected, actual, fromfile="expected", tofile="actual"):
 +#     print(line)
-+
-+# TODO: i2repr for FAR ID
-+
-+# print("%r" % pfcpSERBytes)
-+# print("%r" % bytes(pfcpSER))
-+
-+# NOTE: pkt.command() is very useful for adding new test cases
-+
-+# TODO: load trace (pfcplib, ergw, real captures) and go through it,
-+# dissecting and rebuilding packages. Fail if 'raw' data or 'undefined'
-+# IEs are found.
-+
-+# TODO: Application Detection Information IE Type = 68 (decimal)
-+# show upf session !!!!
-+# show upf flows
-+# TODO: look at scs-cnode-log-1.txt for the app references (also check reports)
-+# TODO: impl relevant packet types here
-+
-+# TODO: https://scapy.readthedocs.io/en/latest/extending.html
+diff --git a/test/pcaps/pfcp.pcap b/test/pcaps/pfcp.pcap
+new file mode 100644
+index 00000000..16a62b73
+Binary files /dev/null and b/test/pcaps/pfcp.pcap differ
