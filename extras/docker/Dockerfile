@@ -1,0 +1,43 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:bionic AS build-stage
+
+WORKDIR /
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    mkdir /src && \
+    apt-get update && \
+    apt-get dist-upgrade -yy && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+	    build-essential sudo
+
+ADD . /src/vpp
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    cd /src/vpp && \
+    make UNATTENDED=yes install-dep && \
+    make pkg-deb V=1
+
+# --- helper to extract *.deb from CI/CD ---------------------
+ENTRYPOINT ["/bin/sh", "-c", "cd /src/vpp/build-root; find . -type f -name '*.deb' -print0 | tar --null -cf - -T -"]
+
+#
+# --- final image --------------------------------------------
+FROM ubuntu:bionic AS final-stage
+WORKDIR /
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    --mount=target=/src,source=/src,from=build-stage,type=bind \
+    ls -l / && \
+    ls -l /src && \
+    ls -l /src/vpp/build-root
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    --mount=target=/src,source=/src,from=build-stage,type=bind \
+    apt-get update && apt-get dist-upgrade -yy && \
+    apt-get install --no-install-recommends -yy liblz4-tool tar \
+	/src/vpp/build-root/vpp_*.deb \
+	/src/vpp/build-root/vpp-plugin-core_*.deb \
+	/src/vpp/build-root/libvppinfra_*.deb \
+	/src/vpp/build-root/vpp-api-python_*.deb
+
+ENTRYPOINT /usr/bin/vpp
