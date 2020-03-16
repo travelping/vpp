@@ -1,0 +1,9 @@
+# Run from top of vpp repo with command:
+# docker build -f extras/docker/Dockerfile.test -t vppbuild .
+FROM ubuntu:bionic
+ADD . /src/vpp
+WORKDIR /src/vpp
+RUN apt-get update
+RUN apt-get -y install make sudo git curl build-essential
+RUN UNATTENDED=y make install-dep
+CMD ["/bin/bash"]
