@@ -23,11 +23,20 @@
 
 typedef struct
 {
-  svm_fifo_t *server_rx_fifo;
-  svm_fifo_t *server_tx_fifo;
+  svm_fifo_t *rx_fifo;
+  svm_fifo_t *tx_fifo;
 
-  u64 vpp_server_handle;
-  u64 vpp_active_open_handle;
+  u32 session_index;
+
+  u32 proxy_session_index;
+  u32 proxy_thread_index;
+  u32 active_open_session_index;
+  u32 active_open_thread_index;
+
+  u32 flow_index;
+  int is_reverse:1;
+
+  u8 *rx_buf;				/**< intermediate rx buffers */
 } upf_proxy_session_t;
 
 typedef struct
@@ -36,7 +45,6 @@ typedef struct
   /** per-thread vectors */
   svm_msg_q_t **server_event_queue;
   svm_msg_q_t **active_open_event_queue;
-  u8 **rx_buf;				/**< intermediate rx buffers */
 
   u32 cli_node_index;			/**< cli process node index */
   u32 server_client_index;		/**< server API client handle */
@@ -44,8 +52,8 @@ typedef struct
   u32 active_open_client_index;		/**< active open API client handle */
   u32 active_open_app_index;		/**< active open index after attach */
 
-  uword *session_by_server_handle;
-  uword *session_by_active_open_handle;
+  u32 **session_to_proxy_session;
+  u32 **session_to_active_open_session;
 
   /*
    * Configuration params
@@ -60,7 +68,7 @@ typedef struct
    * Test state variables
    */
   upf_proxy_session_t *sessions;	/**< Session pool, shared */
-  clib_spinlock_t sessions_lock;
+  clib_rwlock_t sessions_lock;
   u32 **connection_index_by_thread;
   pthread_t client_thread_handle;
 
@@ -69,39 +77,9 @@ typedef struct
    */
   u8 is_init;
   u8 prealloc_fifos;		/**< Request fifo preallocation */
-
-  u32 *ip4_listen_session_by_fib_index;
-  u32 *ip6_listen_session_by_fib_index;
 } upf_proxy_main_t;
 
 extern upf_proxy_main_t upf_proxy_main;
-
-u32 upf_proxy_create (u32 fib_index, int is_ip4);
-
-static inline u32
-upf_proxy_session (u32 fib_index, int is_ip4)
-{
-  upf_proxy_main_t *pm = &upf_proxy_main;
-
-  if (is_ip4)
-    {
-      vec_validate_init_empty (pm->ip4_listen_session_by_fib_index,
-			       fib_index, ~0);
-
-      if (PREDICT_TRUE (pm->ip4_listen_session_by_fib_index[fib_index] != ~0))
-	return pm->ip4_listen_session_by_fib_index[fib_index];
-    }
-  else
-    {
-      vec_validate_init_empty (pm->ip6_listen_session_by_fib_index,
-			       fib_index, ~0);
-
-      if (PREDICT_TRUE (pm->ip6_listen_session_by_fib_index[fib_index] != ~0))
-	return pm->ip6_listen_session_by_fib_index[fib_index];
-    }
-
-  return upf_proxy_create (fib_index, is_ip4);
-}
 
 #endif
 

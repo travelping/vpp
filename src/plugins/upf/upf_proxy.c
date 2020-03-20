@@ -32,6 +32,138 @@ typedef enum
 
 upf_proxy_main_t upf_proxy_main;
 
+static void
+proxy_server_sessions_reader_lock (void)
+{
+  clib_rwlock_reader_lock (&upf_proxy_main.sessions_lock);
+}
+
+static void
+proxy_server_sessions_reader_unlock (void)
+{
+  clib_rwlock_reader_unlock (&upf_proxy_main.sessions_lock);
+}
+
+static void
+proxy_server_sessions_writer_lock (void)
+{
+  clib_rwlock_writer_lock (&upf_proxy_main.sessions_lock);
+}
+
+static void
+proxy_server_sessions_writer_unlock (void)
+{
+  clib_rwlock_writer_unlock (&upf_proxy_main.sessions_lock);
+}
+
+static upf_proxy_session_t *
+proxy_session_alloc (u32 thread_index)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+  upf_proxy_session_t *ps;
+
+  pool_get (pm->sessions, ps);
+  clib_memset (ps, 0, sizeof (*ps));
+  ps->session_index = ps - pm->sessions;
+
+  ps->proxy_session_index = ~0;
+  ps->active_open_session_index = ~0;
+
+  return ps;
+}
+
+static upf_proxy_session_t *
+proxy_session_get (u32 ps_index)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  if (pool_is_free_index (pm->sessions, ps_index))
+    return 0;
+  return pool_elt_at_index (pm->sessions, ps_index);
+}
+
+static void
+proxy_session_free (upf_proxy_session_t * ps)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+  pool_put (pm->sessions, ps);
+  if (CLIB_DEBUG)
+    memset (ps, 0xfa, sizeof (*ps));
+}
+
+static void
+proxy_session_lookup_add (session_t * s, upf_proxy_session_t * ps)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  vec_validate (pm->session_to_proxy_session[s->thread_index], s->session_index);
+  pm->session_to_proxy_session[s->thread_index][s->session_index] =
+    ps->session_index;
+}
+
+static void
+proxy_session_lookup_del (session_t * s)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  pm->session_to_proxy_session[s->thread_index][s->session_index] = ~0;
+}
+
+static upf_proxy_session_t *
+proxy_session_lookup (session_t * s)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+  u32 ps_index;
+
+  if (s->session_index < vec_len (pm->session_to_proxy_session[s->thread_index]))
+    {
+      ps_index = pm->session_to_proxy_session[s->thread_index][s->session_index];
+      return proxy_session_get (ps_index);
+    }
+  return 0;
+}
+
+static void
+active_open_session_lookup_add (session_t * s, upf_proxy_session_t * ps)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  vec_validate (pm->session_to_active_open_session[s->thread_index], s->session_index);
+  pm->session_to_active_open_session[s->thread_index][s->session_index] =
+    ps->session_index;
+}
+
+static void
+active_open_session_lookup_del (session_t * s)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  pm->session_to_active_open_session[s->thread_index][s->session_index] = ~0;
+}
+
+static upf_proxy_session_t *
+active_open_session_lookup (session_t * s)
+{
+  upf_proxy_main_t *pm = &upf_proxy_main;
+  u32 ps_index;
+
+  if (s->session_index < vec_len (pm->session_to_active_open_session[s->thread_index]))
+    {
+      ps_index = pm->session_to_active_open_session[s->thread_index][s->session_index];
+      return proxy_session_get (ps_index);
+    }
+  return 0;
+}
+
+static session_t *
+session_from_proxy_session_get (upf_proxy_session_t *ps, int is_active_open)
+{
+  if (!is_active_open)
+    return session_get_if_valid (ps->proxy_session_index, ps->proxy_thread_index);
+  else
+    return session_get_if_valid (ps->active_open_session_index, ps->active_open_thread_index);
+}
+
 #define TCP_MSS 1460
 
 static const char *upf_proxy_template =
@@ -140,87 +272,82 @@ delete_proxy_session (session_t * s, int is_active_open)
   upf_proxy_session_t *ps = 0;
   vnet_disconnect_args_t _a, *a = &_a;
   session_t *active_open_session = 0;
-  session_t *server_session = 0;
-  uword *p;
-  u64 handle;
+  session_t *proxy_session = 0;
 
-  clib_spinlock_lock_if_init (&pm->sessions_lock);
-
-  handle = session_handle (s);
+  proxy_server_sessions_writer_lock ();
 
   if (is_active_open)
     {
-      p = hash_get (pm->session_by_active_open_handle, handle);
-      if (p == 0)
-	{
-	  clib_warning ("proxy session for %s handle %lld (%llx) AWOL",
-			is_active_open ? "active open" : "server",
-			handle, handle);
-	}
-      else if (!pool_is_free_index (pm->sessions, p[0]))
+      ps = active_open_session_lookup (s);
+      if (ps)
 	{
 	  active_open_session = s;
-	  ps = pool_elt_at_index (pm->sessions, p[0]);
-	  if (ps->vpp_server_handle != ~0)
-	    server_session = session_get_from_handle (ps->vpp_server_handle);
+	  proxy_session = session_from_proxy_session_get (ps, 0);
 	}
     }
   else
     {
-      p = hash_get (pm->session_by_server_handle, handle);
-      if (p == 0)
+      ps = proxy_session_lookup (s);
+      if (!ps)
 	{
+	  u64 handle = session_handle (s);
 	  clib_warning ("proxy session for %s handle %lld (%llx) AWOL",
 			is_active_open ? "active open" : "server",
 			handle, handle);
 	}
-      else if (!pool_is_free_index (pm->sessions, p[0]))
+      else
 	{
-	  server_session = s;
-	  ps = pool_elt_at_index (pm->sessions, p[0]);
-	  if (ps->vpp_active_open_handle != ~0)
-	    active_open_session = session_get_from_handle
-	      (ps->vpp_active_open_handle);
+	  proxy_session = s;
+	  active_open_session = session_from_proxy_session_get (ps, 1);
 	}
     }
 
   if (ps)
-    {
-      if (CLIB_DEBUG > 0)
-	clib_memset (ps, 0xFE, sizeof (*ps));
-      pool_put (pm->sessions, ps);
-    }
+    proxy_session_free (ps);
 
   if (active_open_session)
     {
       a->handle = session_handle (active_open_session);
       a->app_index = pm->active_open_app_index;
-      hash_unset (pm->session_by_active_open_handle,
-		  session_handle (active_open_session));
+      active_open_session_lookup_del (s);
       vnet_disconnect_session (a);
     }
 
-  if (server_session)
+  if (proxy_session)
     {
-      a->handle = session_handle (server_session);
+      a->handle = session_handle (proxy_session);
       a->app_index = pm->server_app_index;
-      hash_unset (pm->session_by_server_handle,
-		  session_handle (server_session));
+      proxy_session_lookup_del (s);
       vnet_disconnect_session (a);
     }
 
-  clib_spinlock_unlock_if_init (&pm->sessions_lock);
+  proxy_server_sessions_writer_unlock ();
 }
 
 static int
 proxy_accept_callback (session_t * s)
 {
-  upf_proxy_main_t *pm = &upf_proxy_main;
+  upf_proxy_session_t *ps;
+
+  proxy_server_sessions_writer_lock ();
+
+  ps = proxy_session_alloc (s->thread_index);
+  proxy_session_lookup_add (s, ps);
+
+  ps->rx_fifo = s->rx_fifo;
+  ps->tx_fifo = s->tx_fifo;
+  ps->proxy_session_index = s->session_index;
+  ps->proxy_thread_index = s->thread_index;
+
+  ps->flow_index = s->opaque & ~0x80000000;
+  ps->is_reverse = !!(s->opaque & 0x80000000);
+
+  //TBDps->session_state = PROXY_STATE_ESTABLISHED;
+  //TBD proxy_server_session_timer_start (ps);
+
+  proxy_server_sessions_writer_unlock ();
 
   s->session_state = SESSION_STATE_READY;
-
-  clib_spinlock_lock_if_init (&pm->sessions_lock);
-
   return 0;
 }
 
@@ -253,38 +380,37 @@ proxy_add_segment_callback (u32 client_index, u64 segment_handle)
 }
 
 static int
-session_rx_request (session_t * s)
+proxy_rx_request (upf_proxy_session_t * ps)
 {
-  upf_proxy_main_t *pm = &upf_proxy_main;
-  u32 max_dequeue;
+  u32 max_dequeue, cursize;
   int n_read;
 
-  max_dequeue = svm_fifo_max_dequeue_cons (s->rx_fifo);
-  svm_fifo_unset_event (s->rx_fifo);
-
+  cursize = vec_len (ps->rx_buf);
+  max_dequeue = svm_fifo_max_dequeue_cons (ps->rx_fifo);
   if (PREDICT_FALSE (max_dequeue == 0))
     return -1;
 
-  vec_validate (pm->rx_buf[s->thread_index], max_dequeue - 1);
-  n_read = app_recv_stream_raw (s->rx_fifo, pm->rx_buf[s->thread_index],
+  vec_validate (ps->rx_buf, cursize + max_dequeue - 1);
+  n_read = app_recv_stream_raw (ps->rx_fifo, ps->rx_buf + cursize,
 				max_dequeue, 0, 0 /* peek */ );
   ASSERT (n_read == max_dequeue);
+  if (svm_fifo_is_empty_cons (ps->rx_fifo))
+    svm_fifo_unset_event (ps->rx_fifo);
 
-  _vec_len (pm->rx_buf[s->thread_index]) = n_read;
+  _vec_len (ps->rx_buf) = cursize + n_read;
   return 0;
 }
 
 static int
-proxy_rx_callback_static (session_t * s)
+proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
 {
   upf_proxy_main_t *pm = &upf_proxy_main;
   flowtable_main_t *fm = &flowtable_main;
   vnet_disconnect_args_t _a = { 0 }, *a = &_a;
   upf_main_t *gtm = &upf_main;
-  upf_session_t *sess;
+  upf_session_t *sx;
   struct rules *active;
   flow_entry_t *flow;
-  int is_reverse;
   upf_pdr_t *pdr;
   upf_far_t *far;
   u8 *request = 0;
@@ -292,14 +418,11 @@ proxy_rx_callback_static (session_t * s)
   int i;
   int rv;
 
-  flow = pool_elt_at_index (fm->flows, s->opaque & ~0x80000000);
-  is_reverse = !!(s->opaque & 0x80000000);
-
-  rv = session_rx_request (s);
+  rv = proxy_rx_request (ps);
   if (rv)
     return rv;
 
-  request = pm->rx_buf[s->thread_index];
+  request = ps->rx_buf;
   if (vec_len (request) < 6)
     {
       send_error (s, "400 Bad Request");
@@ -317,10 +440,10 @@ proxy_rx_callback_static (session_t * s)
   goto out;
 
 found:
-
-  sess = pool_elt_at_index (gtm->sessions, flow->session_index);
-  active = pfcp_get_rules (sess, PFCP_ACTIVE);
-  pdr = pfcp_get_pdr_by_id (active, flow->pdr_id[is_reverse]);
+  flow = pool_elt_at_index (fm->flows, ps->flow_index);
+  sx = pool_elt_at_index (gtm->sessions, flow->session_index);
+  active = pfcp_get_rules (sx, PFCP_ACTIVE);
+  pdr = pfcp_get_pdr_by_id (active, flow->pdr_id[ps->is_reverse]);
   far = pfcp_get_far_by_id (active, pdr->far_id);
 
   /* Send it */
@@ -338,7 +461,7 @@ found:
 out:
   /* Cleanup */
   vec_free (request);
-  pm->rx_buf[s->thread_index] = request;
+  ps->rx_buf = request;
 
   a->handle = session_handle (s);
   a->app_index = pm->server_app_index;
@@ -350,20 +473,28 @@ out:
 static int
 proxy_rx_callback (session_t * s)
 {
-  upf_proxy_main_t *pm = &upf_proxy_main;
   u32 thread_index = vlib_get_thread_index ();
-  uword *p;
-  svm_fifo_t *ao_tx_fifo;
+  upf_proxy_session_t *ps;
 
   ASSERT (s->thread_index == thread_index);
 
-  clib_spinlock_lock_if_init (&pm->sessions_lock);
-  p = hash_get (pm->session_by_server_handle, session_handle (s));
+  proxy_server_sessions_reader_lock ();
 
-  if (PREDICT_TRUE (p != 0))
+  ps = proxy_session_lookup (s);
+  if (!ps)
     {
-      clib_spinlock_unlock_if_init (&pm->sessions_lock);
-      ao_tx_fifo = s->rx_fifo;
+      proxy_server_sessions_reader_unlock ();
+      return -1;
+    }
+
+#if TBD
+  if (ps->session_state == PROXY_STATE_FORWARDING)
+    {
+      svm_fifo_t *ao_tx_fifo;
+
+      proxy_server_sessions_reader_unlock ();
+
+      ao_tx_fifo = ps->rx_fifo;
 
       /*
        * Send event for active open tx fifo
@@ -382,10 +513,11 @@ proxy_rx_callback (session_t * s)
 	svm_fifo_add_want_deq_ntf (ao_tx_fifo, SVM_FIFO_WANT_DEQ_NOTIF);
     }
   else
+#endif
     {
-      clib_spinlock_unlock_if_init (&pm->sessions_lock);
+      proxy_server_sessions_reader_unlock ();
 
-      return proxy_rx_callback_static (s);
+      return proxy_rx_callback_static (s, ps);
 #if 0
       int actual_transfer __attribute__((unused));
       vnet_connect_args_t _a, *a = &_a;
@@ -415,8 +547,8 @@ proxy_rx_callback (session_t * s)
       clib_spinlock_lock_if_init (&pm->sessions_lock);
       pool_get (pm->sessions, ps);
       clib_memset (ps, 0, sizeof (*ps));
-      ps->server_rx_fifo = rx_fifo;
-      ps->server_tx_fifo = tx_fifo;
+      ps->rx_fifo = rx_fifo;
+      ps->tx_fifo = tx_fifo;
       ps->vpp_server_handle = session_handle (s);
 
       proxy_index = ps - pm->sessions;
@@ -462,13 +594,14 @@ active_open_connected_callback (u32 app_index, u32 opaque,
   /*
    * Setup proxy session handle.
    */
-  clib_spinlock_lock_if_init (&pm->sessions_lock);
+  proxy_server_sessions_writer_lock ();
 
   ps = pool_elt_at_index (pm->sessions, opaque);
-  ps->vpp_active_open_handle = session_handle (s);
+  ps->active_open_session_index = s->session_index;
+  ps->active_open_thread_index = s->thread_index;
 
-  s->tx_fifo = ps->server_rx_fifo;
-  s->rx_fifo = ps->server_tx_fifo;
+  s->tx_fifo = ps->rx_fifo;
+  s->rx_fifo = ps->tx_fifo;
 
   /*
    * Reset the active-open tx-fifo master indices so the active-open session
@@ -488,10 +621,9 @@ active_open_connected_callback (u32 app_index, u32 opaque,
   svm_fifo_init_ooo_lookup (s->tx_fifo, 1 /* deq ooo */ );
   svm_fifo_init_ooo_lookup (s->rx_fifo, 0 /* enq ooo */ );
 
-  hash_set (pm->session_by_active_open_handle,
-	    ps->vpp_active_open_handle, opaque);
+  active_open_session_lookup_add (s, ps);
 
-  clib_spinlock_unlock_if_init (&pm->sessions_lock);
+  proxy_server_sessions_writer_unlock ();
 
   /*
    * Send event for active open tx fifo
@@ -693,12 +825,12 @@ proxy_create (vlib_main_t * vm, u32 fib_index, int is_ip4)
   if (PREDICT_FALSE (pm->server_client_index == (u32) ~ 0))
     {
       num_threads = 1 /* main thread */  + vtm->n_threads;
-      vec_validate (upf_proxy_main.server_event_queue, num_threads - 1);
-      vec_validate (upf_proxy_main.active_open_event_queue, num_threads - 1);
-      vec_validate (pm->rx_buf, num_threads - 1);
+      vec_validate (pm->server_event_queue, num_threads - 1);
+      vec_validate (pm->active_open_event_queue, num_threads - 1);
+      vec_validate (pm->session_to_proxy_session, num_threads - 1);
+      vec_validate (pm->session_to_active_open_session, num_threads - 1);
 
-      for (i = 0; i < num_threads; i++)
-	vec_validate (pm->rx_buf[i], pm->rcv_buffer_size);
+      clib_rwlock_init (&pm->sessions_lock);
 
       if ((rv = proxy_server_attach ()))
 	{
@@ -723,18 +855,11 @@ proxy_create (vlib_main_t * vm, u32 fib_index, int is_ip4)
 	  pm->server_event_queue[i] = session_main_get_vpp_event_queue (i);
 	}
     }
-#if TBD
-  if ((rv = proxy_server_listen (fib_index, is_ip4)))
-    {
-      assert (rv == 0);
-      clib_warning ("failed to start listening");
-      return -1;
-    }
-#endif
+
   return 0;
 }
 
-u32
+static void
 upf_proxy_create (u32 fib_index, int is_ip4)
 {
   vlib_main_t *vm = &vlib_global_main;
@@ -746,17 +871,7 @@ upf_proxy_create (u32 fib_index, int is_ip4)
 
   rv = proxy_create (vm, fib_index, is_ip4);
   if (rv != 0)
-    {
       clib_error ("UPF http redirect server create returned %d", rv);
-      return ~0;
-    }
-
-  return ~0;
-#if TBD
-  return is_ip4 ?
-    pm->ip4_listen_session_by_fib_index[fib_index] :
-    pm->ip6_listen_session_by_fib_index[fib_index];
-#endif
 }
 
 clib_error_t *
@@ -772,8 +887,6 @@ upf_proxy_main_init (vlib_main_t * vm)
 
   pm->server_client_index = ~0;
   pm->active_open_client_index = ~0;
-  pm->session_by_active_open_handle = hash_create (0, sizeof (uword));
-  pm->session_by_server_handle = hash_create (0, sizeof (uword));
 
   upf_proxy_create (0, 1);
 
