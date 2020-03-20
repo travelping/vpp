@@ -21,6 +21,7 @@
 #include <vnet/vnet.h>
 #include <vnet/ip/ip.h>
 #include <vnet/tcp/tcp.h>
+#include <vnet/tcp/tcp_inlines.h>
 #include <vnet/fib/ip4_fib.h>
 #include <vnet/fib/ip6_fib.h>
 #include <vnet/ethernet/ethernet.h>
