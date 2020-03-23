@@ -154,8 +154,11 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
   /* make sire connection_index is invalid */
   vnet_buffer (b)->tcp.connection_index = ~0;
   tcp_input_lookup_buffer (b, thread_index, error, is_ip4, 1 /* is_nolookup */);
-  if (error != TCP_ERROR_NONE)
-    return UPF_PROCESS_NEXT_DROP;
+  if (*error != TCP_ERROR_NONE)
+    {
+      clib_warning ("lookup buffer error: %u", *error);
+      return UPF_PROCESS_NEXT_DROP;
+    }
 
   tcp = tcp_buffer_hdr (b);
   if (PREDICT_FALSE (!tcp_syn (tcp)))
