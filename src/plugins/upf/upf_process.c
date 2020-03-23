@@ -97,14 +97,11 @@ proxy_session_stream_accept (transport_connection_t * tc, u32 flow_id,
   session_t *s;
   int rv;
 
-  app = application_get_if_valid (pm->server_app_index);
+  app = application_get (pm->server_app_index);
   if (!app)
     return -1;
 
   app_wrk = application_get_worker (app, 0 /* default wrk only */ );
-
-  /* Make sure we have a segment manager for connects */
-  app_worker_alloc_connects_segment_manager (app_wrk);
 
   s = session_alloc_for_connection (tc);
   s->session_state = SESSION_STATE_CREATED;
@@ -135,7 +132,6 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
 	      flow_tc_t * ftc, u32 fib_index, u32 * error)
 {
   u32 thread_index = vm->thread_index;
-  int n_advance_bytes, n_data_bytes;
   tcp_connection_t *child;
   tcp_header_t *tcp;
   u32 flow_id;
@@ -154,63 +150,20 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
   if (upf_buffer_opaque (b)->gtpu.is_reverse)
     flow_id |= 0x80000000;
 
-  if (is_ip4)
-    {
-      ip4_header_t *ip4 = vlib_buffer_get_current (b);
-      int ip_hdr_bytes = ip4_header_bytes (ip4);
-      if (PREDICT_FALSE (b->current_length < ip_hdr_bytes + sizeof (*tcp)))
-	{
-	  *error = UPF_PROCESS_ERROR_LENGTH;
-	  return UPF_PROCESS_NEXT_DROP;
-	}
-      tcp = ip4_next_header (ip4);
-      vnet_buffer (b)->tcp.hdr_offset = (u8 *) tcp - (u8 *) ip4;
-      n_advance_bytes = (ip_hdr_bytes + tcp_header_bytes (tcp));
-      n_data_bytes = clib_net_to_host_u16 (ip4->length) - n_advance_bytes;
+  *error = 0;
+  /* make sire connection_index is invalid */
+  vnet_buffer (b)->tcp.connection_index = ~0;
+  tcp_input_lookup_buffer (b, thread_index, error, is_ip4, 1 /* is_nolookup */);
+  if (error != TCP_ERROR_NONE)
+    return UPF_PROCESS_NEXT_DROP;
 
-      /* Length check. Checksum computed by ipx_local no need to compute again */
-      if (PREDICT_FALSE (n_data_bytes < 0))
-	{
-	  *error = TCP_ERROR_LENGTH;
-	  return UPF_PROCESS_NEXT_DROP;
-	}
-    }
-  else
-    {
-      ip6_header_t *ip6 = vlib_buffer_get_current (b);
-      if (PREDICT_FALSE (b->current_length < sizeof (*ip6) + sizeof (*tcp)))
-	{
-	  *error = UPF_PROCESS_ERROR_LENGTH;
-	  return UPF_PROCESS_NEXT_DROP;
-	}
-      tcp = ip6_next_header (ip6);
-      vnet_buffer (b)->tcp.hdr_offset = (u8 *) tcp - (u8 *) ip6;
-      n_advance_bytes = tcp_header_bytes (tcp);
-      n_data_bytes = clib_net_to_host_u16 (ip6->payload_length)
-	- n_advance_bytes;
-      n_advance_bytes += sizeof (ip6[0]);
-
-      if (PREDICT_FALSE (n_data_bytes < 0))
-	{
-	  *error = TCP_ERROR_LENGTH;
-	  return UPF_PROCESS_NEXT_DROP;
-	}
-    }
-
+  tcp = tcp_buffer_hdr (b);
   if (PREDICT_FALSE (!tcp_syn (tcp)))
     {
       clib_warning ("UPF proxy, no connection and not SYN\n");
       *error = UPF_PROCESS_ERROR_NO_LISTENER;
       return UPF_PROCESS_NEXT_DROP;
     }
-
-  vnet_buffer (b)->tcp.seq_number = clib_net_to_host_u32 (tcp->seq_number);
-  vnet_buffer (b)->tcp.ack_number = clib_net_to_host_u32 (tcp->ack_number);
-  vnet_buffer (b)->tcp.data_offset = n_advance_bytes;
-  vnet_buffer (b)->tcp.data_len = n_data_bytes;
-  vnet_buffer (b)->tcp.seq_end = vnet_buffer (b)->tcp.seq_number
-    + n_data_bytes;
-  vnet_buffer (b)->tcp.flags = 0;
 
   if (~0 == fib_index)
     {
@@ -237,7 +190,7 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
 
   child->state = TCP_STATE_SYN_RCVD;
   child->c_fib_index = fib_index;
-  child->cc_algo = tcp_cc_algo_get (TCP_CC_NEWRENO);
+  child->cc_algo = tcp_cc_algo_get (TCP_CC_CUBIC);
   tcp_connection_init_vars (child);
   child->rto = TCP_RTO_MIN;
 

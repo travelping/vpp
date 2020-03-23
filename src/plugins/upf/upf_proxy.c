@@ -695,6 +695,9 @@ proxy_server_attach ()
   u64 options[APP_OPTIONS_N_OPTIONS];
   vnet_app_attach_args_t _a, *a = &_a;
   u32 segment_size = 128 << 20;
+  app_worker_t *app_wrk;
+  application_t *app;
+  u8 * name;
   int r = 0;
 
   clib_memset (a, 0, sizeof (*a));
@@ -702,7 +705,7 @@ proxy_server_attach ()
 
   if (pm->private_segment_size)
     segment_size = pm->private_segment_size;
-  a->name = format (0, "upf-proxy-server");
+  a->name = name = format (0, "upf-proxy-server");
   a->api_client_index = pm->server_client_index;
   a->session_cb_vft = &proxy_session_cb_vft;
   a->options = options;
@@ -719,11 +722,18 @@ proxy_server_attach ()
     {
       clib_warning ("failed to attach server");
       r = -1;
+      goto out_free;
     }
-  else
-    pm->server_app_index = a->app_index;
 
-  vec_free (a->name);
+  pm->server_app_index = a->app_index;
+
+  /* Make sure we have a segment manager for connects */
+  app = application_get (pm->server_app_index);
+  app_wrk = application_get_worker (app, 0 /* default wrk only */ );
+  app_worker_alloc_connects_segment_manager (app_wrk);
+
+ out_free:
+  vec_free (name);
   return r;
 }
 
@@ -733,6 +743,7 @@ active_open_attach (void)
   upf_proxy_main_t *pm = &upf_proxy_main;
   vnet_app_attach_args_t _a, *a = &_a;
   u64 options[16];
+  u8 * name;
   int r = 0;
 
   clib_memset (a, 0, sizeof (*a));
@@ -740,7 +751,7 @@ active_open_attach (void)
 
   a->api_client_index = pm->active_open_client_index;
   a->session_cb_vft = &active_open_clients;
-  a->name = format (0, "upf-proxy-active-open");
+  a->name = name = format (0, "upf-proxy-active-open");
 
   options[APP_OPTIONS_ACCEPT_COOKIE] = 0x12345678;
   options[APP_OPTIONS_SEGMENT_SIZE] = 128 << 20;
@@ -756,11 +767,15 @@ active_open_attach (void)
   a->options = options;
 
   if (vnet_application_attach (a))
-    r = -1;
-  else
-    pm->active_open_app_index = a->app_index;
+    {
+      r = -1;
+      goto out_free;
+    }
 
-  vec_free (a->name);
+  pm->active_open_app_index = a->app_index;
+
+ out_free:
+  vec_free (name);
   return r;
 }
 
