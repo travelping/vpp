@@ -1,5 +1,5 @@
 /*
- * upf_adf.h - 3GPP TS 29.244 UPF adf header file
+ * upf_app_db.h - 3GPP TS 29.244 UPF adf header file
  *
  * Copyright (c) 2017 Travelping GmbH
  *
@@ -16,8 +16,8 @@
  * limitations under the License.
  */
 
-#ifndef __included_upf_adf_h__
-#define __included_upf_adf_h__
+#ifndef __included_upf_app_db_h__
+#define __included_upf_app_db_h__
 
 #include <stddef.h>
 #include <upf/upf.h>
@@ -230,7 +230,7 @@ out_skip:
   return 0;
 }
 
-#endif /* __included_upf_adf_h__ */
+#endif /* __included_upf_app_db_h__ */
 
 /*
  * fd.io coding-style-patch-verification: ON

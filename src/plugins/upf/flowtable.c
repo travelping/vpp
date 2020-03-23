@@ -21,7 +21,7 @@
 #include <vnet/ip/ip4_packet.h>
 
 #include "upf.h"
-#include "upf_adf.h"
+#include "upf_app_db.h"
 #include "flowtable.h"
 #include "flowtable_tcp.h"
 

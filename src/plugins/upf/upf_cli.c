@@ -32,7 +32,7 @@
 
 /* Action function shared between message handler and debug CLI */
 #include <upf/flowtable.h>
-#include <upf/upf_adf.h>
+#include <upf/upf_app_db.h>
 
 static clib_error_t *
 upf_pfcp_endpoint_ip_add_del_command_fn (vlib_main_t * vm,

@@ -30,6 +30,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -84,88 +86,22 @@ format_upf_process_trace (u8 * s, va_list * args)
   return s;
 }
 
-/**
- * Accept a stream session. Optionally ping the server by callback.
- */
-static int
-proxy_session_stream_accept (transport_connection_t * tc, u32 flow_id,
-			     u8 notify)
-{
-  upf_proxy_main_t *pm = &upf_proxy_main;
-  app_worker_t *app_wrk;
-  application_t *app;
-  session_t *s;
-  int rv;
-
-  app = application_get (pm->server_app_index);
-  if (!app)
-    return -1;
-
-  app_wrk = application_get_worker (app, 0 /* default wrk only */ );
-
-  s = session_alloc_for_connection (tc);
-  s->session_state = SESSION_STATE_CREATED;
-  s->app_wrk_index = app_wrk->wrk_index;
-  s->opaque = flow_id;
-
-  clib_warning ("proxy session @ %p, app %p, wrk %p (idx %u), flow: 0x%08x",
-		s, app, app_wrk, app_wrk->wrk_index, flow_id);
-
-  if ((rv = app_worker_init_connected (app_wrk, s)))
-    return rv;
-
-  session_lookup_add_connection (tc, session_handle (s));
-
-  /* Shoulder-tap the server */
-  if (notify)
-    {
-      return app_worker_accept_notify (app_wrk, s);
-    }
-
-  clib_warning ("proxy session flow: 0x%08x", s->opaque);
-  return 0;
-}
-
 static_always_inline u32
 upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
 	      int is_ip4, u32 sidx, u32 far_idx,
 	      flow_tc_t * ftc, u32 fib_index, u32 * error)
 {
   u32 thread_index = vm->thread_index;
-  tcp_connection_t *child;
-  tcp_header_t *tcp;
-  u32 flow_id;
 
   if (ftc->conn_index != ~0)
     {
       ASSERT (ftc->thread_index == thread_index);
 
+      clib_warning ("existing connection 0x%08x", ftc->conn_index);
       vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
 
       /* transport connection already setup */
       return UPF_PROCESS_NEXT_TCP_INPUT;
-    }
-
-  flow_id = upf_buffer_opaque (b)->gtpu.flow_id;
-  if (upf_buffer_opaque (b)->gtpu.is_reverse)
-    flow_id |= 0x80000000;
-
-  *error = 0;
-  /* make sire connection_index is invalid */
-  vnet_buffer (b)->tcp.connection_index = ~0;
-  tcp_input_lookup_buffer (b, thread_index, error, is_ip4, 1 /* is_nolookup */);
-  if (*error != TCP_ERROR_NONE)
-    {
-      clib_warning ("lookup buffer error: %u", *error);
-      return UPF_PROCESS_NEXT_DROP;
-    }
-
-  tcp = tcp_buffer_hdr (b);
-  if (PREDICT_FALSE (!tcp_syn (tcp)))
-    {
-      clib_warning ("UPF proxy, no connection and not SYN\n");
-      *error = UPF_PROCESS_ERROR_NO_LISTENER;
-      return UPF_PROCESS_NEXT_DROP;
     }
 
   if (~0 == fib_index)
@@ -179,43 +115,8 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
 
   clib_warning ("FIB: %u", fib_index);
 
-  /* Create child session and send SYN-ACK */
-  child = tcp_connection_alloc (thread_index);
-
-  if (tcp_options_parse (tcp, &child->rcv_opts, 1))
-    {
-      *error = UPF_PROCESS_ERROR_OPTIONS;
-      tcp_connection_free (child);
-      return UPF_PROCESS_NEXT_DROP;
-    }
-
-  tcp_init_w_buffer (child, b, is_ip4);
-
-  child->state = TCP_STATE_SYN_RCVD;
-  child->c_fib_index = fib_index;
-  child->cc_algo = tcp_cc_algo_get (TCP_CC_CUBIC);
-  tcp_connection_init_vars (child);
-  child->rto = TCP_RTO_MIN;
-
-  if (proxy_session_stream_accept
-      (&child->connection, flow_id, 0 /* notify */ ))
-    {
-      tcp_connection_cleanup (child);
-      *error = UPF_PROCESS_ERROR_CREATE_SESSION_FAIL;
-      return UPF_PROCESS_NEXT_DROP;
-    }
-
-  vnet_buffer (b)->tcp.connection_index = child->c_c_index;
-  ftc->conn_index = child->c_c_index;
-  ftc->thread_index = thread_index;
-
-  child->tx_fifo_size = transport_tx_fifo_size (&child->connection);
-
-  tcp_send_synack (child);
-
-  TCP_EVT (TCP_EVT_SYN_RCVD, child, 1);
-
-  return UPF_PROCESS_NEXT_DROP;
+  vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index;
+  return UPF_PROCESS_NEXT_PROXY_ACCEPT;
 }
 
 static_always_inline void
@@ -442,6 +343,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		    upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 :
 				       FIB_PROTOCOL_IP6,
 				       far->forward.nwi_index);
+
+		  clib_warning("flow %p", flow);
 		  next =
 		    upf_to_proxy (vm, b, is_ip4, sidx, far - active->far,
 				  &flow->tc[upf_buffer_opaque (b)->
@@ -573,6 +476,7 @@ VLIB_REGISTER_NODE (upf_ip4_process_node) = {
     [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_PROCESS_NEXT_IP_INPUT]      = "ip4-input",
     [UPF_PROCESS_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
+    [UPF_PROCESS_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
   },
 };
 /* *INDENT-ON* */
@@ -592,6 +496,7 @@ VLIB_REGISTER_NODE (upf_ip6_process_node) = {
     [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_PROCESS_NEXT_IP_INPUT]      = "ip6-input",
     [UPF_PROCESS_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
+    [UPF_PROCESS_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
   },
 };
 /* *INDENT-ON* */

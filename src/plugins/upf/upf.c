@@ -44,7 +44,7 @@
 
 /* Action function shared between message handler and debug CLI */
 #include <upf/flowtable.h>
-#include <upf/upf_adf.h>
+#include <upf/upf_app_db.h>
 
 #include <vppinfra/tw_timer_1t_3w_1024sl_ov.h>
 

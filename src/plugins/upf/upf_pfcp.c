@@ -35,7 +35,7 @@
 
 #include "pfcp.h"
 #include "upf.h"
-#include "upf_adf.h"
+#include "upf_app_db.h"
 #include "upf_pfcp.h"
 #include "upf_pfcp_api.h"
 #include "upf_pfcp_server.h"

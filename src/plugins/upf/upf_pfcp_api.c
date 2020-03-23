@@ -40,7 +40,7 @@
 #include "upf_pfcp.h"
 #include "upf_pfcp_server.h"
 #include "upf_pfcp_api.h"
-#include "upf_adf.h"
+#include "upf_app_db.h"
 
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning

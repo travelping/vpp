@@ -33,6 +33,8 @@ if(HS_FOUND)
     upf_gtpu_decap.c
     upf_flow_node.c
     upf_classify.c
+    upf_adf.c
+    upf_tdf.c
     upf_process.c
     upf_session_dpo.c
     pfcp.c
@@ -40,8 +42,9 @@ if(HS_FOUND)
     upf_pfcp_api.c
     upf_pfcp_server.c
     upf_pfcp_session_server.c
+    upf_proxy_accept.c
     upf_proxy.c
-    upf_adf.c
+    upf_app_db.c
     flowtable_init.c
     flowtable.c
 
@@ -50,6 +53,8 @@ if(HS_FOUND)
     upf_gtpu_decap.c
     upf_flow_node.c
     upf_classify.c
+    upf_tdf.c
+    upf_proxy_accept.c
     upf_process.c
     upf_session_dpo.c
 
@@ -63,7 +68,7 @@ if(HS_FOUND)
     upf_pfcp_api.h
     upf_pfcp_server.h
     upf_proxy.h
-    upf_adf.h
+    upf_app_db.h
     flowtable.h
     flowtable_tcp.h
 
