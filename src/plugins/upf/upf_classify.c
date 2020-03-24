@@ -214,18 +214,16 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
 }
 
 always_inline u32
-upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
-		  struct rules *active, u8 is_forward, u8 is_ip4)
+upf_acl_classify (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
+		  struct rules *active, u8 is_reverse, u8 is_ip4,
+		  u32 * pdr_idx)
 {
   u32 next = UPF_CLASSIFY_NEXT_DROP;
-  u16 precedence;
   upf_acl_t *acl, *acl_vec;
-  u32 teid;
-
-  teid = upf_buffer_opaque (b)->gtpu.teid;
+  u16 precedence;
 
   precedence = active->proxy_precedence;
-  upf_buffer_opaque (b)->gtpu.pdr_idx = active->proxy_pdr_idx;
+  *pdr_idx = active->proxy_pdr_idx;
   flow->is_l3_proxy = (~0 != active->proxy_pdr_idx);
   flow->is_decided = 0;
   next =
@@ -239,12 +237,10 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
     if (acl->precedence >= precedence)
       break;
 
-    if (upf_acl_classify_one (vm, teid, flow,
-			      upf_buffer_opaque (b)->gtpu.is_reverse, is_ip4,
-			      acl))
+    if (upf_acl_classify_one (vm, teid, flow, is_reverse, is_ip4, acl))
       {
 	precedence = acl->precedence;
-	upf_buffer_opaque (b)->gtpu.pdr_idx = acl->pdr_idx;
+	*pdr_idx = acl->pdr_idx;
 	flow->is_l3_proxy = 0;
 	flow->is_decided = 1;
 	next = UPF_CLASSIFY_NEXT_PROCESS;
@@ -287,7 +283,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
       u32 n_left_to_next;
       vlib_buffer_t *b;
       flow_entry_t *flow;
-      u8 is_forward, is_reverse;
+      u8 is_reverse;
       u32 bi;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
@@ -320,11 +316,11 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 
 	  is_reverse = upf_buffer_opaque (b)->gtpu.is_reverse;
-	  is_forward = (is_reverse == flow->is_reverse) ? 1 : 0;
+	  gtp_debug ("is_rev %u\n", is_reverse);
 
-	  gtp_debug ("is_rev %u, is_fwd %d\n", is_reverse, is_forward);
-
-	  next = upf_acl_classify (vm, b, flow, active, is_forward, is_ip4);
+	  next = upf_acl_classify (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
+				   active, is_reverse, is_ip4,
+				   &upf_buffer_opaque (b)->gtpu.pdr_idx);
 
 	  if (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0)
 	    {
