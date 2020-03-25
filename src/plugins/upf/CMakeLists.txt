@@ -44,6 +44,7 @@ if(HS_FOUND)
     upf_pfcp_server.c
     upf_proxy.c
     upf_adf.c
+    upf_ipfilter.c
     flowtable_init.c
     flowtable.c
 
@@ -67,6 +68,7 @@ if(HS_FOUND)
     upf_pfcp_server.h
     upf_proxy.h
     upf_adf.h
+    upf_ipfilter.h
     flowtable.h
     flowtable_tcp.h
 

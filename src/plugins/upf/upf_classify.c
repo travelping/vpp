@@ -662,6 +662,8 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
     if (acl->precedence < precedence &&
 	upf_acl_classify_one (vm, teid, flow, upf_buffer_opaque (b)->gtpu.is_reverse, is_ip4, acl))
       {
+        upf_pdr_t *pdr;
+
 	precedence = acl->precedence;
 	upf_buffer_opaque (b)->gtpu.pdr_idx = acl->pdr_idx;
 	next = UPF_CLASSIFY_NEXT_PROCESS;
@@ -669,6 +671,10 @@ upf_acl_classify (vlib_main_t * vm, vlib_buffer_t * b, flow_entry_t * flow,
 	flow->is_decided = 1;
 
 	gtp_debug ("match PDR: %u\n", acl->pdr_idx);
+
+        pdr = vec_elt_at_index (active->pdr, acl->pdr_idx);
+        if (pdr->pdi.fields & F_PDI_APPLICATION_ID)
+          flow->application_id = pdr->pdi.adr.application_id;
       }
   }
 

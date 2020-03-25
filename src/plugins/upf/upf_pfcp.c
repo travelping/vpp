@@ -36,6 +36,7 @@
 #include "pfcp.h"
 #include "upf.h"
 #include "upf_adf.h"
+#include "upf_ipfilter.h"
 #include "upf_pfcp.h"
 #include "upf_pfcp_api.h"
 
@@ -733,9 +734,14 @@ sx_make_pending_pdr (upf_session_t * sx)
       vec_foreach_index (i, active->pdr)
       {
 	upf_pdr_t *pdr = vec_elt_at_index (pending->pdr, i);
+        acl_rule_t *acl, *acl_rule;
 
-	pdr->pdi.adr.db_id = upf_adf_get_adr_db (pdr->pdi.adr.application_id);
+	pdr->pdi.adr.db_id = upf_adf_get_adr_db (pdr->pdi.adr.application_id, &acl);
 	pdr->pdi.acl = vec_dup (vec_elt (active->pdr, i).pdi.acl);
+        vec_foreach (acl_rule, acl)
+          {
+            vec_add1(pdr->pdi.acl, *acl_rule);
+          }
 	pdr->urr_ids = vec_dup (vec_elt (active->pdr, i).urr_ids);
 	pdr->qer_ids = vec_dup (vec_elt (active->pdr, i).qer_ids);
       }
@@ -1447,7 +1453,7 @@ static void
 compile_sdf (int is_ip4, const upf_pdr_t * pdr,
 	     const acl_rule_t * rule, upf_acl_t * acl)
 {
-  if (!(pdr->pdi.fields & F_PDI_SDF_FILTER))
+  if (!(pdr->pdi.fields & (F_PDI_SDF_FILTER | F_PDI_APPLICATION_ID)))
     return;
 
   acl->match_sdf = 1;
@@ -1636,7 +1642,7 @@ build_sx_rules (upf_session_t * sx)
 			     pdr->pdi.teid.teid, idx);
       }
 
-    if (pdr->pdi.fields & F_PDI_SDF_FILTER)
+    if (pdr->pdi.fields & (F_PDI_SDF_FILTER | F_PDI_APPLICATION_ID))
       {
 	acl_rule_t * rule;
 
@@ -1663,7 +1669,7 @@ build_sx_rules (upf_session_t * sx)
 	    }
 	}
       }
-    else if ((pdr->pdi.fields & F_PDI_APPLICATION_ID))
+    if ((pdr->pdi.fields & F_PDI_APPLICATION_ID))
       {
 
 	if ((pdr->pdi.adr.flags & UPF_ADR_PROXY) &&
