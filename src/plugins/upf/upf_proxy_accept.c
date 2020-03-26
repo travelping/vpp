@@ -72,7 +72,6 @@ typedef struct
   u32 session_index;
   u64 cp_seid;
   u32 pdr_idx;
-  u32 next_index;
   u8 packet_data[64 - 1 * sizeof (u32)];
 }
 upf_proxy_trace_t;
@@ -88,8 +87,8 @@ format_upf_proxy_accept_trace (u8 * s, va_list * args)
   s =
     format (s,
 	    "upf_session%d cp-seid 0x%016" PRIx64
-	    " pdr %d, next_index = %d\n%U%U", t->session_index, t->cp_seid,
-	    t->pdr_idx, t->next_index, format_white_space, indent,
+	    " pdr %d\n%U%U", t->session_index, t->cp_seid,
+	    t->pdr_idx, format_white_space, indent,
 	    format_ip4_header, t->packet_data, sizeof (t->packet_data));
   return s;
 }
@@ -141,6 +140,7 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 			 vlib_frame_t * from_frame, int is_ip4)
 {
   flowtable_main_t *fm = &flowtable_main;
+  upf_proxy_main_t *pm = &upf_proxy_main;
   u32 thread_index = vm->thread_index;
   u32 n_left_from, *from, *first_buffer;
 
@@ -168,19 +168,38 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       flow_id = upf_buffer_opaque (b)->gtpu.flow_id;
       if (upf_buffer_opaque (b)->gtpu.is_reverse)
 	flow_id |= 0x80000000;
+      clib_warning ("flow_id: 0x%08x", flow_id);
 
       /* make sure connection_index is invalid */
       vnet_buffer (b)->tcp.connection_index = ~0;
       tcp_input_lookup_buffer (b, thread_index, &error, is_ip4, 1 /* is_nolookup */);
+      clib_warning ("tcp_input_lookup error: %d", error);
       if (error != TCP_ERROR_NONE)
 	goto done;
 
       tcp = tcp_buffer_hdr (b);
+      clib_warning ("TCP SYN: %d", tcp_syn (tcp));
       if (PREDICT_FALSE (!tcp_syn (tcp)))
 	{
 	  error = UPF_PROXY_ERROR_NO_LISTENER;
 	  goto done;
 	}
+
+
+#if TBD
+      	  if (is_ip4)
+	    {
+	      vnet_buffer (b)->sw_if_index[VLIB_RX] =
+		upf_nwi_fib_index (FIB_PROTOCOL_IP4,
+				   far->forward.nwi_index);
+	    }
+	  else
+	    {
+	      vnet_buffer (b)->sw_if_index[VLIB_RX] =
+		upf_nwi_fib_index (FIB_PROTOCOL_IP6,
+				   far->forward.nwi_index);
+	    }
+#endif
 
       fib_idx = vnet_buffer (b)->sw_if_index[VLIB_TX];
       clib_warning ("FIB: %u", fib_idx);
@@ -202,6 +221,12 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       child->cc_algo = tcp_cc_algo_get (TCP_CC_CUBIC);
       tcp_connection_init_vars (child);
       child->rto = TCP_RTO_MIN;
+
+      child->next_node_index = is_ip4 ?
+	pm->tcp4_output_proxy_next : pm->tcp6_output_proxy_next;
+      child->next_node_opaque = flow_id;
+      clib_warning ("Next Node: %u, Opaque: 0x%08x",
+		    child->next_node_index, child->next_node_opaque);
 
       if (proxy_session_stream_accept
 	  (&child->connection, flow_id, 0 /* notify */ ))
@@ -226,7 +251,6 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       TCP_EVT (TCP_EVT_SYN_RCVD, child, 1);
 
     done:
-
       if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	{
 	  upf_proxy_trace_t *tr =

@@ -421,6 +421,7 @@ VLIB_REGISTER_NODE(upf_ip4_flow_node) = {
     [FT_NEXT_DROP] = "error-drop",
     [FT_NEXT_CLASSIFY] = "upf-ip4-classify",
     [FT_NEXT_PROCESS] = "upf-ip4-process",
+    [FT_NEXT_PROXY]   = "upf-ip4-proxy-input",
   }
 };
 /* *INDENT-ON* */
@@ -438,6 +439,7 @@ VLIB_REGISTER_NODE(upf_ip6_flow_node) = {
     [FT_NEXT_DROP] = "error-drop",
     [FT_NEXT_CLASSIFY] = "upf-ip6-classify",
     [FT_NEXT_PROCESS] = "upf-ip6-process",
+    [FT_NEXT_PROXY]   = "upf-ip6-proxy-input",
   }
 };
 /* *INDENT-ON* */

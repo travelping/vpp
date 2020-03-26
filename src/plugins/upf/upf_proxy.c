@@ -16,6 +16,7 @@
 
 #include <assert.h>
 #include <vnet/vnet.h>
+#include <vnet/tcp/tcp.h>
 #include <vnet/session/application.h>
 #include <vnet/session/application_interface.h>
 #include <vnet/session/session.h>
@@ -402,25 +403,16 @@ proxy_rx_request (upf_proxy_session_t * ps)
 }
 
 static int
-proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
+proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
+		  upf_session_t *sx, struct rules *active)
 {
   upf_proxy_main_t *pm = &upf_proxy_main;
-  flowtable_main_t *fm = &flowtable_main;
   vnet_disconnect_args_t _a = { 0 }, *a = &_a;
-  upf_main_t *gtm = &upf_main;
-  upf_session_t *sx;
-  struct rules *active;
-  flow_entry_t *flow;
   upf_pdr_t *pdr;
   upf_far_t *far;
   u8 *request = 0;
   u8 *wispr, *html, *http, *url;
   int i;
-  int rv;
-
-  rv = proxy_rx_request (ps);
-  if (rv)
-    return rv;
 
   request = ps->rx_buf;
   if (vec_len (request) < 6)
@@ -440,9 +432,6 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   goto out;
 
 found:
-  flow = pool_elt_at_index (fm->flows, ps->flow_index);
-  sx = pool_elt_at_index (gtm->sessions, flow->session_index);
-  active = pfcp_get_rules (sx, PFCP_ACTIVE);
   pdr = pfcp_get_pdr_by_id (active, flow->pdr_id[ps->is_reverse]);
   far = pfcp_get_far_by_id (active, pdr->far_id);
 
@@ -466,6 +455,36 @@ out:
   a->handle = session_handle (s);
   a->app_index = pm->server_app_index;
   vnet_disconnect_session (a);
+
+  return 0;
+}
+
+static int
+proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
+{
+  upf_main_t *gtm = &upf_main;
+  flowtable_main_t *fm = &flowtable_main;
+  struct rules *active;
+  flow_entry_t *flow;
+  upf_session_t *sx;
+  int rv;
+
+  rv = proxy_rx_request (ps);
+  if (rv)
+    return rv;
+
+  flow = pool_elt_at_index (fm->flows, ps->flow_index);
+  sx = pool_elt_at_index (gtm->sessions, flow->session_index);
+  active = pfcp_get_rules (sx, PFCP_ACTIVE);
+
+  if (flow->is_decided)
+    {
+      /* if we get here, it has to be a ACL based redirect */
+      return proxy_send_redir (s, ps, flow, sx, active);
+    }
+
+  /* WTF, how did that happen */
+  ASSERT (active->flags & PFCP_ADR);
 
   return 0;
 }
@@ -779,56 +798,6 @@ active_open_attach (void)
   return r;
 }
 
-#if TBD
-/* create per fib listening socket for the HTTP redirect server */
-static int
-proxy_server_listen (u32 fib_index, int is_ip4)
-{
-  upf_proxy_main_t *pm = &upf_proxy_main;
-  session_endpoint_cfg_t *cfg;
-  vnet_listen_args_t _a, *a = &_a;
-  app_listener_t *al;
-  //session_t *ls;
-
-  clib_memset (a, 0, sizeof (*a));
-  a->app_index = pm->server_app_index;
-
-  cfg = &a->sep_ext;
-  *cfg = (session_endpoint_cfg_t) SESSION_ENDPOINT_CFG_NULL;
-  cfg->is_ip4 = is_ip4;
-  cfg->transport_proto = TRANSPORT_PROTO_TCP;
-  cfg->peer.fib_index = fib_index;
-  cfg->fib_index = fib_index;
-  cfg->app_wrk_index = 0;
-
-  if (vnet_listen (a))
-    {
-      clib_warning ("failed to start listen");
-      return 1;
-    }
-
-  al = app_listener_get_w_handle (a->handle);
-  //ls = app_listener_get_session (al);
-
-  if (is_ip4)
-    {
-      vec_validate_init_empty (pm->ip4_listen_session_by_fib_index,
-			       fib_index, 0);
-      //pm->ip4_listen_session_by_fib_index[fib_index] = ls->connection_index;
-      pm->ip4_listen_session_by_fib_index[fib_index] = al->session_index;
-    }
-  else
-    {
-      vec_validate_init_empty (pm->ip6_listen_session_by_fib_index,
-			       fib_index, 0);
-      //pm->ip6_listen_session_by_fib_index[fib_index] = ls->connection_index;
-      pm->ip4_listen_session_by_fib_index[fib_index] = al->session_index;
-    }
-
-  return 0;
-}
-#endif
-
 static int
 proxy_create (vlib_main_t * vm, u32 fib_index, int is_ip4)
 {
@@ -902,6 +871,15 @@ upf_proxy_main_init (vlib_main_t * vm)
 
   pm->server_client_index = ~0;
   pm->active_open_client_index = ~0;
+
+  clib_warning ("TCP4 Output Node Index %u, IP4 Proxy Output Node Index %u",
+		tcp4_output_node.index, upf_ip4_proxy_output_node.index);
+  clib_warning ("TCP6 Output Node Index %u, IP6 Proxy Output Node Index %u",
+		tcp6_output_node.index, upf_ip6_proxy_output_node.index);
+  pm->tcp4_output_proxy_next =
+    vlib_node_add_next (vm, tcp4_output_node.index, upf_ip4_proxy_output_node.index);
+  pm->tcp6_output_proxy_next =
+    vlib_node_add_next (vm, tcp6_output_node.index, upf_ip6_proxy_output_node.index);
 
   upf_proxy_create (0, 1);
 

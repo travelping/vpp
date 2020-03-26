@@ -51,6 +51,7 @@ typedef enum
   FT_NEXT_DROP,
   FT_NEXT_CLASSIFY,
   FT_NEXT_PROCESS,
+  FT_NEXT_PROXY,
   FT_NEXT_N_NEXT
 } flowtable_next_t;
 
@@ -138,6 +139,9 @@ typedef struct flow_entry
   u32 cpu_index;
 #endif
 } flow_entry_t;
+
+#define flow_next(F, D)   (F)->next[(D) ^ (F)->is_reverse]
+#define flow_pdr_id(F, D) (F)->pdr_id[(D) ^ (F)->is_reverse]
 
 /* Timers (in seconds) */
 #define TIMER_DEFAULT_LIFETIME (60)

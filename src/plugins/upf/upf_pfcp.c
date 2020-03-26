@@ -2643,7 +2643,7 @@ format_pfcp_session (u8 * s, va_list * args)
       {
 	f64 now = unix_time_now ();
 
-	s = format (s, "  Monitoring Time: %U, in %9.3f secs",
+	s = format (s, "  Monitoring Time: %U, in %9.3f secs\n",
 		    /* VPP does not support ISO dates... */
 		    format_time_float, 0, urr->monitoring_time.unix_time,
 		    urr->monitoring_time.unix_time - now,

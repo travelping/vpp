@@ -30,6 +30,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -59,6 +61,7 @@ typedef enum
 {
   UPF_CLASSIFY_NEXT_DROP,
   UPF_CLASSIFY_NEXT_PROCESS,
+  UPF_CLASSIFY_NEXT_PROXY,
   UPF_CLASSIFY_N_NEXT,
 } upf_classify_next_t;
 
@@ -214,43 +217,113 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
 }
 
 always_inline u32
-upf_acl_classify (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
-		  struct rules *active, u8 is_reverse, u8 is_ip4,
-		  u32 * pdr_idx)
+upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
+			  struct rules *active, u8 is_ip4, u32 * pdr_idx)
 {
   u32 next = UPF_CLASSIFY_NEXT_DROP;
   upf_acl_t *acl, *acl_vec;
-  u16 precedence;
 
-  precedence = active->proxy_precedence;
-  *pdr_idx = active->proxy_pdr_idx;
-  flow->is_l3_proxy = (~0 != active->proxy_pdr_idx);
-  flow->is_decided = 0;
-  next =
-    flow->is_l3_proxy ? UPF_CLASSIFY_NEXT_PROCESS : UPF_CLASSIFY_NEXT_DROP;
+  ASSERT (!flow->is_decided);
+
+  *pdr_idx = ~0;
+
+  if (active->proxy_pdr_idx != ~0)
+    {
+      /* bypass flow classification if we decided to proxy */
+      flow->is_l3_proxy = 1;
+      flow_next(flow, FT_ORIGIN) = FT_NEXT_PROXY;
+      flow_next(flow, FT_REVERSE) = FT_NEXT_CLASSIFY;
+      next = UPF_CLASSIFY_NEXT_PROXY;
+    }
+  else
+    {
+      /* no matching ACL and not pending ADF */
+      flow->is_l3_proxy = 0;
+      flow->next[0] = flow->next[1] = FT_NEXT_DROP;
+      next = UPF_CLASSIFY_NEXT_DROP;
+    }
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
   gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
 
+  /* find ACL with the highest precedenc that matches this flow */
   vec_foreach (acl, acl_vec)
   {
-    if (acl->precedence >= precedence)
-      break;
-
-    if (upf_acl_classify_one (vm, teid, flow, is_reverse, is_ip4, acl))
+    if (upf_acl_classify_one (vm, teid, flow, FT_ORIGIN ^ flow->is_reverse, is_ip4, acl))
       {
-	precedence = acl->precedence;
-	*pdr_idx = acl->pdr_idx;
-	flow->is_l3_proxy = 0;
-	flow->is_decided = 1;
-	next = UPF_CLASSIFY_NEXT_PROCESS;
+	upf_pdr_t *pdr;
 
-	gtp_debug ("match PDR: %u\n", acl->pdr_idx);
+	pdr = vec_elt_at_index (active->pdr, acl->pdr_idx);
+	flow_pdr_id(flow, FT_ORIGIN) = pdr->id;
+
+	if (!flow->is_l3_proxy ||
+	    acl->precedence <= active->proxy_precedence)
+	  {
+	    upf_far_t *far;
+
+	    *pdr_idx = acl->pdr_idx;
+	    flow->is_decided = 1;
+
+	    far = pfcp_get_far_by_id (active, pdr->far_id);
+	    if (far && far->forward.flags & FAR_F_REDIRECT_INFORMATION)
+	      {
+		flow->is_l3_proxy = 1;
+		flow_next(flow, FT_ORIGIN) = FT_NEXT_PROXY;
+		flow_next(flow, FT_REVERSE) = FT_NEXT_CLASSIFY;
+		flow_pdr_id(flow, FT_REVERSE) = pdr->id;
+		next = UPF_CLASSIFY_NEXT_PROXY;
+	      }
+	    else
+	      {
+		flow->is_l3_proxy = 0;
+		flow_next(flow, FT_ORIGIN) = FT_NEXT_PROCESS;
+		flow_next(flow, FT_REVERSE) = FT_NEXT_CLASSIFY;
+		next = UPF_CLASSIFY_NEXT_PROCESS;
+	      }
+	  }
+
+	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	break;
       }
   }
 
   return next;
 }
+
+always_inline u32
+upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
+			 struct rules *active, u8 is_ip4, u32 * pdr_idx)
+{
+  u32 next = UPF_CLASSIFY_NEXT_DROP;
+  upf_acl_t *acl, *acl_vec;
+
+  acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
+  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+
+  /* find ACL with the highest precedenc that matches this flow */
+  vec_foreach (acl, acl_vec)
+  {
+    if (upf_acl_classify_one (vm, teid, flow, FT_REVERSE ^ flow->is_reverse, is_ip4, acl))
+      {
+	upf_pdr_t *pdr;
+
+	pdr = vec_elt_at_index (active->pdr, acl->pdr_idx);
+
+	*pdr_idx = acl->pdr_idx;
+	flow_next(flow, FT_REVERSE) = FT_NEXT_PROCESS;
+	flow_pdr_id(flow, FT_REVERSE) = pdr->id;
+	next = UPF_CLASSIFY_NEXT_PROCESS;
+
+	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	break;
+      }
+  }
+
+  return next;
+}
+
 
 always_inline uword
 upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
@@ -283,7 +356,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
       u32 n_left_to_next;
       vlib_buffer_t *b;
       flow_entry_t *flow;
-      u8 is_reverse;
+      u8 is_forward, is_reverse;
       u32 bi;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
@@ -316,28 +389,18 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 
 	  is_reverse = upf_buffer_opaque (b)->gtpu.is_reverse;
-	  gtp_debug ("is_rev %u\n", is_reverse);
+	  is_forward = (is_reverse == flow->is_reverse) ? 1 : 0;
+	  gtp_debug ("is_rev %u, is_fwd %d\n", is_reverse, is_forward);
 
-	  next = upf_acl_classify (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
-				   active, is_reverse, is_ip4,
-				   &upf_buffer_opaque (b)->gtpu.pdr_idx);
-
-	  if (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0)
-	    {
-	      flow->pdr_id[is_reverse] = upf_buffer_opaque (b)->gtpu.pdr_idx;
-	      flow->next[is_reverse] = FT_NEXT_PROCESS;
-	    }
-	  else if (flow->is_l3_proxy)
-	    {
-	      /* bypass flow classification if we decided to proxy */
-	      flow->next[0] = flow->next[1] = FT_NEXT_PROCESS;
-	    }
+	  if (is_forward)
+	    next = upf_acl_classify_forward (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
+					     active, is_ip4,
+					     &upf_buffer_opaque (b)->gtpu.pdr_idx);
 	  else
-	    {
-	      /* no matching ACL and not pending ADF */
-	      flow->next[0] = flow->next[1] = FT_NEXT_DROP;
-	      next = UPF_CLASSIFY_NEXT_DROP;
-	    }
+	    next = upf_acl_classify_return (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
+					    active, is_ip4,
+					    &upf_buffer_opaque (b)->gtpu.pdr_idx);
+	  clib_warning("Next: %u", next);
 
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;
@@ -409,6 +472,7 @@ VLIB_REGISTER_NODE (upf_ip4_classify_node) = {
   .next_nodes = {
     [UPF_CLASSIFY_NEXT_DROP]    = "error-drop",
     [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip4-process",
+    [UPF_CLASSIFY_NEXT_PROXY]   = "upf-ip4-proxy-input",
   },
 };
 /* *INDENT-ON* */
@@ -425,6 +489,7 @@ VLIB_REGISTER_NODE (upf_ip6_classify_node) = {
   .next_nodes = {
     [UPF_CLASSIFY_NEXT_DROP]    = "error-drop",
     [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip6-process",
+    [UPF_CLASSIFY_NEXT_PROXY]   = "upf-ip6-proxy-input",
   },
 };
 /* *INDENT-ON* */

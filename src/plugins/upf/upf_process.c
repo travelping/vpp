@@ -134,7 +134,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
   upf_main_t *gtm = &upf_main;
   vnet_main_t *vnm = gtm->vnet_main;
   vnet_interface_main_t *im = &vnm->interface_main;
-  flowtable_main_t *fm = &flowtable_main;
 
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
@@ -163,7 +162,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
-	  flow_entry_t *flow = NULL;
 	  upf_pdr_t *pdr = NULL;
 	  upf_far_t *far = NULL;
 
@@ -190,6 +188,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = pfcp_get_far_by_id (active, pdr->far_id);
 	    }
 
+	  clib_warning ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
@@ -277,28 +276,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  if (~0 != upf_buffer_opaque (b)->gtpu.flow_id)
-	    {
-	      gtp_debug ("flow: %p (0x%08x): %U\n",
-			 fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
-			 upf_buffer_opaque (b)->gtpu.flow_id,
-			 format_flow_key,
-			 &(fm->flows +
-			   upf_buffer_opaque (b)->gtpu.flow_id)->key);
-
-	      flow =
-		pool_elt_at_index (fm->flows,
-				   upf_buffer_opaque (b)->gtpu.flow_id);
-	    }
-
-	  if (flow && flow->is_l3_proxy)
-	    {
-	      next = upf_to_proxy (vm, b, is_ip4, sidx, ~0,
-				   &flow->tc[upf_buffer_opaque (b)->
-					     gtpu.is_reverse], ~0, &error);
-	      goto process;
-	    }
-
 	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
 	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
@@ -327,29 +304,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		      // error = UPF_PROCESS_ERROR_NOT_YET;
 		      goto trace;
 		    }
-		}
-	      else if (far->forward.flags & FAR_F_REDIRECT_INFORMATION)
-		{
-		  u32 fib_index;
-
-		  if (!flow)
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_NO_FLOW;
-		      goto trace;
-		    }
-
-		  fib_index =
-		    upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 :
-				       FIB_PROTOCOL_IP6,
-				       far->forward.nwi_index);
-
-		  clib_warning("flow %p", flow);
-		  next =
-		    upf_to_proxy (vm, b, is_ip4, sidx, far - active->far,
-				  &flow->tc[upf_buffer_opaque (b)->
-					    gtpu.is_reverse], fib_index,
-				  &error);
 		}
 	      else
 		{
@@ -382,8 +336,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      next = UPF_PROCESS_NEXT_DROP;
 	    }
-
-	process:
 
 #define IS_DL(_pdr, _far)						\
 	  ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)

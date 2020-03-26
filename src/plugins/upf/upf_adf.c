@@ -30,6 +30,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -50,7 +52,7 @@ ip4_address_is_equal_masked (const ip4_address_t * a,
 }
 
 always_inline u8 *
-upf_adr_try_tls (u16 port, u8 * p, word length)
+upf_adr_try_tls (u16 port, u8 * p)
 {
   struct tls_record_hdr *hdr = (struct tls_record_hdr *) p;
   struct tls_handshake_hdr *hsk = (struct tls_handshake_hdr *) (hdr + 1);
@@ -58,6 +60,7 @@ upf_adr_try_tls (u16 port, u8 * p, word length)
     (struct tls_client_hello_hdr *) (hsk + 1);
   u8 *data = (u8 *) (hlo + 1);
   word frgmt_len, hsk_len, len;
+  uword length = vec_len (p);
   u8 *url = NULL;
 
   clib_warning ("Length: %d", length);
@@ -181,8 +184,9 @@ upf_adr_try_tls (u16 port, u8 * p, word length)
 }
 
 always_inline u8 *
-upf_adr_try_http (u16 port, u8 * p, word len)
+upf_adr_try_http (u16 port, u8 * p)
 {
+  word len = vec_len (p);
   u8 *host;
   word uri_len;
   u8 *eol;
@@ -236,158 +240,110 @@ upf_adr_try_http (u16 port, u8 * p, word len)
 }
 
 void
-upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
+upf_application_detection (vlib_main_t * vm, u32 teid, u8 * p,
 			   flow_entry_t * flow, struct rules *active,
 			   u8 is_ip4)
 {
-  u32 offs = upf_buffer_opaque (b)->gtpu.data_offset;
-  ip4_header_t *ip4 = NULL;
-  ip6_header_t *ip6 = NULL;
   upf_pdr_t *adr;
   upf_pdr_t *pdr;
-  u8 *proto_hdr;
-  u16 port = 0;
-  u8 *p;
-  word len;
+  u16 port;
   u8 *url;
-  u8 src_intf;
 
-  // known PDR.....
-  // scan for Application Rules
+  port = flow->key.port[flow->is_reverse];
+  clib_warning("Using port %u, instread of %u",
+	       port, flow->key.port[flow->is_reverse ^ 1]);
 
-  if (!(active->flags & PFCP_ADR))
-    return;
-
-  if (is_ip4)
-    {
-      ip4 = (ip4_header_t *) (vlib_buffer_get_current (b) + offs);
-      proto_hdr = ip4_next_header (ip4);
-      len = clib_net_to_host_u16 (ip4->length) - sizeof (ip4_header_t);
-    }
-  else
-    {
-      ip6 = (ip6_header_t *) (vlib_buffer_get_current (b) + offs);
-      proto_hdr = ip6_next_header (ip6);
-      len = clib_net_to_host_u16 (ip6->payload_length);
-    }
-
-  if (flow->key.proto == IP_PROTOCOL_TCP &&
-      flow->tcp_state == TCP_F_STATE_ESTABLISHED)
-    {
-      len -= tcp_header_bytes ((tcp_header_t *) proto_hdr);
-      offs = proto_hdr - (u8 *) vlib_buffer_get_current (b) +
-	tcp_header_bytes ((tcp_header_t *) proto_hdr);
-      port = clib_net_to_host_u16 (((tcp_header_t *) proto_hdr)->dst_port);
-    }
-  else if (flow->key.proto == IP_PROTOCOL_UDP)
-    {
-      len -= sizeof (udp_header_t);
-      offs =
-	proto_hdr - (u8 *) vlib_buffer_get_current (b) +
-	sizeof (udp_header_t);
-      port = clib_net_to_host_u16 (((udp_header_t *) proto_hdr)->dst_port);
-    }
-  else
-    return;
-
-  if (len < vlib_buffer_length_in_chain (vm, b) - offs || len <= 0)
-    /* no or invalid payload */
-    return;
-
-  p = vlib_buffer_get_current (b) + offs;
   if (*p == TLS_HANDSHAKE)
-    url = upf_adr_try_tls (port, p, len);
+    url = upf_adr_try_tls (port, p);
   else
-    url = upf_adr_try_http (port, p, len);
+    url = upf_adr_try_http (port, p);
 
   if (url == NULL)
     goto out_next_process;
 
   adf_debug ("URL: %v", url);
 
-  adr = vec_elt_at_index (active->pdr, upf_buffer_opaque (b)->gtpu.pdr_idx);
-  adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
-	     upf_buffer_opaque (b)->gtpu.pdr_idx);
-  src_intf = adr->pdi.src_intf;
+  adr = pfcp_get_pdr_by_id (active, flow->pdr_id[flow->is_reverse]);
+  if (adr)
+    {
+      adf_debug ("Old PDR: %p %u (id %u)\n", adr, adr->id,
+		 flow->pdr_id[flow->is_reverse]);
+    }
+  else
+    adf_debug ("no ACL matched");
 
   /*
    * see 3GPP TS 23.214 Table 5.2.2-1 for valid ADR combinations
    */
   vec_foreach (pdr, active->pdr)
   {
+    /* all non ADR pdrs have already been scanned */
     if (!(pdr->pdi.fields & F_PDI_APPLICATION_ID))
       {
 	adf_debug ("skip PDR %u for no ADR\n", pdr->id);
 	continue;
       }
 
-    if (pdr->precedence >= adr->precedence)
+    /* only consider ADRs that have higher precedence than the best ACL */
+    if (adr && pdr->precedence > adr->precedence)
       {
 	adf_debug ("skip PDR %u for lower precedence\n", pdr->id);
 	continue;
       }
 
-    if ((pdr->pdi.fields & F_PDI_UE_IP_ADDR))
+    if (pdr->pdi.fields & F_PDI_UE_IP_ADDR)
       {
+	const ip46_address_t *addr;
+
+	addr =
+	  &flow->key.ip[flow->is_reverse ^
+			!! (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD)];
+	clib_warning("Using %U as UE IP, S/D: %u",
+		     format_ip46_address, addr, IP46_TYPE_ANY,
+		     !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD));
+
 	if (is_ip4)
 	  {
-	    const ip4_address_t *addr;
 
 	    if (!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V4))
 	      {
 		adf_debug ("skip PDR %u for no UE IPv4 address\n", pdr->id);
 		continue;
 	      }
-	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
-	      &ip4->dst_address : &ip4->src_address;
-
-	    if (!ip4_address_is_equal (&pdr->pdi.ue_addr.ip4, addr))
+	    if (!ip4_address_is_equal (&pdr->pdi.ue_addr.ip4, &addr->ip4))
 	      {
 		adf_debug
 		  ("skip PDR %u for UE IPv4 mismatch, S/D: %u, %U != %U\n",
 		   pdr->id, !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD),
 		   format_ip4_address, &pdr->pdi.ue_addr.ip4,
-		   format_ip4_address, addr);
+		   format_ip46_address, addr, IP46_TYPE_ANY);
 		continue;
 	      }
 	  }
 	else
 	  {
-	    const ip6_address_t *addr;
-
 	    if (!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_V6))
 	      {
 		adf_debug ("skip PDR %u for no UE IPv6 address\n", pdr->id);
 		continue;
 	      }
-	    addr = (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD) ?
-	      &ip6->dst_address : &ip6->src_address;
-
-	    if (!ip6_address_is_equal_masked (&pdr->pdi.ue_addr.ip6, addr,
+	    if (!ip6_address_is_equal_masked (&pdr->pdi.ue_addr.ip6, &addr->ip6,
 					      &ip6_main.fib_masks[64]))
 	      {
 		adf_debug
 		  ("skip PDR %u for UE IPv6 mismatch, S/D: %u, %U != %U\n",
 		   pdr->id, !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD),
 		   format_ip6_address, &pdr->pdi.ue_addr.ip6,
-		   format_ip6_address, addr);
+		   format_ip46_address, addr, IP46_TYPE_ANY);
 		continue;
 	      }
 	  }
       }
 
     if ((pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
-	upf_buffer_opaque (b)->gtpu.teid != pdr->pdi.teid.teid)
+	teid != pdr->pdi.teid.teid)
       {
 	adf_debug ("skip PDR %u for TEID type mismatch\n", pdr->id);
-	continue;
-      }
-
-    if (pdr->pdi.src_intf != src_intf)
-      {
-	/* must have the same direction as the original SDF that permited the flow */
-	adf_debug ("skip PDR %u for Src Intf mismatch, %u != %u\n",
-		   pdr->id, pdr->pdi.src_intf, src_intf);
 	continue;
       }
 
@@ -395,17 +351,17 @@ upf_application_detection (vlib_main_t * vm, vlib_buffer_t * b,
     if (upf_adf_lookup (pdr->pdi.adr.db_id, url, vec_len (url), NULL) == 0)
       adr = pdr;
   }
-  upf_buffer_opaque (b)->gtpu.pdr_idx = adr - active->pdr;
+
+  flow->pdr_id[flow->is_reverse] = adr->id;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
-  adf_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
-	     upf_buffer_opaque (b)->gtpu.pdr_idx);
+  adf_debug ("New PDR: %p %u (id %u)\n", adr, adr->id, flow->pdr_id[flow->is_reverse]);
 
   vec_free (url);
 
 out_next_process:
-  flow->next[upf_buffer_opaque (b)->gtpu.is_reverse] = FT_NEXT_PROCESS;
+  flow->next[flow->is_reverse] = FT_NEXT_PROCESS;
   return;
 }
 
@@ -427,6 +383,7 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
 	&& (pdr->pdi.adr.application_id == flow->application_id))
       adr = pdr;
   }
+
   upf_buffer_opaque (b)->gtpu.pdr_idx = adr - active->pdr;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;

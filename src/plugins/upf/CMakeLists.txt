@@ -43,6 +43,8 @@ if(HS_FOUND)
     upf_pfcp_server.c
     upf_pfcp_session_server.c
     upf_proxy_accept.c
+    upf_proxy_input.c
+    upf_proxy_output.c
     upf_proxy.c
     upf_app_db.c
     flowtable_init.c
@@ -55,6 +57,8 @@ if(HS_FOUND)
     upf_classify.c
     upf_tdf.c
     upf_proxy_accept.c
+    upf_proxy_input.c
+    upf_proxy_output.c
     upf_process.c
     upf_session_dpo.c
 
