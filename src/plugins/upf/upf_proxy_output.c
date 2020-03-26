@@ -186,6 +186,7 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  upf_buffer_opaque (b)->gtpu.flags =
 	    is_ip4 ? BUFFER_HAS_IP4_HDR : BUFFER_HAS_IP6_HDR;
 
+	  /* mostly borrowed from vnet/interface_output.c calc_checksums */
 	  if (is_ip4)
 	    {
 	      ip4_header_t *ip4;
