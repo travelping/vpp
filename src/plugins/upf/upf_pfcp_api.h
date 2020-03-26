@@ -47,7 +47,7 @@ upf_usage_report_init (upf_usage_report_t *report, int n_urrs)
 {
   ASSERT (report);
 
-  report->events = vec_new (typeof (report->events), n_urrs);
+  report->events = vec_new (typeof (report->events[0]), n_urrs);
   clib_bitmap_alloc (report->liusa_bitmap, n_urrs);
 };
 
