@@ -239,7 +239,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
     {
       /* no matching ACL and not pending ADF */
       flow->is_l3_proxy = 0;
-      flow->next[0] = flow->next[1] = FT_NEXT_DROP;
+      flow_next(flow, FT_ORIGIN) = flow_next(flow, FT_REVERSE) = FT_NEXT_DROP;
       next = UPF_CLASSIFY_NEXT_DROP;
     }
 

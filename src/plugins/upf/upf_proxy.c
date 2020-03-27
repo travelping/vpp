@@ -432,7 +432,7 @@ proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
   goto out;
 
 found:
-  pdr = pfcp_get_pdr_by_id (active, flow->pdr_id[ps->is_reverse]);
+  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
   far = pfcp_get_far_by_id (active, pdr->far_id);
 
   /* Send it */

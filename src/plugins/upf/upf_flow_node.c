@@ -72,9 +72,9 @@ load_gtpu_flow_info (flowtable_main_t * fm, vlib_buffer_t * b,
 {
   upf_buffer_opaque (b)->gtpu.is_reverse = is_reverse;
   upf_buffer_opaque (b)->gtpu.flow_id = flow - fm->flows;
-  upf_buffer_opaque (b)->gtpu.pdr_idx = flow->pdr_id[is_reverse];
+  upf_buffer_opaque (b)->gtpu.pdr_idx = flow_pdr_id(flow, FT_ORIGIN);
 
-  return flow->next[is_reverse];
+  return flow_next(flow, FT_ORIGIN);
 }
 
 #define FLOW_DEBUG(fm, flow)						\

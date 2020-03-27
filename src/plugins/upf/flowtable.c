@@ -294,11 +294,15 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   f->is_reverse = is_reverse;
   f->lifetime = flowtable_lifetime_calculate (fm, &f->key);
   f->active = now;
-  memset (&f->pdr_id, ~0, sizeof (f->pdr_id));
   f->application_id = ~0;
-  f->next[FT_ORIGIN] = FT_NEXT_CLASSIFY;
-  f->next[FT_REVERSE] = FT_NEXT_CLASSIFY;
-  clib_memset (&f->tc, ~0, sizeof (f->tc));
+  flow_pdr_id(f, FT_ORIGIN) = ~0;
+  flow_pdr_id(f, FT_REVERSE) = ~0;
+  flow_next(f, FT_ORIGIN) = FT_NEXT_CLASSIFY;
+  flow_next(f, FT_REVERSE) = FT_NEXT_CLASSIFY;
+  flow_tc(f, FT_ORIGIN).conn_index = ~0;
+  flow_tc(f, FT_ORIGIN).thread_index = ~0;
+  flow_tc(f, FT_REVERSE).conn_index = ~0;
+  flow_tc(f, FT_REVERSE).thread_index = ~0;
 
   /* insert in timer list */
   pool_get (fmt->timers, timer_entry);
@@ -410,8 +414,8 @@ format_flow (u8 * s, va_list * args)
 	      format_flow_key, &flow->key,
 	      flow->stats[is_reverse].pkts,
 	      flow->stats[is_reverse ^ FT_REVERSE].pkts,
-	      flow->pdr_id[is_reverse],
-	      flow->pdr_id[is_reverse ^ FT_REVERSE],
+	      flow_pdr_id(flow, FT_ORIGIN),
+	      flow_pdr_id(flow, FT_REVERSE),
 	      app_name, flow->lifetime);
 #if CLIB_DEBUG > 1
   s = format (s, ", cpu %u", flow->cpu_index);

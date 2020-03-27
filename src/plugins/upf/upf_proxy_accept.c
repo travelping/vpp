@@ -153,7 +153,6 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       flow_entry_t *flow;
       tcp_header_t *tcp;
       vlib_buffer_t *b;
-      u8 is_reverse;
       u32 flow_id;
       u32 fib_idx;
       u32 error = 0;
@@ -239,11 +238,10 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       vnet_buffer (b)->tcp.connection_index = child->c_c_index;
 
-      is_reverse = upf_buffer_opaque (b)->gtpu.is_reverse;
       flow = pool_elt_at_index (fm->flows, flow_id);
       ASSERT (flow);
-      flow->tc[is_reverse].conn_index = child->c_c_index;
-      flow->tc[is_reverse].thread_index = thread_index;
+      flow_tc(flow, FT_ORIGIN).conn_index = child->c_c_index;
+      flow_tc(flow, FT_ORIGIN).thread_index = thread_index;
 
       child->tx_fifo_size = transport_tx_fifo_size (&child->connection);
 

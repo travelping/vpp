@@ -131,17 +131,20 @@ typedef struct flow_entry
 
   /* UPF data */
   u32 application_id;		/* L7 app index */
-  u32 pdr_id[FT_ORDER_MAX];	/* PDRs */
-  u32 next[FT_ORDER_MAX];
+  u32 _pdr_id[FT_ORDER_MAX];	/* PDRs */
+  u32 _next[FT_ORDER_MAX];
 
-  flow_tc_t tc[FT_ORDER_MAX];
+  flow_tc_t _tc[FT_ORDER_MAX];
 #if CLIB_DEBUG > 0
   u32 cpu_index;
 #endif
 } flow_entry_t;
 
-#define flow_next(F, D)   (F)->next[(D) ^ (F)->is_reverse]
-#define flow_pdr_id(F, D) (F)->pdr_id[(D) ^ (F)->is_reverse]
+/* accessor helper */
+#define flow_member(F, M, D)   (F)->M[(D) ^ (F)->is_reverse]
+#define flow_next(F, D) flow_member((F), _next, (D))
+#define flow_pdr_id(F, D) flow_member((F), _pdr_id, (D))
+#define flow_tc(F, D) flow_member((F), _tc, (D))
 
 /* Timers (in seconds) */
 #define TIMER_DEFAULT_LIFETIME (60)

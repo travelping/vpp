@@ -263,11 +263,11 @@ upf_application_detection (vlib_main_t * vm, u32 teid, u8 * p,
 
   adf_debug ("URL: %v", url);
 
-  adr = pfcp_get_pdr_by_id (active, flow->pdr_id[flow->is_reverse]);
+  adr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
   if (adr)
     {
       adf_debug ("Old PDR: %p %u (id %u)\n", adr, adr->id,
-		 flow->pdr_id[flow->is_reverse]);
+		 flow_pdr_id(flow, FT_ORIGIN));
     }
   else
     adf_debug ("no ACL matched");
@@ -352,16 +352,16 @@ upf_application_detection (vlib_main_t * vm, u32 teid, u8 * p,
       adr = pdr;
   }
 
-  flow->pdr_id[flow->is_reverse] = adr->id;
+  flow_pdr_id(flow, FT_ORIGIN) = adr->id;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
     flow->application_id = adr->pdi.adr.application_id;
 
-  adf_debug ("New PDR: %p %u (id %u)\n", adr, adr->id, flow->pdr_id[flow->is_reverse]);
+  adf_debug ("New PDR: %p %u (id %u)\n", adr, adr->id, flow_pdr_id(flow, FT_ORIGIN));
 
   vec_free (url);
 
 out_next_process:
-  flow->next[flow->is_reverse] = FT_NEXT_PROCESS;
+  flow_next(flow, FT_ORIGIN) = FT_NEXT_PROCESS;
   return;
 }
 
@@ -392,7 +392,7 @@ upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
 	     upf_buffer_opaque (b)->gtpu.pdr_idx);
 
   /* switch return traffic to processing node */
-  flow->next[flow->is_reverse ^ FT_REVERSE] = FT_NEXT_PROCESS;
+  flow_next(flow, FT_REVERSE) = FT_NEXT_PROCESS;
 }
 
 

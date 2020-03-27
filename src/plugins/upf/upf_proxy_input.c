@@ -196,7 +196,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 	  ASSERT (flow);
 
-	  ftc = &flow->tc[upf_buffer_opaque (b)->gtpu.is_reverse];
+	  ftc = &flow_tc(flow, FT_ORIGIN);
 	  if (ftc->conn_index != ~0)
 	    {
 	      ASSERT (ftc->thread_index == thread_index);
