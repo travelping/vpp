@@ -297,6 +297,8 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   f->application_id = ~0;
   flow_pdr_id(f, FT_ORIGIN) = ~0;
   flow_pdr_id(f, FT_REVERSE) = ~0;
+  flow_teid(f, FT_ORIGIN) = ~0;
+  flow_teid(f, FT_REVERSE) = ~0;
   flow_next(f, FT_ORIGIN) = FT_NEXT_CLASSIFY;
   flow_next(f, FT_REVERSE) = FT_NEXT_CLASSIFY;
   flow_tc(f, FT_ORIGIN).conn_index = ~0;

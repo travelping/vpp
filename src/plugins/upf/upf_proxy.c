@@ -25,6 +25,7 @@
 #include "upf_pfcp.h"
 #include "upf_pfcp_api.h"
 #include "upf_proxy.h"
+#include "upf_app_db.h"
 
 typedef enum
 {
@@ -402,12 +403,24 @@ proxy_rx_request (upf_proxy_session_t * ps)
   return 0;
 }
 
+static void
+proxy_close_session (session_t * s, upf_proxy_session_t * ps)
+{
+  vnet_disconnect_args_t _a = { 0 }, *a = &_a;
+  upf_proxy_main_t *pm = &upf_proxy_main;
+
+  /* Cleanup */
+  vec_free (ps->rx_buf);
+
+  a->handle = session_handle (s);
+  a->app_index = pm->server_app_index;
+  vnet_disconnect_session (a);
+}
+
 static int
 proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
 		  upf_session_t *sx, struct rules *active)
 {
-  upf_proxy_main_t *pm = &upf_proxy_main;
-  vnet_disconnect_args_t _a = { 0 }, *a = &_a;
   upf_pdr_t *pdr;
   upf_far_t *far;
   u8 *request = 0;
@@ -448,14 +461,7 @@ found:
   vec_free (wispr);
 
 out:
-  /* Cleanup */
-  vec_free (request);
-  ps->rx_buf = request;
-
-  a->handle = session_handle (s);
-  a->app_index = pm->server_app_index;
-  vnet_disconnect_session (a);
-
+  proxy_close_session (s, ps);
   return 0;
 }
 
@@ -467,6 +473,7 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   struct rules *active;
   flow_entry_t *flow;
   upf_session_t *sx;
+  adr_result_t r;
   int rv;
 
   rv = proxy_rx_request (ps);
@@ -485,6 +492,24 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
 
   /* WTF, how did that happen */
   ASSERT (active->flags & PFCP_ADR);
+
+  clib_warning ("proxy: %v", ps->rx_buf);
+  r = upf_application_detection (gtm->vlib_main, ps->rx_buf, flow, active);
+  clib_warning ("r: %d", r);
+  switch (r) {
+  case ADR_NEED_MORE_DATA:
+    clib_warning ("ADR_NEED_MORE_DATA");
+    break;
+
+  case ADR_FAIL:
+    clib_warning ("ADR_FAIL, close incomming session");
+    proxy_close_session (s, ps);
+    break;
+
+  case ADR_OK:
+    clib_warning ("connect outgoing session");
+    break;
+  }
 
   return 0;
 }

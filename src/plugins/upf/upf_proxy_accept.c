@@ -184,22 +184,6 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  goto done;
 	}
 
-
-#if TBD
-      	  if (is_ip4)
-	    {
-	      vnet_buffer (b)->sw_if_index[VLIB_RX] =
-		upf_nwi_fib_index (FIB_PROTOCOL_IP4,
-				   far->forward.nwi_index);
-	    }
-	  else
-	    {
-	      vnet_buffer (b)->sw_if_index[VLIB_RX] =
-		upf_nwi_fib_index (FIB_PROTOCOL_IP6,
-				   far->forward.nwi_index);
-	    }
-#endif
-
       fib_idx = vnet_buffer (b)->sw_if_index[VLIB_TX];
       clib_warning ("FIB: %u", fib_idx);
 

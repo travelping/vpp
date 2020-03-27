@@ -737,6 +737,13 @@ typedef struct
 #define UPF_ADR_PROTO_HTTP  1
 #define UPF_ADR_PROTO_HTTPS 2
 
+typedef enum
+{
+ ADR_FAIL = 0,
+ ADR_OK,
+ ADR_NEED_MORE_DATA
+} adr_result_t;
+
 /* bihash buckets are cheap, only 8 bytes per bucket */
 #define UPF_MAPPING_BUCKETS      (64 * 1024)
 

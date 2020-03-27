@@ -226,6 +226,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   ASSERT (!flow->is_decided);
 
   *pdr_idx = ~0;
+  flow_teid(flow, FT_ORIGIN) = teid;
 
   if (active->proxy_pdr_idx != ~0)
     {
@@ -297,6 +298,8 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 {
   u32 next = UPF_CLASSIFY_NEXT_DROP;
   upf_acl_t *acl, *acl_vec;
+
+  flow_teid(flow, FT_REVERSE) = teid;
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
   gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));

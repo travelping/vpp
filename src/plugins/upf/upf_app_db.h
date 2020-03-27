@@ -65,6 +65,10 @@ void upf_adf_put_adr_db (u32 db_index);
 int upf_update_app (upf_main_t * sm, u8 * app_name, u32 num_rules,
 		    u32 * ids, u32 * regex_lengths, u8 ** regexes);
 
+adr_result_t
+upf_application_detection (vlib_main_t * vm, u8 * p,
+			   flow_entry_t * flow, struct rules *active);
+
 /* perfect hash over the HTTP keywords:
  *   GET
  *   PUT
@@ -178,54 +182,6 @@ is_http_request (u8 ** payload, word * len)
 	  return 1;
 	}
     }
-
-  return 0;
-}
-
-always_inline int
-is_host_header (u8 ** s, word * len)
-{
-  u8 *eol;
-  u8 *c;
-
-  eol = memchr (*s, '\n', *len);
-  if (!eol)
-    {
-      *s += *len;
-      *len = 0;
-      return 0;
-    }
-
-  if ((eol - *s) < 5)
-    goto out_skip;
-
-  u64 d0 = *(u64 *) (*s);
-
-  /* upper case 1st 4 characters of header */
-  d0 &= char_to_u64 (0xdf, 0xdf, 0xdf, 0xdf, 0xff, 0, 0, 0);
-  if (d0 != char_to_u64 ('H', 'O', 'S', 'T', ':', 0, 0, 0))
-    goto out_skip;
-
-  *s += 5;
-  *len -= 5;
-
-  /* find first non OWS */
-  for (; *len > 0 && **s <= ' '; (*len)--, (*s)++)
-    ;
-  /* find last non OWS */
-  for (c = *s; *len > 0 && *c > ' '; (*len)--, c++)
-    ;
-
-  if (len <= 0)
-    return 0;
-
-  *len = c - *s;
-  return 1;
-
-out_skip:
-  eol++;
-  *len -= eol - *s;
-  *s = eol;
 
   return 0;
 }
