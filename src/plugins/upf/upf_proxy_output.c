@@ -52,7 +52,7 @@ static upf_proxy_output_next_t ft_next_map_next[FT_NEXT_N_NEXT] =
    [FT_NEXT_DROP]     = UPF_PROXY_OUTPUT_NEXT_DROP,
    [FT_NEXT_CLASSIFY] = UPF_PROXY_OUTPUT_NEXT_CLASSIFY,
    [FT_NEXT_PROCESS]  = UPF_PROXY_OUTPUT_NEXT_PROCESS,
-   [FT_NEXT_PROXY]    = UPF_PROXY_OUTPUT_NEXT_DROP
+   [FT_NEXT_PROXY]    = UPF_PROXY_OUTPUT_NEXT_PROCESS
   };
 
 /* Statistics (not all errors) */
@@ -181,6 +181,7 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  upf_buffer_opaque (b)->gtpu.session_index = flow->session_index;
 	  upf_buffer_opaque (b)->gtpu.flow_id = flow_id;
 	  upf_buffer_opaque (b)->gtpu.is_reverse = FT_REVERSE ^ flow->is_reverse;
+	  upf_buffer_opaque (b)->gtpu.is_proxied = 1;
 	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
 	  upf_buffer_opaque (b)->gtpu.teid = 0;
 	  upf_buffer_opaque (b)->gtpu.flags =
@@ -314,7 +315,7 @@ VLIB_REGISTER_NODE (upf_ip4_proxy_output_node) = {
   .next_nodes = {
     [UPF_PROXY_OUTPUT_NEXT_DROP]     = "error-drop",
     [UPF_PROXY_OUTPUT_NEXT_CLASSIFY] = "upf-ip4-classify",
-    [UPF_PROXY_OUTPUT_NEXT_PROCESS]  = "upf-ip4-process",
+    [UPF_PROXY_OUTPUT_NEXT_PROCESS]  = "upf-ip4-forward",
   },
 };
 /* *INDENT-ON* */
@@ -331,7 +332,7 @@ VLIB_REGISTER_NODE (upf_ip6_proxy_output_node) = {
   .next_nodes = {
     [UPF_PROXY_OUTPUT_NEXT_DROP]     = "error-drop",
     [UPF_PROXY_OUTPUT_NEXT_CLASSIFY] = "upf-ip6-classify",
-    [UPF_PROXY_OUTPUT_NEXT_PROCESS]  = "upf-ip6-process",
+    [UPF_PROXY_OUTPUT_NEXT_PROCESS]  = "upf-ip6-forward",
   },
 };
 /* *INDENT-ON* */

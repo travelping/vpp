@@ -25,13 +25,14 @@
 #include <vnet/fib/ip6_fib.h>
 #include <vnet/ethernet/ethernet.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
+
 #include <upf/upf.h>
 #include <upf/upf_app_db.h>
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -61,6 +62,7 @@ typedef enum
 {
   UPF_CLASSIFY_NEXT_DROP,
   UPF_CLASSIFY_NEXT_PROCESS,
+  UPF_CLASSIFY_NEXT_FORWARD,
   UPF_CLASSIFY_NEXT_PROXY,
   UPF_CLASSIFY_N_NEXT,
 } upf_classify_next_t;
@@ -224,6 +226,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   upf_acl_t *acl, *acl_vec;
 
   ASSERT (!flow->is_decided);
+  ASSERT (!flow->is_l3_proxy);
 
   *pdr_idx = ~0;
   flow_teid(flow, FT_ORIGIN) = teid;
@@ -293,6 +296,35 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 }
 
 always_inline u32
+upf_acl_classify_proxied (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
+			  struct rules *active, u8 is_ip4, u32 * pdr_idx)
+{
+  u32 next = UPF_CLASSIFY_NEXT_DROP;
+  upf_acl_t *acl, *acl_vec;
+
+  flow_teid(flow, FT_REVERSE) = teid;
+
+  acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
+  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+
+  /* find ACL with the highest precedenc that matches this flow */
+  vec_foreach (acl, acl_vec)
+  {
+    if (upf_acl_classify_one (vm, teid, flow, FT_REVERSE ^ flow->is_reverse, is_ip4, acl))
+      {
+	*pdr_idx = acl->pdr_idx;
+	next = UPF_CLASSIFY_NEXT_FORWARD;
+
+	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	break;
+      }
+  }
+
+  return next;
+}
+
+always_inline u32
 upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 			 struct rules *active, u8 is_ip4, u32 * pdr_idx)
 {
@@ -314,9 +346,18 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	pdr = vec_elt_at_index (active->pdr, acl->pdr_idx);
 
 	*pdr_idx = acl->pdr_idx;
-	flow_next(flow, FT_REVERSE) = FT_NEXT_PROCESS;
 	flow_pdr_id(flow, FT_REVERSE) = pdr->id;
-	next = UPF_CLASSIFY_NEXT_PROCESS;
+
+	if (flow->is_l3_proxy)
+	  {
+	    flow_next(flow, FT_REVERSE) = FT_NEXT_PROXY;
+	    next = UPF_CLASSIFY_NEXT_PROXY;
+	  }
+	else
+	  {
+	    flow_next(flow, FT_REVERSE) = FT_NEXT_PROCESS;
+	    next = UPF_CLASSIFY_NEXT_PROCESS;
+	  }
 
 	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
 		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
@@ -326,7 +367,6 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 
   return next;
 }
-
 
 always_inline uword
 upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
@@ -399,6 +439,10 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    next = upf_acl_classify_forward (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
 					     active, is_ip4,
 					     &upf_buffer_opaque (b)->gtpu.pdr_idx);
+	  else if (upf_buffer_opaque (b)->gtpu.is_proxied)
+	    next = upf_acl_classify_proxied (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
+					    active, is_ip4,
+					    &upf_buffer_opaque (b)->gtpu.pdr_idx);
 	  else
 	    next = upf_acl_classify_return (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
 					    active, is_ip4,
@@ -474,7 +518,8 @@ VLIB_REGISTER_NODE (upf_ip4_classify_node) = {
   .n_next_nodes = UPF_CLASSIFY_N_NEXT,
   .next_nodes = {
     [UPF_CLASSIFY_NEXT_DROP]    = "error-drop",
-    [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip4-process",
+    [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip4-input",
+    [UPF_CLASSIFY_NEXT_FORWARD] = "upf-ip4-forward",
     [UPF_CLASSIFY_NEXT_PROXY]   = "upf-ip4-proxy-input",
   },
 };
@@ -491,7 +536,8 @@ VLIB_REGISTER_NODE (upf_ip6_classify_node) = {
   .n_next_nodes = UPF_CLASSIFY_N_NEXT,
   .next_nodes = {
     [UPF_CLASSIFY_NEXT_DROP]    = "error-drop",
-    [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip6-process",
+    [UPF_CLASSIFY_NEXT_PROCESS] = "upf-ip6-input",
+    [UPF_CLASSIFY_NEXT_FORWARD] = "upf-ip6-forward",
     [UPF_CLASSIFY_NEXT_PROXY]   = "upf-ip6-proxy-input",
   },
 };

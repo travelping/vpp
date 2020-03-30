@@ -43,6 +43,7 @@ typedef enum
 {
   UPF_PROXY_INPUT_NEXT_DROP,
   UPF_PROXY_INPUT_NEXT_TCP_INPUT,
+  UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP,
   UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT,
   UPF_PROXY_INPUT_N_NEXT,
 } upf_proxy_input_next_t;
@@ -134,6 +135,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
 	  flow_entry_t *flow = NULL;
+	  int is_forward;
 	  flow_tc_t *ftc;
 
 	  bi = from[0];
@@ -196,7 +198,13 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 	  ASSERT (flow);
 
-	  ftc = &flow_tc(flow, FT_ORIGIN);
+	  is_forward = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse);
+	  clib_warning ("is fwd: %u, buffer: %u, flow: %u", is_forward,
+			upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
+
+	  ftc = &flow_tc(flow, is_forward ? FT_ORIGIN : FT_REVERSE);
+	  clib_warning ("ftc conn_index %u", ftc->conn_index);
+
 	  if (ftc->conn_index != ~0)
 	    {
 	      ASSERT (ftc->thread_index == thread_index);
@@ -207,9 +215,15 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      /* transport connection already setup */
 	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 	    }
-	  else
+	  else if (is_forward)
 	    {
+	      clib_warning ("PROXY_ACCEPT");
 	      next = UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT;
+	    }
+	  else if (!is_forward && ftc->conn_index == ~0)
+	    {
+	      clib_warning ("INPUT_LOOKUP");
+	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP;
 	    }
 
 	  len = vlib_buffer_length_in_chain (vm, b);
@@ -288,6 +302,7 @@ VLIB_REGISTER_NODE (upf_ip4_proxy_input_node) = {
   .next_nodes = {
     [UPF_PROXY_INPUT_NEXT_DROP]          = "error-drop",
     [UPF_PROXY_INPUT_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
+    [UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP]     = "tcp4-input",
     [UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
   },
 };
@@ -305,6 +320,7 @@ VLIB_REGISTER_NODE (upf_ip6_proxy_input_node) = {
   .next_nodes = {
     [UPF_PROXY_INPUT_NEXT_DROP]          = "error-drop",
     [UPF_PROXY_INPUT_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
+    [UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP]     = "tcp6-input",
     [UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
   },
 };

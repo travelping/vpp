@@ -35,7 +35,8 @@ if(HS_FOUND)
     upf_classify.c
     upf_adf.c
     upf_tdf.c
-    upf_process.c
+    upf_input.c
+    upf_forward.c
     upf_session_dpo.c
     pfcp.c
     upf_pfcp.c
@@ -59,7 +60,8 @@ if(HS_FOUND)
     upf_proxy_accept.c
     upf_proxy_input.c
     upf_proxy_output.c
-    upf_process.c
+    upf_input.c
+    upf_forward.c
     upf_session_dpo.c
 
     API_FILES

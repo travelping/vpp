@@ -310,9 +310,6 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
 
   switch (r) {
   case ADR_NEED_MORE_DATA:
-    /* abort ADR scan after 4k of data */
-    if (vec_len (p) >= 4096)
-      goto out;
     return r;
 
   case ADR_FAIL:
@@ -419,7 +416,10 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
 
   flow_pdr_id(flow, FT_ORIGIN) = adr->id;
   if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
-    flow->application_id = adr->pdi.adr.application_id;
+    {
+      /* TBD: need to find the reverse application or ACL */
+      flow->application_id = adr->pdi.adr.application_id;
+    }
 
   adf_debug ("New PDR: %p %u (id %u)\n", adr, adr->id, flow_pdr_id(flow, FT_ORIGIN));
 

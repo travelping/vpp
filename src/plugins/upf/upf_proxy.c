@@ -27,12 +27,17 @@
 #include "upf_proxy.h"
 #include "upf_app_db.h"
 
+#define TCP_MSS 1460
+
 typedef enum
 {
   EVENT_WAKEUP = 1,
 } http_process_event_t;
 
 upf_proxy_main_t upf_proxy_main;
+
+static void
+delete_proxy_session (session_t * s, int is_active_open);
 
 static void
 proxy_server_sessions_reader_lock (void)
@@ -166,7 +171,81 @@ session_from_proxy_session_get (upf_proxy_session_t *ps, int is_active_open)
     return session_get_if_valid (ps->active_open_session_index, ps->active_open_thread_index);
 }
 
-#define TCP_MSS 1460
+static void
+proxy_start_connect_fn (const u32 * session_index)
+{
+  upf_main_t *gtm = &upf_main;
+  upf_proxy_main_t *pm = &upf_proxy_main;
+  flowtable_main_t *fm = &flowtable_main;
+  vnet_connect_args_t _a, *a = &_a;
+  ip46_address_t * src, * dst;
+  upf_proxy_session_t *ps;
+  struct rules *active;
+  flow_entry_t *flow;
+  upf_session_t *sx;
+  upf_pdr_t *pdr;
+  upf_far_t *far;
+  u32 fib_index;
+  int is_ip4;
+  int rv = 0;
+
+  proxy_server_sessions_reader_lock ();
+
+  ps = proxy_session_get (*session_index);
+  if (!ps)
+    goto out;
+
+  if (pool_is_free_index (fm->flows, ps->flow_index))
+    goto out;
+  flow = pool_elt_at_index (fm->flows, ps->flow_index);
+  sx = pool_elt_at_index (gtm->sessions, flow->session_index);
+  active = pfcp_get_rules (sx, PFCP_ACTIVE);
+
+  src = &flow->key.ip[FT_ORIGIN ^ flow->is_reverse];
+  dst = &flow->key.ip[FT_REVERSE ^ flow->is_reverse];
+  is_ip4 = ip46_address_is_ip4 (dst);
+
+  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
+  far = pfcp_get_far_by_id (active, pdr->far_id);
+
+  fib_index =
+    upf_nwi_fib_index (is_ip4 ? FIB_PROTOCOL_IP4 : FIB_PROTOCOL_IP6,
+		       far->forward.nwi_index);
+
+  memset (a, 0, sizeof (*a));
+  a->api_context = *session_index;
+  a->app_index = pm->active_open_app_index;
+  a->sep_ext = (session_endpoint_cfg_t) SESSION_ENDPOINT_CFG_NULL;
+  a->sep_ext.fib_index = fib_index;
+  a->sep_ext.transport_proto = TRANSPORT_PROTO_TCP;
+  a->sep_ext.is_ip4 = is_ip4;
+  a->sep_ext.ip = *dst;
+  a->sep_ext.port = flow->key.port[FT_REVERSE ^ flow->is_reverse];
+  a->sep_ext.peer.fib_index = fib_index;
+  a->sep_ext.peer.is_ip4 = is_ip4;
+  a->sep_ext.peer.ip = *src;
+  a->sep_ext.peer.port = flow->key.port[FT_ORIGIN ^ flow->is_reverse];
+
+  rv = vnet_connect (a);
+  clib_warning ("Connect Result: %u", rv);
+
+ out:
+  proxy_server_sessions_reader_unlock ();
+}
+
+static void
+proxy_start_connect (u32 session_index)
+{
+  if (vlib_get_thread_index () == 0)
+    {
+      proxy_start_connect_fn (&session_index);
+    }
+  else
+    {
+      vl_api_rpc_call_main_thread (proxy_start_connect_fn,
+				   (u8 *) & session_index, sizeof (session_index));
+    }
+}
 
 static const char *upf_proxy_template =
   "HTTP/1.1 302 OK\r\n"
@@ -384,22 +463,19 @@ proxy_add_segment_callback (u32 client_index, u64 segment_handle)
 static int
 proxy_rx_request (upf_proxy_session_t * ps)
 {
-  u32 max_dequeue, cursize;
+  u32 max_dequeue;
   int n_read;
 
-  cursize = vec_len (ps->rx_buf);
-  max_dequeue = svm_fifo_max_dequeue_cons (ps->rx_fifo);
+  max_dequeue = clib_min (svm_fifo_max_dequeue_cons (ps->rx_fifo), 4096);
   if (PREDICT_FALSE (max_dequeue == 0))
     return -1;
 
-  vec_validate (ps->rx_buf, cursize + max_dequeue - 1);
-  n_read = app_recv_stream_raw (ps->rx_fifo, ps->rx_buf + cursize,
-				max_dequeue, 0, 0 /* peek */ );
+  vec_validate (ps->rx_buf, max_dequeue);
+  n_read = app_recv_stream_raw (ps->rx_fifo, ps->rx_buf,
+				max_dequeue, 0, 1 /* peek */ );
   ASSERT (n_read == max_dequeue);
-  if (svm_fifo_is_empty_cons (ps->rx_fifo))
-    svm_fifo_unset_event (ps->rx_fifo);
 
-  _vec_len (ps->rx_buf) = cursize + n_read;
+  _vec_len (ps->rx_buf) = n_read;
   return 0;
 }
 
@@ -426,6 +502,9 @@ proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
   u8 *request = 0;
   u8 *wispr, *html, *http, *url;
   int i;
+
+  svm_fifo_dequeue_drop_all (ps->rx_fifo);
+  svm_fifo_unset_event (ps->rx_fifo);
 
   request = ps->rx_buf;
   if (vec_len (request) < 6)
@@ -499,7 +578,12 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   switch (r) {
   case ADR_NEED_MORE_DATA:
     clib_warning ("ADR_NEED_MORE_DATA");
-    break;
+
+    /* abort ADR scan after 4k of data */
+    if (svm_fifo_max_dequeue_cons (ps->rx_fifo) < 4096)
+      break;
+
+    /* FALL-THRU */
 
   case ADR_FAIL:
     clib_warning ("ADR_FAIL, close incomming session");
@@ -508,6 +592,10 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
 
   case ADR_OK:
     clib_warning ("connect outgoing session");
+
+    /* start outgoing connect to server */
+    proxy_start_connect (ps->session_index);
+
     break;
   }
 
@@ -671,6 +759,8 @@ active_open_connected_callback (u32 app_index, u32 opaque,
 
   /*
    * Send event for active open tx fifo
+   *  ... we left the so far received data in rx fifo,
+   *  this will therefore forward that data...
    */
   ASSERT (s->thread_index == thread_index);
   if (svm_fifo_set_event (s->tx_fifo))

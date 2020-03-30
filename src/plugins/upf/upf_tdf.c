@@ -185,7 +185,7 @@ VLIB_REGISTER_NODE (upf_ip4_tdf_node) =
   .n_next_nodes = UPF_TDF_N_NEXT,
   .next_nodes = {
     [UPF_TDF_NEXT_DROP]    = "error-drop",
-    [UPF_TDF_NEXT_PROCESS] = "upf-ip4-process",
+    [UPF_TDF_NEXT_PROCESS] = "upf-ip4-input",
     [UPF_TDF_NEXT_IP_LOOKUP] = "ip4-lookup",
   },
 };
@@ -203,7 +203,7 @@ VLIB_REGISTER_NODE (upf_ip6_tdf_node) =
   .n_next_nodes = UPF_TDF_N_NEXT,
   .next_nodes = {
     [UPF_TDF_NEXT_DROP]    = "error-drop",
-    [UPF_TDF_NEXT_PROCESS] = "upf-ip6-process",
+    [UPF_TDF_NEXT_PROCESS] = "upf-ip6-input",
     [UPF_TDF_NEXT_IP_LOOKUP] = "ip6-lookup",
   },
 };

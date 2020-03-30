@@ -70,11 +70,14 @@ always_inline u32
 load_gtpu_flow_info (flowtable_main_t * fm, vlib_buffer_t * b,
 		     flow_entry_t * flow, uword is_reverse)
 {
+  int direction =
+    flow->is_reverse == is_reverse ? FT_ORIGIN : FT_REVERSE;
+
   upf_buffer_opaque (b)->gtpu.is_reverse = is_reverse;
   upf_buffer_opaque (b)->gtpu.flow_id = flow - fm->flows;
-  upf_buffer_opaque (b)->gtpu.pdr_idx = flow_pdr_id(flow, FT_ORIGIN);
+  upf_buffer_opaque (b)->gtpu.pdr_idx = flow_pdr_id(flow, direction);
 
-  return flow_next(flow, FT_ORIGIN);
+  return flow_next(flow, direction);
 }
 
 #define FLOW_DEBUG(fm, flow)						\
@@ -332,6 +335,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  flow->session_index = upf_buffer_opaque (b0)->gtpu.session_index;
 	  FLOW_DEBUG (fm, flow);
 
+	  clib_warning ("is_rev: %u, flow: %u, c: %u", is_reverse, flow->is_reverse, created);
+
 	  /* timer management */
 	  flow_update_lifetime (flow, b0, is_ip4);
 	  flow_update_active (flow, current_time);
@@ -342,6 +347,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  /* fill opaque buffer with flow data */
 	  next0 = load_gtpu_flow_info (fm, b0, flow, is_reverse);
+	  clib_warning ("flow next: %u, origin: %u, reverse: %u",
+			next0, flow_next(flow, FT_ORIGIN), flow_next(flow, FT_REVERSE));
 
 	  /* flowtable counters */
 	  CPT_THRU++;
@@ -420,7 +427,7 @@ VLIB_REGISTER_NODE(upf_ip4_flow_node) = {
   .next_nodes = {
     [FT_NEXT_DROP] = "error-drop",
     [FT_NEXT_CLASSIFY] = "upf-ip4-classify",
-    [FT_NEXT_PROCESS] = "upf-ip4-process",
+    [FT_NEXT_PROCESS] = "upf-ip4-input",
     [FT_NEXT_PROXY]   = "upf-ip4-proxy-input",
   }
 };
@@ -438,7 +445,7 @@ VLIB_REGISTER_NODE(upf_ip6_flow_node) = {
   .next_nodes = {
     [FT_NEXT_DROP] = "error-drop",
     [FT_NEXT_CLASSIFY] = "upf-ip6-classify",
-    [FT_NEXT_PROCESS] = "upf-ip6-process",
+    [FT_NEXT_PROCESS] = "upf-ip6-input",
     [FT_NEXT_PROXY]   = "upf-ip6-proxy-input",
   }
 };

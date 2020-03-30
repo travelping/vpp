@@ -294,19 +294,6 @@ upf_format_buffer_opaque_helper (const vlib_buffer_t * b, u8 * s)
   return s;
 }
 
-static u8 *
-upf_format_buffer_opaque2_helper (const vlib_buffer_t * b, u8 * s)
-{
-  upf_buffer_opaque2_t *o = upf_buffer_opaque2 (b);
-
-
-  s = format (s, "gtpu.session_index: 0x%x, gtpu.far_index: 0x%x",
-	      (u32) (o->gtpu.session_index), (u32) (o->gtpu.far_index));
-  vec_add1 (s, '\n');
-
-  return s;
-}
-
 static clib_error_t *
 upf_init (vlib_main_t * vm)
 {
@@ -319,9 +306,7 @@ upf_init (vlib_main_t * vm)
   if ((error = vlib_call_init_function (vm, upf_proxy_main_init)))
     return error;
 
-  vnet_register_format_buffer_opaque_helper (upf_format_buffer_opaque_helper);
-  vnet_register_format_buffer_opaque2_helper
-    (upf_format_buffer_opaque2_helper);
+  vnet_register_format_buffer_opaque2_helper (upf_format_buffer_opaque_helper);
 
   mhash_init (&sm->pfcp_endpoint_index, sizeof (uword),
 	      sizeof (ip46_address_t));

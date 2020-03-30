@@ -2212,7 +2212,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
       }
 
     if (PREDICT_FALSE (urr->status & URR_OVER_QUOTA))
-      next = UPF_PROCESS_NEXT_DROP;
+      next = UPF_FORWARD_NEXT_DROP;
 
     status |= r;
   }
@@ -2272,7 +2272,7 @@ process_qers (vlib_main_t * vm, upf_session_t * sess,
 
     if (qer->gate_status[direction])
       {
-	next = UPF_PROCESS_NEXT_DROP;
+	next = UPF_FORWARD_NEXT_DROP;
 	break;
       }
 

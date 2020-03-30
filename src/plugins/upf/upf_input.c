@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Travelping GmbH
+ * Copyright (c) 2020 Travelping GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,27 +39,36 @@
   do { } while (0)
 #endif
 
+typedef enum
+{
+  UPF_INPUT_NEXT_DROP,
+  UPF_INPUT_NEXT_IP_INPUT,
+  UPF_INPUT_NEXT_TCP_INPUT,
+  UPF_INPUT_NEXT_PROXY_ACCEPT,
+  UPF_INPUT_N_NEXT,
+} upf_input_next_t;
+
 /* Statistics (not all errors) */
-#define foreach_upf_process_error				\
+#define foreach_upf_input_error				\
   _(LENGTH, "inconsistent ip/tcp lengths")			\
   _(NO_LISTENER, "no redirect server available")		\
-  _(PROCESS, "good packets process")				\
+  _(INPUT, "good packets input")				\
   _(OPTIONS, "Could not parse options")				\
   _(CREATE_SESSION_FAIL, "Sessions couldn't be allocated")
 
-static char *upf_process_error_strings[] = {
+static char *upf_input_error_strings[] = {
 #define _(sym,string) string,
-  foreach_upf_process_error
+  foreach_upf_input_error
 #undef _
 };
 
 typedef enum
 {
-#define _(sym,str) UPF_PROCESS_ERROR_##sym,
-  foreach_upf_process_error
+#define _(sym,str) UPF_INPUT_ERROR_##sym,
+  foreach_upf_input_error
 #undef _
-    UPF_PROCESS_N_ERROR,
-} upf_process_error_t;
+    UPF_INPUT_N_ERROR,
+} upf_input_error_t;
 
 typedef struct
 {
@@ -69,14 +78,14 @@ typedef struct
   u32 far_id;
   u8 packet_data[64 - 1 * sizeof (u32)];
 }
-upf_process_trace_t;
+upf_input_trace_t;
 
 static u8 *
-format_upf_process_trace (u8 * s, va_list * args)
+format_upf_input_trace (u8 * s, va_list * args)
 {
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
-  upf_process_trace_t *t = va_arg (*args, upf_process_trace_t *);
+  upf_input_trace_t *t = va_arg (*args, upf_input_trace_t *);
   u32 indent = format_get_indent (s);
 
   s = format (s, "upf_session%d cp-seid 0x%016" PRIx64 " pdr %d far %d\n%U%U",
@@ -101,7 +110,7 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
       vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
 
       /* transport connection already setup */
-      return UPF_PROCESS_NEXT_TCP_INPUT;
+      return UPF_INPUT_NEXT_TCP_INPUT;
     }
 
   if (~0 == fib_index)
@@ -116,7 +125,7 @@ upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
   clib_warning ("FIB: %u", fib_index);
 
   vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index;
-  return UPF_PROCESS_NEXT_PROXY_ACCEPT;
+  return UPF_INPUT_NEXT_PROXY_ACCEPT;
 }
 
 static_always_inline void
@@ -127,7 +136,7 @@ upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 }
 
 static uword
-upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
+upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	     vlib_frame_t * from_frame, int is_ip4)
 {
   u32 n_left_from, next_index, *from, *to_next;
@@ -179,7 +188,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  sess = pool_elt_at_index (gtm->sessions, sidx);
 
 	  error = 0;
-	  next = UPF_PROCESS_NEXT_DROP;
+	  next = UPF_INPUT_NEXT_DROP;
 	  active = pfcp_get_rules (sess, PFCP_ACTIVE);
 
 	  if (PREDICT_TRUE (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0))
@@ -200,8 +209,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_GTP_UDP_IP4))
 		{
-		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  next = UPF_INPUT_NEXT_DROP;
+		  // error = UPF_INPUT_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
 	      vlib_buffer_advance (b,
@@ -214,8 +223,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_GTP_UDP_IP6))
 		{
-		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  next = UPF_INPUT_NEXT_DROP;
+		  // error = UPF_INPUT_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
 	      vlib_buffer_advance (b,
@@ -228,8 +237,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_UDP_IP4))
 		{
-		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  next = UPF_INPUT_NEXT_DROP;
+		  // error = UPF_INPUT_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
 	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
@@ -243,8 +252,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  ((upf_buffer_opaque (b)->gtpu.flags & BUFFER_HDR_MASK) !=
 		   BUFFER_UDP_IP6))
 		{
-		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  next = UPF_INPUT_NEXT_DROP;
+		  // error = UPF_INPUT_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
 	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
@@ -265,8 +274,8 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 		  break;
 
 		default:
-		  next = UPF_PROCESS_NEXT_DROP;
-		  // error = UPF_PROCESS_ERROR_INVALID_OUTER_HEADER;
+		  next = UPF_INPUT_NEXT_DROP;
+		  // error = UPF_INPUT_ERROR_INVALID_OUTER_HEADER;
 		  goto trace;
 		}
 	      break;
@@ -275,81 +284,6 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      upf_vnet_buffer_l3_hdr_offset_is_current (b);
 	      break;
 	    }
-
-	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
-	    {
-	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)
-		{
-		  if (far->forward.outer_header_creation.description
-		      & OUTER_HEADER_CREATION_GTP_IP4)
-		    {
-		      next = UPF_PROCESS_NEXT_GTP_IP4_ENCAP;
-		    }
-		  else if (far->forward.outer_header_creation.description
-			   & OUTER_HEADER_CREATION_GTP_IP6)
-		    {
-		      next = UPF_PROCESS_NEXT_GTP_IP6_ENCAP;
-		    }
-		  else if (far->forward.outer_header_creation.description
-			   & OUTER_HEADER_CREATION_UDP_IP4)
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_NOT_YET;
-		      goto trace;
-		    }
-		  else if (far->forward.outer_header_creation.description
-			   & OUTER_HEADER_CREATION_UDP_IP6)
-		    {
-		      next = UPF_PROCESS_NEXT_DROP;
-		      // error = UPF_PROCESS_ERROR_NOT_YET;
-		      goto trace;
-		    }
-		}
-	      else
-		{
-		  if (is_ip4)
-		    {
-		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
-				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM |
-				    VNET_BUFFER_F_OFFLOAD_IP_CKSUM);
-		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			upf_nwi_fib_index (FIB_PROTOCOL_IP4,
-					   far->forward.nwi_index);
-		    }
-		  else
-		    {
-		      b->flags &= ~(VNET_BUFFER_F_OFFLOAD_TCP_CKSUM |
-				    VNET_BUFFER_F_OFFLOAD_UDP_CKSUM);
-		      vnet_buffer (b)->sw_if_index[VLIB_TX] =
-			upf_nwi_fib_index (FIB_PROTOCOL_IP6,
-					   far->forward.nwi_index);
-		    }
-		  next = UPF_PROCESS_NEXT_IP_INPUT;
-		}
-	    }
-	  else if (far->apply_action & FAR_BUFFER)
-	    {
-	      next = UPF_PROCESS_NEXT_DROP;
-	      // error = UPF_PROCESS_ERROR_NOT_YET;
-	    }
-	  else
-	    {
-	      next = UPF_PROCESS_NEXT_DROP;
-	    }
-
-#define IS_DL(_pdr, _far)						\
-	  ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)
-#define IS_UL(_pdr, _far)						\
-	  ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
-
-	  gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
-	  next = process_qers (vm, sess, active, pdr, b,
-			       IS_DL (pdr, far), IS_UL (pdr, far), next);
-	  next = process_urrs (vm, sess, active, pdr, b,
-			       IS_DL (pdr, far), IS_UL (pdr, far), next);
-
-#undef IS_DL
-#undef IS_UL
 
 	stats:
 	  len = vlib_buffer_length_in_chain (vm, b);
@@ -379,7 +313,7 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	    {
-	      upf_process_trace_t *tr =
+	      upf_input_trace_t *tr =
 		vlib_add_trace (vm, node, b, sizeof (*tr));
 	      tr->session_index = sidx;
 	      tr->cp_seid = sess->cp_seid;
@@ -399,56 +333,52 @@ upf_process (vlib_main_t * vm, vlib_node_runtime_t * node,
   return from_frame->n_vectors;
 }
 
-VLIB_NODE_FN (upf_ip4_process_node) (vlib_main_t * vm,
+VLIB_NODE_FN (upf_ip4_input_node) (vlib_main_t * vm,
 				     vlib_node_runtime_t * node,
 				     vlib_frame_t * from_frame)
 {
-  return upf_process (vm, node, from_frame, /* is_ip4 */ 1);
+  return upf_input (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
-VLIB_NODE_FN (upf_ip6_process_node) (vlib_main_t * vm,
+VLIB_NODE_FN (upf_ip6_input_node) (vlib_main_t * vm,
 				     vlib_node_runtime_t * node,
 				     vlib_frame_t * from_frame)
 {
-  return upf_process (vm, node, from_frame, /* is_ip4 */ 0);
+  return upf_input (vm, node, from_frame, /* is_ip4 */ 0);
 }
 
 /* *INDENT-OFF* */
-VLIB_REGISTER_NODE (upf_ip4_process_node) = {
-  .name = "upf-ip4-process",
+VLIB_REGISTER_NODE (upf_ip4_input_node) = {
+  .name = "upf-ip4-input",
   .vector_size = sizeof (u32),
-  .format_trace = format_upf_process_trace,
+  .format_trace = format_upf_input_trace,
   .type = VLIB_NODE_TYPE_INTERNAL,
-  .n_errors = ARRAY_LEN(upf_process_error_strings),
-  .error_strings = upf_process_error_strings,
-  .n_next_nodes = UPF_PROCESS_N_NEXT,
+  .n_errors = ARRAY_LEN(upf_input_error_strings),
+  .error_strings = upf_input_error_strings,
+  .n_next_nodes = UPF_INPUT_N_NEXT,
   .next_nodes = {
-    [UPF_PROCESS_NEXT_DROP]          = "error-drop",
-    [UPF_PROCESS_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
-    [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
-    [UPF_PROCESS_NEXT_IP_INPUT]      = "ip4-input",
-    [UPF_PROCESS_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
-    [UPF_PROCESS_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
+    [UPF_INPUT_NEXT_DROP]          = "error-drop",
+    [UPF_INPUT_NEXT_IP_INPUT]      = "ip4-input",
+    [UPF_INPUT_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
+    [UPF_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
   },
 };
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */
-VLIB_REGISTER_NODE (upf_ip6_process_node) = {
-  .name = "upf-ip6-process",
+VLIB_REGISTER_NODE (upf_ip6_input_node) = {
+  .name = "upf-ip6-input",
   .vector_size = sizeof (u32),
-  .format_trace = format_upf_process_trace,
+  .format_trace = format_upf_input_trace,
   .type = VLIB_NODE_TYPE_INTERNAL,
-  .n_errors = ARRAY_LEN(upf_process_error_strings),
-  .error_strings = upf_process_error_strings,
-  .n_next_nodes = UPF_PROCESS_N_NEXT,
+  .n_errors = ARRAY_LEN(upf_input_error_strings),
+  .error_strings = upf_input_error_strings,
+  .n_next_nodes = UPF_INPUT_N_NEXT,
   .next_nodes = {
-    [UPF_PROCESS_NEXT_DROP]          = "error-drop",
-    [UPF_PROCESS_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
-    [UPF_PROCESS_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
-    [UPF_PROCESS_NEXT_IP_INPUT]      = "ip6-input",
-    [UPF_PROCESS_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
-    [UPF_PROCESS_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
+    [UPF_INPUT_NEXT_DROP]          = "error-drop",
+    [UPF_INPUT_NEXT_IP_INPUT]      = "ip6-input",
+    [UPF_INPUT_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
+    [UPF_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
   },
 };
 /* *INDENT-ON* */

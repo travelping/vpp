@@ -311,6 +311,7 @@ upf_gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b0)->gtpu.data_offset = hdr_len0;
 	  upf_buffer_opaque (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
 	  upf_buffer_opaque (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b0)->gtpu.is_proxied = 0;
 	  upf_buffer_opaque (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
 	  upf_buffer_opaque (b0)->gtpu.session_index = session_index0;
 	  upf_buffer_opaque (b0)->gtpu.pdr_idx =
@@ -488,6 +489,7 @@ upf_gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b1)->gtpu.data_offset = hdr_len1;
 	  upf_buffer_opaque (b1)->gtpu.ext_hdr_len = gtpu_hdr_len1 - (sizeof (gtpu_header_t) - 4);
 	  upf_buffer_opaque (b1)->gtpu.flags = (gtpu1->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b1)->gtpu.is_proxied = 0;
 	  upf_buffer_opaque (b1)->gtpu.teid = clib_net_to_host_u32 (gtpu1->teid);
 	  upf_buffer_opaque (b1)->gtpu.session_index = session_index1;
 	  upf_buffer_opaque (b1)->gtpu.pdr_idx =
@@ -717,6 +719,7 @@ upf_gtpu_input (vlib_main_t * vm,
 	  upf_buffer_opaque (b0)->gtpu.data_offset = hdr_len0;
 	  upf_buffer_opaque (b0)->gtpu.ext_hdr_len = gtpu_hdr_len0 - (sizeof (gtpu_header_t) - 4);
 	  upf_buffer_opaque (b0)->gtpu.flags = (gtpu0->ver_flags & GTPU_E_S_PN_BIT);
+	  upf_buffer_opaque (b0)->gtpu.is_proxied = 0;
 	  upf_buffer_opaque (b0)->gtpu.teid = clib_net_to_host_u32 (gtpu0->teid);
 	  upf_buffer_opaque (b0)->gtpu.session_index = session_index0;
 	  upf_buffer_opaque (b0)->gtpu.pdr_idx =
@@ -811,8 +814,8 @@ VLIB_REGISTER_NODE (upf_gtpu4_input_node) = {
     [UPF_GTPU_INPUT_NEXT_DROP]             = "error-drop",
     [UPF_GTPU_INPUT_NEXT_IP4_FLOW_PROCESS] = "upf-ip4-flow-process",
     [UPF_GTPU_INPUT_NEXT_IP6_FLOW_PROCESS] = "upf-ip6-flow-process",
-    [UPF_GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-process",
-    [UPF_GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-process",
+    [UPF_GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-input",
+    [UPF_GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-input",
     [UPF_GTPU_INPUT_NEXT_ERROR_INDICATION] = "upf-gtp-error-indication",
     [UPF_GTPU_INPUT_NEXT_ECHO_REQUEST]     = "upf-gtp-ip4-echo-request",
   },
@@ -837,8 +840,8 @@ VLIB_REGISTER_NODE (upf_gtpu6_input_node) = {
     [UPF_GTPU_INPUT_NEXT_DROP]             = "error-drop",
     [UPF_GTPU_INPUT_NEXT_IP4_FLOW_PROCESS] = "upf-ip4-flow-process",
     [UPF_GTPU_INPUT_NEXT_IP6_FLOW_PROCESS] = "upf-ip6-flow-process",
-    [UPF_GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-process",
-    [UPF_GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-process",
+    [UPF_GTPU_INPUT_NEXT_IP4_PROCESS]      = "upf-ip4-input",
+    [UPF_GTPU_INPUT_NEXT_IP6_PROCESS]      = "upf-ip6-input",
     [UPF_GTPU_INPUT_NEXT_ERROR_INDICATION] = "upf-gtp-error-indication",
     [UPF_GTPU_INPUT_NEXT_ECHO_REQUEST]     = "upf-gtp-ip6-echo-request",
   },

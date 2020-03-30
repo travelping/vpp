@@ -50,43 +50,26 @@ typedef struct
 {
   struct
   {
+    u64 pad[1];
     u32 teid;
     u32 session_index;
     u16 ext_hdr_len;
     u16 data_offset;		/* offset relative to ip hdr */
     u8 flags;
-    u8 is_reverse;
+    u8 is_reverse:1;
+    u8 is_proxied:1;
     u32 pdr_idx;
     u32 flow_id;
   } gtpu;
 } upf_buffer_opaque_t;
 
 STATIC_ASSERT (sizeof (upf_buffer_opaque_t) <=
-	       STRUCT_SIZE_OF (vnet_buffer_opaque_t, unused),
-	       "upf_buffer_opaque_t too large for vnet_buffer_opaque_t");
-
-#define upf_buffer_opaque(b)                           \
-  ((upf_buffer_opaque_t *)((u8 *)((b)->opaque) +       \
-STRUCT_OFFSET_OF (vnet_buffer_opaque_t, unused)))
-
-/* UPF buffer opaque2 definition */
-typedef struct
-{
-  struct
-  {
-    u64 pad;
-    u32 session_index;
-    u32 far_index;
-  } gtpu;
-} upf_buffer_opaque2_t;
-
-STATIC_ASSERT (sizeof (upf_buffer_opaque2_t) <=
 	       STRUCT_SIZE_OF (vnet_buffer_opaque2_t, unused),
 	       "upf_buffer_opaque_t too large for vnet_buffer_opaque2_t");
 
-#define upf_buffer_opaque2(b)                           \
-  ((upf_buffer_opaque2_t *)((u8 *)((b)->opaque2) +       \
-STRUCT_OFFSET_OF (vnet_buffer_opaque2_t, unused)))
+#define upf_buffer_opaque(b)                           \
+  ((upf_buffer_opaque_t *)((u8 *)((b)->opaque2) +       \
+STRUCT_OFFSET_OF (vnet_buffer_opaque_t, unused)))
 
 #define BUFFER_HAS_GTP_HDR  (1<<4)
 #define BUFFER_HAS_UDP_HDR  (1<<5)
@@ -840,14 +823,14 @@ extern vlib_node_registration_t upf6_encap_node;
 
 typedef enum
 {
-  UPF_PROCESS_NEXT_DROP,
-  UPF_PROCESS_NEXT_GTP_IP4_ENCAP,
-  UPF_PROCESS_NEXT_GTP_IP6_ENCAP,
-  UPF_PROCESS_NEXT_IP_INPUT,
-  UPF_PROCESS_NEXT_TCP_INPUT,
-  UPF_PROCESS_NEXT_PROXY_ACCEPT,
-  UPF_PROCESS_N_NEXT,
-} upf_process_next_t;
+  UPF_FORWARD_NEXT_DROP,
+  UPF_FORWARD_NEXT_GTP_IP4_ENCAP,
+  UPF_FORWARD_NEXT_GTP_IP6_ENCAP,
+  UPF_FORWARD_NEXT_IP_INPUT,
+  UPF_FORWARD_NEXT_TCP_INPUT,
+  UPF_FORWARD_NEXT_PROXY_ACCEPT,
+  UPF_FORWARD_N_NEXT,
+} upf_forward_next_t;
 
 typedef struct
 {

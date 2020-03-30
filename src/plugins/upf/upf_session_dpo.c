@@ -358,6 +358,7 @@ VLIB_NODE_FN (upf_ip4_session_dpo_node) (vlib_main_t * vm,
 	  calc_checksums (vm, b);
 
 	  upf_buffer_opaque (b)->gtpu.session_index = sidx;
+	  upf_buffer_opaque (b)->gtpu.is_proxied = 0;
 	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
 	  upf_buffer_opaque (b)->gtpu.teid = 0;
 	  upf_buffer_opaque (b)->gtpu.flags = BUFFER_HAS_IP4_HDR;
