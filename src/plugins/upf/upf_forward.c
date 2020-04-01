@@ -159,6 +159,8 @@ upf_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
+	  clib_warning ("PDR: %u, FAR: %u", pdr->id, far->id);
+
 	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
 	      if (far->forward.flags & FAR_F_OUTER_HEADER_CREATION)

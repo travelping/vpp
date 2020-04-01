@@ -20,6 +20,9 @@
 #include <vppinfra/vec.h>
 #include <vnet/ip/ip4_packet.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
+
 #include "upf.h"
 #include "flowtable.h"
 #include "flowtable_tcp.h"

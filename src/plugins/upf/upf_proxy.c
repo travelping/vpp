@@ -721,6 +721,8 @@ active_open_connected_callback (u32 app_index, u32 opaque,
   upf_proxy_session_t *ps;
   u8 thread_index = vlib_get_thread_index ();
 
+  clib_warning ("called...");
+
   if (is_fail)
     {
       clib_warning ("connection %d failed!", opaque);
@@ -776,18 +778,21 @@ active_open_connected_callback (u32 app_index, u32 opaque,
 static void
 active_open_reset_callback (session_t * s)
 {
+  clib_warning ("called...");
   delete_proxy_session (s, 1 /* is_active_open */ );
 }
 
 static int
 active_open_create_callback (session_t * s)
 {
+  clib_warning ("called...");
   return 0;
 }
 
 static void
 active_open_disconnect_callback (session_t * s)
 {
+  clib_warning ("called...");
   delete_proxy_session (s, 1 /* is_active_open */ );
 }
 
