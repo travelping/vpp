@@ -24,6 +24,7 @@
 #define CLIB_DEBUG 10
 
 #include "upf.h"
+#include "upf_pfcp.h"
 #include "flowtable.h"
 #include "flowtable_tcp.h"
 
@@ -69,16 +70,24 @@ format_get_flowinfo (u8 * s, va_list * args)
   return s;
 }
 
+static_always_inline u32
+flow_pdr_idx (flow_entry_t * flow, flow_direction_t direction,
+	      struct rules * r)
+{
+  upf_pdr_t *pdr = pfcp_get_pdr_by_id (r, flow_pdr_id(flow, direction));
+  return pdr - r->pdr;
+}
+
 always_inline u32
 load_gtpu_flow_info (flowtable_main_t * fm, vlib_buffer_t * b,
-		     flow_entry_t * flow, uword is_reverse)
+		     flow_entry_t * flow, struct rules * r, uword is_reverse)
 {
-  int direction =
+  flow_direction_t direction =
     flow->is_reverse == is_reverse ? FT_ORIGIN : FT_REVERSE;
 
   upf_buffer_opaque (b)->gtpu.is_reverse = is_reverse;
   upf_buffer_opaque (b)->gtpu.flow_id = flow - fm->flows;
-  upf_buffer_opaque (b)->gtpu.pdr_idx = flow_pdr_id(flow, direction);
+  upf_buffer_opaque (b)->gtpu.pdr_idx = flow_pdr_idx (flow, direction, r);
 
   return flow_next(flow, direction);
 }
@@ -120,6 +129,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  u32 bi0, bi1;
 	  vlib_buffer_t *b0, *b1;
 	  upf_session_t *sx0, *sx1;
+	  struct rules *active0, *active1;
 	  u32 next0, next1;
 	  BVT (clib_bihash_kv) kv0, kv1;
 	  int created0, created1;
@@ -188,6 +198,9 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    pool_elt_at_index (gtm->sessions,
 			       upf_buffer_opaque (b1)->gtpu.session_index);
 
+	  active0 = pfcp_get_rules (sx0, PFCP_ACTIVE);
+	  active1 = pfcp_get_rules (sx1, PFCP_ACTIVE);
+
 	  flow_mk_key (sx0->cp_seid, b0,
 		       upf_buffer_opaque (b0)->gtpu.data_offset, is_ip4,
 		       &is_reverse0, &kv0);
@@ -235,8 +248,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  flow1->stats[is_reverse1].bytes += b1->current_length;
 
 	  /* fill buffer with flow data */
-	  next0 = load_gtpu_flow_info (fm, b0, flow0, is_reverse0);
-	  next1 = load_gtpu_flow_info (fm, b1, flow1, is_reverse1);
+	  next0 = load_gtpu_flow_info (fm, b0, flow0, active0, is_reverse0);
+	  next1 = load_gtpu_flow_info (fm, b1, flow1, active1, is_reverse1);
 
 	  /* flowtable counters */
 	  CPT_THRU += 2;
@@ -288,6 +301,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  u32 next0;
 	  vlib_buffer_t *b0;
 	  upf_session_t *sx0;
+	  struct rules *active0;
 	  int created = 0;
 	  u32 flow_idx;
 	  flow_entry_t *flow = NULL;
@@ -317,6 +331,8 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  sx0 =
 	    pool_elt_at_index (gtm->sessions,
 			       upf_buffer_opaque (b0)->gtpu.session_index);
+
+	  active0 = pfcp_get_rules (sx0, PFCP_ACTIVE);
 
 	  /* lookup/create flow */
 	  flow_mk_key (sx0->cp_seid, b0,
@@ -349,7 +365,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  flow->stats[is_reverse].bytes += b0->current_length;
 
 	  /* fill opaque buffer with flow data */
-	  next0 = load_gtpu_flow_info (fm, b0, flow, is_reverse);
+	  next0 = load_gtpu_flow_info (fm, b0, flow, active0, is_reverse);
 	  clib_warning ("flow next: %u, origin: %u, reverse: %u",
 			next0, flow_next(flow, FT_ORIGIN), flow_next(flow, FT_REVERSE));
 

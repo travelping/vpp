@@ -42,9 +42,7 @@
 typedef enum
 {
   UPF_INPUT_NEXT_DROP,
-  UPF_INPUT_NEXT_IP_INPUT,
-  UPF_INPUT_NEXT_TCP_INPUT,
-  UPF_INPUT_NEXT_PROXY_ACCEPT,
+  UPF_INPUT_NEXT_UPF_FORWARD,
   UPF_INPUT_N_NEXT,
 } upf_input_next_t;
 
@@ -93,39 +91,6 @@ format_upf_input_trace (u8 * s, va_list * args)
 	      format_white_space, indent,
 	      format_ip4_header, t->packet_data, sizeof (t->packet_data));
   return s;
-}
-
-static_always_inline u32
-upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
-	      int is_ip4, u32 sidx, u32 far_idx,
-	      flow_tc_t * ftc, u32 fib_index, u32 * error)
-{
-  u32 thread_index = vm->thread_index;
-
-  if (ftc->conn_index != ~0)
-    {
-      ASSERT (ftc->thread_index == thread_index);
-
-      clib_warning ("existing connection 0x%08x", ftc->conn_index);
-      vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
-
-      /* transport connection already setup */
-      return UPF_INPUT_NEXT_TCP_INPUT;
-    }
-
-  if (~0 == fib_index)
-    {
-      u32 sw_if_index = vnet_buffer (b)->sw_if_index[VLIB_RX];
-      fib_index = is_ip4 ?
-	ip4_fib_table_get_index_for_sw_if_index (sw_if_index)
-	: ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
-      clib_warning ("SwIfIdx: %u", sw_if_index);
-    }
-
-  clib_warning ("FIB: %u", fib_index);
-
-  vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index;
-  return UPF_INPUT_NEXT_PROXY_ACCEPT;
 }
 
 static_always_inline void
@@ -188,7 +153,7 @@ upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  sess = pool_elt_at_index (gtm->sessions, sidx);
 
 	  error = 0;
-	  next = UPF_INPUT_NEXT_DROP;
+	  next = UPF_INPUT_NEXT_UPF_FORWARD;
 	  active = pfcp_get_rules (sess, PFCP_ACTIVE);
 
 	  if (PREDICT_TRUE (upf_buffer_opaque (b)->gtpu.pdr_idx != ~0))
@@ -198,8 +163,12 @@ upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    }
 
 	  clib_warning ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
+	  clib_warning ("PDR Idx: %u, PDR: %p, FAR: %p",
+			upf_buffer_opaque (b)->gtpu.pdr_idx, pdr, far);
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
+
+	  clib_warning ("PDR OHR: %u", pdr->outer_header_removal);
 
 	  /* Outer Header Removal */
 	  switch (pdr->outer_header_removal)
@@ -322,6 +291,7 @@ upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      clib_memcpy (tr->packet_data, vlib_buffer_get_current (b),
 			   sizeof (tr->packet_data));
 	    }
+	  clib_warning ("Next: %u, Error: %u", next, error);
 
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next, bi, next);
@@ -357,10 +327,8 @@ VLIB_REGISTER_NODE (upf_ip4_input_node) = {
   .error_strings = upf_input_error_strings,
   .n_next_nodes = UPF_INPUT_N_NEXT,
   .next_nodes = {
-    [UPF_INPUT_NEXT_DROP]          = "error-drop",
-    [UPF_INPUT_NEXT_IP_INPUT]      = "ip4-input",
-    [UPF_INPUT_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
-    [UPF_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
+    [UPF_INPUT_NEXT_DROP]        = "error-drop",
+    [UPF_INPUT_NEXT_UPF_FORWARD] = "upf-ip4-forward",
   },
 };
 /* *INDENT-ON* */
@@ -375,10 +343,8 @@ VLIB_REGISTER_NODE (upf_ip6_input_node) = {
   .error_strings = upf_input_error_strings,
   .n_next_nodes = UPF_INPUT_N_NEXT,
   .next_nodes = {
-    [UPF_INPUT_NEXT_DROP]          = "error-drop",
-    [UPF_INPUT_NEXT_IP_INPUT]      = "ip6-input",
-    [UPF_INPUT_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
-    [UPF_INPUT_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
+    [UPF_INPUT_NEXT_DROP]        = "error-drop",
+    [UPF_INPUT_NEXT_UPF_FORWARD] = "upf-ip6-forward",
   },
 };
 /* *INDENT-ON* */
