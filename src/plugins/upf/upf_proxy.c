@@ -593,6 +593,10 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   case ADR_OK:
     clib_warning ("connect outgoing session");
 
+    /* we are done with scanning for PDRs */
+    flow_next(flow, FT_ORIGIN) =
+      flow_next(flow, FT_REVERSE) = FT_NEXT_PROXY;
+
     /* start outgoing connect to server */
     proxy_start_connect (ps->session_index);
 

@@ -280,46 +280,11 @@ upf_adr_try_http (u16 port, u8 * p, u8 ** uri)
   return ADR_NEED_MORE_DATA;
 }
 
-adr_result_t
-upf_application_detection (vlib_main_t * vm, u8 * p,
-			   flow_entry_t * flow, struct rules *active)
+static upf_pdr_t *
+app_scan_for_uri (u8 *uri, flow_entry_t * flow, struct rules *active,
+		  flow_direction_t direction, upf_pdr_t *adr)
 {
-  adr_result_t r;
-  upf_pdr_t *adr;
   upf_pdr_t *pdr;
-  u16 port;
-  u8 *uri = NULL;
-
-  adr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
-  if (adr)
-    {
-      adf_debug ("Old PDR: %p %u (id %u)\n", adr, adr->id,
-		 flow_pdr_id(flow, FT_ORIGIN));
-    }
-  else
-    adf_debug ("no ACL matched");
-
-  port = clib_net_to_host_u16 (flow->key.port[FT_REVERSE ^ flow->is_reverse]);
-  clib_warning("Using port %u, instead of %u", port,
-	       clib_net_to_host_u16 (flow->key.port[FT_ORIGIN ^ flow->is_reverse]));
-
-  if (*p == TLS_HANDSHAKE)
-    r = upf_adr_try_tls (port, p, &uri);
-  else
-    r = upf_adr_try_http (port, p, &uri);
-
-  switch (r) {
-  case ADR_NEED_MORE_DATA:
-    return r;
-
-  case ADR_FAIL:
-    goto out;
-
-  case ADR_OK:
-    break;
-  }
-
-  adf_debug ("URI: %v", uri);
 
   /*
    * see 3GPP TS 23.214 Table 5.2.2-1 for valid ADR combinations
@@ -345,7 +310,7 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
 	const ip46_address_t *addr;
 
 	addr =
-	  &flow->key.ip[flow->is_reverse ^
+	  &flow->key.ip[direction ^ flow->is_reverse ^
 			!! (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD)];
 	clib_warning("Using %U as UE IP, S/D: %u",
 		     format_ip46_address, addr, IP46_TYPE_ANY,
@@ -390,7 +355,7 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
       }
 
     if ((pdr->pdi.fields & F_PDI_LOCAL_F_TEID) &&
-	flow_teid(flow, FT_ORIGIN) != pdr->pdi.teid.teid)
+	flow_teid(flow, direction) != pdr->pdi.teid.teid)
       {
 	adf_debug ("skip PDR %u for TEID mismatch\n", pdr->id);
 	continue;
@@ -406,56 +371,85 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
       adf_debug ("No Match!");
   }
 
+  return adr;
+}
+
+adr_result_t
+upf_application_detection (vlib_main_t * vm, u8 * p,
+			   flow_entry_t * flow, struct rules *active)
+{
+  int is_redirect = 0;
+  adr_result_t r;
+  upf_pdr_t *origin, *reverse;
+  u16 port;
+  u8 *uri = NULL;
+
+  /* this runs after the forward and reverse ACL rules have been established */
+  origin = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
+  reverse = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_REVERSE));
+
+  adf_debug ("Old PDR Origin: %p %u, Reverse: %p %u\n",
+	     origin, flow_pdr_id(flow, FT_ORIGIN),
+	     reverse, flow_pdr_id(flow, FT_REVERSE));
+
+  port = clib_net_to_host_u16 (flow->key.port[FT_REVERSE ^ flow->is_reverse]);
+  clib_warning("Using port %u, instead of %u", port,
+	       clib_net_to_host_u16 (flow->key.port[FT_ORIGIN ^ flow->is_reverse]));
+
+  if (*p == TLS_HANDSHAKE)
+    r = upf_adr_try_tls (port, p, &uri);
+  else
+    r = upf_adr_try_http (port, p, &uri);
+
+  switch (r) {
+  case ADR_NEED_MORE_DATA:
+    return r;
+
+  case ADR_FAIL:
+    goto out;
+
+  case ADR_OK:
+    break;
+  }
+
+  adf_debug ("URI: %v", uri);
+
+  origin = app_scan_for_uri (uri, flow, active, FT_ORIGIN, origin);
+  if (origin)
+    {
+      upf_far_t *far;
+
+      far = pfcp_get_far_by_id (active, origin->far_id);
+      is_redirect = (far && far->forward.flags & FAR_F_REDIRECT_INFORMATION);
+    }
+  reverse = is_redirect ?
+    origin : app_scan_for_uri (uri, flow, active, FT_REVERSE, reverse);
+
   vec_free (uri);
 
  out:
   flow->is_decided = 1;
 
-  if (!adr)
+  if (!origin)
     return ADR_FAIL;
 
-  flow_pdr_id(flow, FT_ORIGIN) = adr->id;
-  if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
-    {
-      /* TBD: need to find the reverse application or ACL */
-      flow->application_id = adr->pdi.adr.application_id;
-    }
+  flow_pdr_id(flow, FT_ORIGIN) = origin->id;
+  if ((origin->pdi.fields & F_PDI_APPLICATION_ID))
+    flow->application_id = origin->pdi.adr.application_id;
 
-  adf_debug ("New PDR: %p %u (id %u)\n", adr, adr->id, flow_pdr_id(flow, FT_ORIGIN));
+  if (reverse)
+    flow_pdr_id(flow, FT_REVERSE) = reverse->id;
+
+  /* we are done with scanning for PDRs */
+  flow_next(flow, FT_ORIGIN) =
+    flow_next(flow, FT_REVERSE) = FT_NEXT_PROXY;
+
+  adf_debug ("New PDR Origin: %p %u, Reverse: %p %u\n",
+	     origin, flow_pdr_id(flow, FT_ORIGIN),
+	     reverse, flow_pdr_id(flow, FT_REVERSE));
 
   return ADR_OK;
 }
-
-void
-upf_get_application_rule (vlib_main_t * vm, vlib_buffer_t * b,
-			  flow_entry_t * flow, struct rules *active,
-			  u8 is_ip4)
-{
-  upf_pdr_t *adr;
-  upf_pdr_t *pdr;
-
-  adr = vec_elt_at_index (active->pdr, upf_buffer_opaque (b)->gtpu.pdr_idx);
-  adf_debug ("Old PDR: %p %u (idx %u)\n", adr, adr->id,
-	     upf_buffer_opaque (b)->gtpu.pdr_idx);
-  vec_foreach (pdr, active->pdr)
-  {
-    if ((pdr->pdi.fields & F_PDI_APPLICATION_ID)
-	&& (pdr->precedence < adr->precedence)
-	&& (pdr->pdi.adr.application_id == flow->application_id))
-      adr = pdr;
-  }
-
-  upf_buffer_opaque (b)->gtpu.pdr_idx = adr - active->pdr;
-  if ((adr->pdi.fields & F_PDI_APPLICATION_ID))
-    flow->application_id = adr->pdi.adr.application_id;
-
-  adf_debug ("New PDR: %p %u (idx %u)\n", adr, adr->id,
-	     upf_buffer_opaque (b)->gtpu.pdr_idx);
-
-  /* switch return traffic to processing node */
-  flow_next(flow, FT_REVERSE) = FT_NEXT_PROCESS;
-}
-
 
 /*
  * fd.io coding-style-patch-verification: ON
