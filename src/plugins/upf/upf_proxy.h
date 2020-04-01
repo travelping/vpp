@@ -21,8 +21,8 @@
 #include <vnet/vnet.h>
 #include <vnet/session/application.h>
 
-extern vlib_node_registration_t upf_ip4_proxy_output_node;
-extern vlib_node_registration_t upf_ip6_proxy_output_node;
+extern vlib_node_registration_t upf_ip4_proxy_server_output_node;
+extern vlib_node_registration_t upf_ip6_proxy_server_output_node;
 
 typedef struct
 {
@@ -44,8 +44,8 @@ typedef struct
 
 typedef struct
 {
-  u16 tcp4_output_proxy_next;
-  u16 tcp6_output_proxy_next;
+  u16 tcp4_server_output_next;
+  u16 tcp6_server_output_next;
 
   svm_queue_t *vl_input_queue;	/**< vpe input queue */
   /** per-thread vectors */

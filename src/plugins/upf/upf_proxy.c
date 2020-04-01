@@ -992,13 +992,13 @@ upf_proxy_main_init (vlib_main_t * vm)
   pm->active_open_client_index = ~0;
 
   clib_warning ("TCP4 Output Node Index %u, IP4 Proxy Output Node Index %u",
-		tcp4_output_node.index, upf_ip4_proxy_output_node.index);
+		tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
   clib_warning ("TCP6 Output Node Index %u, IP6 Proxy Output Node Index %u",
-		tcp6_output_node.index, upf_ip6_proxy_output_node.index);
-  pm->tcp4_output_proxy_next =
-    vlib_node_add_next (vm, tcp4_output_node.index, upf_ip4_proxy_output_node.index);
-  pm->tcp6_output_proxy_next =
-    vlib_node_add_next (vm, tcp6_output_node.index, upf_ip6_proxy_output_node.index);
+		tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
+  pm->tcp4_server_output_next =
+    vlib_node_add_next (vm, tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
+  pm->tcp6_server_output_next =
+    vlib_node_add_next (vm, tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
 
   upf_proxy_create (0, 1);
 

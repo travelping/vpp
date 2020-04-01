@@ -107,7 +107,7 @@ upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 
 static uword
 upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
-	     vlib_frame_t * from_frame, int is_ip4)
+	     vlib_frame_t * from_frame, flow_direction_t direction, int is_ip4)
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
@@ -180,7 +180,7 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  upf_buffer_opaque (b)->gtpu.session_index = flow->session_index;
 	  upf_buffer_opaque (b)->gtpu.flow_id = flow_id;
-	  upf_buffer_opaque (b)->gtpu.is_reverse = FT_REVERSE ^ flow->is_reverse;
+	  upf_buffer_opaque (b)->gtpu.is_reverse = direction ^ flow->is_reverse;
 	  upf_buffer_opaque (b)->gtpu.is_proxied = 1;
 	  upf_buffer_opaque (b)->gtpu.data_offset = 0;
 	  upf_buffer_opaque (b)->gtpu.teid = 0;
@@ -217,16 +217,16 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  b->flags &= ~VNET_BUFFER_F_OFFLOAD_UDP_CKSUM;
 	  b->flags &= ~VNET_BUFFER_F_OFFLOAD_IP_CKSUM;
 
-	  next = ft_next_map_next[flow_next(flow, FT_REVERSE)];
+	  next = ft_next_map_next[flow_next(flow, direction)];
 	  if (next == UPF_PROXY_OUTPUT_NEXT_PROCESS)
 	    {
 	      upf_pdr_t *pdr;
-	      ASSERT (flow_pdr_id(flow, FT_REVERSE) != ~0);
+	      ASSERT (flow_pdr_id(flow, direction) != ~0);
 
 	      if (!pool_is_free_index (gtm->sessions, flow->session_index))
 		sx = pool_elt_at_index (gtm->sessions, flow->session_index);
 	      active = sx ? pfcp_get_rules (sx, PFCP_ACTIVE) : NULL;
-	      pdr = active ? pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_REVERSE)) : NULL;
+	      pdr = active ? pfcp_get_pdr_by_id (active, flow_pdr_id(flow, direction)) : NULL;
 	      if (!pdr)
 		{
 		  next = UPF_PROXY_OUTPUT_NEXT_DROP;
@@ -289,23 +289,23 @@ stats:
   return from_frame->n_vectors;
 }
 
-VLIB_NODE_FN (upf_ip4_proxy_output_node) (vlib_main_t * vm,
+VLIB_NODE_FN (upf_ip4_proxy_server_output_node) (vlib_main_t * vm,
 				     vlib_node_runtime_t * node,
 				     vlib_frame_t * from_frame)
 {
-  return upf_proxy_output (vm, node, from_frame, /* is_ip4 */ 1);
+  return upf_proxy_output (vm, node, from_frame, FT_REVERSE, /* is_ip4 */ 1);
 }
 
-VLIB_NODE_FN (upf_ip6_proxy_output_node) (vlib_main_t * vm,
+VLIB_NODE_FN (upf_ip6_proxy_server_output_node) (vlib_main_t * vm,
 				     vlib_node_runtime_t * node,
 				     vlib_frame_t * from_frame)
 {
-  return upf_proxy_output (vm, node, from_frame, /* is_ip4 */ 0);
+  return upf_proxy_output (vm, node, from_frame, FT_REVERSE, /* is_ip4 */ 0);
 }
 
 /* *INDENT-OFF* */
-VLIB_REGISTER_NODE (upf_ip4_proxy_output_node) = {
-  .name = "upf-ip4-proxy-output",
+VLIB_REGISTER_NODE (upf_ip4_proxy_server_output_node) = {
+  .name = "upf-ip4-proxy-server-output",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_proxy_output_trace,
   .type = VLIB_NODE_TYPE_INTERNAL,
@@ -321,8 +321,8 @@ VLIB_REGISTER_NODE (upf_ip4_proxy_output_node) = {
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */
-VLIB_REGISTER_NODE (upf_ip6_proxy_output_node) = {
-  .name = "upf-ip6-proxy-output",
+VLIB_REGISTER_NODE (upf_ip6_proxy_server_output_node) = {
+  .name = "upf-ip6-proxy-server-output",
   .vector_size = sizeof (u32),
   .format_trace = format_upf_proxy_output_trace,
   .type = VLIB_NODE_TYPE_INTERNAL,

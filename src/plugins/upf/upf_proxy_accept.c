@@ -207,7 +207,7 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       child->rto = TCP_RTO_MIN;
 
       child->next_node_index = is_ip4 ?
-	pm->tcp4_output_proxy_next : pm->tcp6_output_proxy_next;
+	pm->tcp4_server_output_next : pm->tcp6_server_output_next;
       child->next_node_opaque = flow_id;
       clib_warning ("Next Node: %u, Opaque: 0x%08x",
 		    child->next_node_index, child->next_node_opaque);
