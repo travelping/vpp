@@ -165,8 +165,6 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       b = vlib_get_buffer (vm, bi);
 
       flow_id = upf_buffer_opaque (b)->gtpu.flow_id;
-      if (upf_buffer_opaque (b)->gtpu.is_reverse)
-	flow_id |= 0x80000000;
       clib_warning ("flow_id: 0x%08x", flow_id);
 
       /* make sure connection_index is invalid */

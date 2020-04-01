@@ -420,8 +420,7 @@ proxy_accept_callback (session_t * s)
   ps->proxy_session_index = s->session_index;
   ps->proxy_thread_index = s->thread_index;
 
-  ps->flow_index = s->opaque & ~0x80000000;
-  ps->is_reverse = !!(s->opaque & 0x80000000);
+  ps->flow_index = s->opaque;
 
   //TBDps->session_state = PROXY_STATE_ESTABLISHED;
   //TBD proxy_server_session_timer_start (ps);

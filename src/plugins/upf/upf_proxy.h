@@ -37,7 +37,6 @@ typedef struct
   u32 active_open_thread_index;
 
   u32 flow_index;
-  int is_reverse:1;
 
   u8 *rx_buf;				/**< intermediate rx buffers */
 } upf_proxy_session_t;
