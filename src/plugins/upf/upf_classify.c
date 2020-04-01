@@ -315,6 +315,15 @@ upf_acl_classify_proxied (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	*pdr_idx = acl->pdr_idx;
 	next = UPF_CLASSIFY_NEXT_FORWARD;
 
+	if (flow_pdr_id(flow, FT_REVERSE) == ~0)
+	  {
+	    upf_pdr_t *pdr;
+
+	    /* load the best matching ACL into the flow */
+	    pdr = vec_elt_at_index (active->pdr, acl->pdr_idx);
+	    flow_pdr_id(flow, FT_REVERSE) = pdr->id;
+	  }
+
 	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
 		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
 	break;
