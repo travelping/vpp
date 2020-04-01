@@ -231,7 +231,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   *pdr_idx = ~0;
   flow_teid(flow, FT_ORIGIN) = teid;
 
-  if (active->proxy_pdr_idx != ~0)
+  if (flow->key.proto == IP_PROTOCOL_TCP && active->proxy_pdr_idx != ~0)
     {
       /* bypass flow classification if we decided to proxy */
       flow->is_l3_proxy = 1;
@@ -269,7 +269,8 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    flow->is_decided = 1;
 
 	    far = pfcp_get_far_by_id (active, pdr->far_id);
-	    if (far && far->forward.flags & FAR_F_REDIRECT_INFORMATION)
+	    if (flow->key.proto == IP_PROTOCOL_TCP &&
+		far && far->forward.flags & FAR_F_REDIRECT_INFORMATION)
 	      {
 		flow->is_l3_proxy = 1;
 		flow_next(flow, FT_ORIGIN) = FT_NEXT_PROXY;
