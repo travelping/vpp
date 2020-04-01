@@ -86,39 +86,6 @@ format_upf_forward_trace (u8 * s, va_list * args)
   return s;
 }
 
-static_always_inline u32
-upf_to_proxy (vlib_main_t * vm, vlib_buffer_t * b,
-	      int is_ip4, u32 sidx, u32 far_idx,
-	      flow_tc_t * ftc, u32 fib_index, u32 * error)
-{
-  u32 thread_index = vm->thread_index;
-
-  if (ftc->conn_index != ~0)
-    {
-      ASSERT (ftc->thread_index == thread_index);
-
-      clib_warning ("existing connection 0x%08x", ftc->conn_index);
-      vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
-
-      /* transport connection already setup */
-      return UPF_FORWARD_NEXT_TCP_INPUT;
-    }
-
-  if (~0 == fib_index)
-    {
-      u32 sw_if_index = vnet_buffer (b)->sw_if_index[VLIB_RX];
-      fib_index = is_ip4 ?
-	ip4_fib_table_get_index_for_sw_if_index (sw_if_index)
-	: ip6_fib_table_get_index_for_sw_if_index (sw_if_index);
-      clib_warning ("SwIfIdx: %u", sw_if_index);
-    }
-
-  clib_warning ("FIB: %u", fib_index);
-
-  vnet_buffer (b)->sw_if_index[VLIB_TX] = fib_index;
-  return UPF_FORWARD_NEXT_PROXY_ACCEPT;
-}
-
 static_always_inline void
 upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 {
@@ -343,7 +310,6 @@ VLIB_REGISTER_NODE (upf_ip4_forward_node) = {
     [UPF_FORWARD_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
     [UPF_FORWARD_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_FORWARD_NEXT_IP_INPUT]      = "ip4-input",
-    [UPF_FORWARD_NEXT_TCP_INPUT]     = "tcp4-input-nolookup",
     [UPF_FORWARD_NEXT_PROXY_ACCEPT]  = "upf-ip4-proxy-accept",
   },
 };
@@ -363,7 +329,6 @@ VLIB_REGISTER_NODE (upf_ip6_forward_node) = {
     [UPF_FORWARD_NEXT_GTP_IP4_ENCAP] = "upf4-encap",
     [UPF_FORWARD_NEXT_GTP_IP6_ENCAP] = "upf6-encap",
     [UPF_FORWARD_NEXT_IP_INPUT]      = "ip6-input",
-    [UPF_FORWARD_NEXT_TCP_INPUT]     = "tcp6-input-nolookup",
     [UPF_FORWARD_NEXT_PROXY_ACCEPT]  = "upf-ip6-proxy-accept",
   },
 };

@@ -134,8 +134,12 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
+	  upf_session_t *sess = NULL;
+	  flow_direction_t direction;
 	  flow_entry_t *flow = NULL;
-	  int is_forward;
+	  upf_pdr_t *pdr = NULL;
+	  upf_far_t *far = NULL;
+	  struct rules *active;
 	  flow_tc_t *ftc;
 
 	  bi = from[0];
@@ -148,7 +152,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  b = vlib_get_buffer (vm, bi);
 
 	  error = 0;
-	  next = UPF_PROXY_INPUT_NEXT_DROP;
+	  next = UPF_FORWARD_NEXT_DROP;
 
 	  ASSERT (upf_buffer_opaque (b)->gtpu.flow_id);
 
@@ -198,11 +202,13 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 	  ASSERT (flow);
 
-	  is_forward = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse);
-	  clib_warning ("is fwd: %u, buffer: %u, flow: %u", is_forward,
+	  direction = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse) ?
+	    FT_ORIGIN : FT_REVERSE;
+
+	  clib_warning ("direction: %u, buffer: %u, flow: %u", direction,
 			upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
 
-	  ftc = &flow_tc(flow, is_forward ? FT_ORIGIN : FT_REVERSE);
+	  ftc = &flow_tc(flow, direction);
 	  clib_warning ("ftc conn_index %u", ftc->conn_index);
 
 	  if (ftc->conn_index != ~0)
@@ -215,17 +221,47 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      /* transport connection already setup */
 	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 	    }
-	  else if (is_forward)
+	  else if (direction == FT_ORIGIN)
 	    {
 	      clib_warning ("PROXY_ACCEPT");
 	      next = UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT;
 	    }
-	  else if (!is_forward && ftc->conn_index == ~0)
+	  else if (direction == FT_REVERSE && ftc->conn_index == ~0)
 	    {
 	      clib_warning ("INPUT_LOOKUP");
 	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP;
 	    }
+	  else
+	    goto stats;
 
+	  /* Get next node index and adj index from tunnel next_dpo */
+	  sess = pool_elt_at_index (gtm->sessions, flow->session_index);
+	  active = pfcp_get_rules (sess, PFCP_ACTIVE);
+	  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, direction));
+	  far = pdr ? pfcp_get_far_by_id (active, pdr->far_id) : NULL;
+
+	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
+	    {
+	      next = UPF_FORWARD_NEXT_DROP;
+	      goto stats;
+	    }
+
+
+#define IS_DL(_pdr, _far)						\
+	  ((_pdr)->pdi.src_intf == SRC_INTF_CORE || (_far)->forward.dst_intf == DST_INTF_ACCESS)
+#define IS_UL(_pdr, _far)						\
+	  ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
+
+	  gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
+	  next = process_qers (vm, sess, active, pdr, b,
+			       IS_DL (pdr, far), IS_UL (pdr, far), next);
+	  next = process_urrs (vm, sess, active, pdr, b,
+			       IS_DL (pdr, far), IS_UL (pdr, far), next);
+
+#undef IS_DL
+#undef IS_UL
+
+	stats:
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;
 	  stats_n_bytes += len;
