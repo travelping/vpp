@@ -39,7 +39,7 @@ variables:
     - export DOCKER_HOST="tcp://localhost:2375"
     - |
       case "$CI_COMMIT_REF_NAME" in
-        stable/* | feature/19* ) export LABELS="";;
+        stable/* | feature/20* ) export LABELS="";;
         *)                       export LABELS="--label quay.expires-after=7d";;
       esac
     - echo "quay.io login..."
