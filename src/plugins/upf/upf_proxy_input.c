@@ -30,8 +30,6 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -205,17 +203,17 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  direction = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse) ?
 	    FT_ORIGIN : FT_REVERSE;
 
-	  clib_warning ("direction: %u, buffer: %u, flow: %u", direction,
-			upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
+	  gtp_debug ("direction: %u, buffer: %u, flow: %u", direction,
+		     upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
 
 	  ftc = &flow_tc(flow, direction);
-	  clib_warning ("ftc conn_index %u", ftc->conn_index);
+	  gtp_debug ("ftc conn_index %u", ftc->conn_index);
 
 	  if (ftc->conn_index != ~0)
 	    {
 	      ASSERT (ftc->thread_index == thread_index);
 
-	      clib_warning ("existing connection 0x%08x", ftc->conn_index);
+	      gtp_debug ("existing connection 0x%08x", ftc->conn_index);
 	      vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
 
 	      /* transport connection already setup */
@@ -223,12 +221,12 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    }
 	  else if (direction == FT_ORIGIN)
 	    {
-	      clib_warning ("PROXY_ACCEPT");
+	      gtp_debug ("PROXY_ACCEPT");
 	      next = UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT;
 	    }
 	  else if (direction == FT_REVERSE && ftc->conn_index == ~0)
 	    {
-	      clib_warning ("INPUT_LOOKUP");
+	      gtp_debug ("INPUT_LOOKUP");
 	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP;
 	    }
 	  else

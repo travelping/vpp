@@ -1618,8 +1618,8 @@ build_pfcp_rules (upf_session_t * sx)
 	      upf_fib_index_by_sw_if_index (sw_if_index, 1 /* is_ip4 */ );
 	    ue_ip.sw_if_index = sw_if_index;
 
-	    clib_warning ("UP FIB Idx %u, sw_if_index %u",
-			  ue_ip.fib_index, ue_ip.sw_if_index);
+	    gtp_debug ("UP FIB Idx %u, sw_if_index %u",
+		       ue_ip.fib_index, ue_ip.sw_if_index);
 	    rules_add_ue_ip (pending, FIB_PROTOCOL_IP4, &ue_ip, is_dst);
 	  }
 

@@ -27,6 +27,13 @@
 #include "upf_proxy.h"
 #include "upf_app_db.h"
 
+#if CLIB_DEBUG > 1
+#define gtp_debug clib_warning
+#else
+#define gtp_debug(...)				\
+  do { } while (0)
+#endif
+
 #define TCP_MSS 1460
 
 typedef enum
@@ -227,7 +234,7 @@ proxy_start_connect_fn (const u32 * session_index)
   a->sep_ext.peer.port = flow->key.port[FT_ORIGIN ^ flow->is_reverse];
 
   rv = vnet_connect (a);
-  clib_warning ("Connect Result: %u", rv);
+  gtp_debug ("Connect Result: %u", rv);
 
  out:
   proxy_server_sessions_reader_unlock ();
@@ -372,7 +379,7 @@ delete_proxy_session (session_t * s, int is_active_open)
       if (!ps)
 	{
 	  u64 handle = session_handle (s);
-	  clib_warning ("proxy session for %s handle %lld (%llx) AWOL",
+	  gtp_debug ("proxy session for %s handle %lld (%llx) AWOL",
 			is_active_open ? "active open" : "server",
 			handle, handle);
 	}
@@ -440,7 +447,7 @@ proxy_disconnect_callback (session_t * s)
 static void
 proxy_reset_callback (session_t * s)
 {
-  clib_warning ("Reset session %U", format_session, s, 2);
+  gtp_debug ("Reset session %U", format_session, s, 2);
   delete_proxy_session (s, 0 /* is_active_open */ );
 }
 
@@ -448,14 +455,14 @@ static int
 proxy_connected_callback (u32 app_index, u32 api_context,
 			  session_t * s, u8 is_fail)
 {
-  clib_warning ("called...");
+  gtp_debug ("called...");
   return -1;
 }
 
 static int
 proxy_add_segment_callback (u32 client_index, u64 segment_handle)
 {
-  clib_warning ("called...");
+  gtp_debug ("called...");
   return -1;
 }
 
@@ -571,12 +578,12 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   /* WTF, how did that happen */
   ASSERT (active->flags & PFCP_ADR);
 
-  clib_warning ("proxy: %v", ps->rx_buf);
+  gtp_debug ("proxy: %v", ps->rx_buf);
   r = upf_application_detection (gtm->vlib_main, ps->rx_buf, flow, active);
-  clib_warning ("r: %d", r);
+  gtp_debug ("r: %d", r);
   switch (r) {
   case ADR_NEED_MORE_DATA:
-    clib_warning ("ADR_NEED_MORE_DATA");
+    gtp_debug ("ADR_NEED_MORE_DATA");
 
     /* abort ADR scan after 4k of data */
     if (svm_fifo_max_dequeue_cons (ps->rx_fifo) < 4096)
@@ -585,12 +592,12 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
     /* FALL-THRU */
 
   case ADR_FAIL:
-    clib_warning ("ADR_FAIL, close incomming session");
+    gtp_debug ("ADR_FAIL, close incomming session");
     proxy_close_session (s, ps);
     break;
 
   case ADR_OK:
-    clib_warning ("connect outgoing session");
+    gtp_debug ("connect outgoing session");
 
     /* we are done with scanning for PDRs */
     flow_next(flow, FT_ORIGIN) =
@@ -639,7 +646,7 @@ proxy_rx_callback (session_t * s)
 	  if (session_send_io_evt_to_thread_custom (&ao_session_index,
 						    ao_thread_index,
 						    SESSION_IO_EVT_TX))
-	    clib_warning ("failed to enqueue tx evt");
+	    gtp_debug ("failed to enqueue tx evt");
 	}
 
       if (svm_fifo_max_enqueue (ao_tx_fifo) <= TCP_MSS)
@@ -672,11 +679,11 @@ active_open_connected_callback (u32 app_index, u32 opaque,
   upf_proxy_session_t *ps;
   u8 thread_index = vlib_get_thread_index ();
 
-  clib_warning ("called...");
+  gtp_debug ("called...");
 
   if (is_fail)
     {
-      clib_warning ("connection %d failed!", opaque);
+      gtp_debug ("connection %d failed!", opaque);
       return 0;
     }
 
@@ -729,21 +736,21 @@ active_open_connected_callback (u32 app_index, u32 opaque,
 static void
 active_open_reset_callback (session_t * s)
 {
-  clib_warning ("called...");
+  gtp_debug ("called...");
   delete_proxy_session (s, 1 /* is_active_open */ );
 }
 
 static int
 active_open_create_callback (session_t * s)
 {
-  clib_warning ("called...");
+  gtp_debug ("called...");
   return 0;
 }
 
 static void
 active_open_disconnect_callback (session_t * s)
 {
-  clib_warning ("called...");
+  gtp_debug ("called...");
   delete_proxy_session (s, 1 /* is_active_open */ );
 }
 
@@ -814,7 +821,7 @@ proxy_server_attach ()
 
   if (vnet_application_attach (a))
     {
-      clib_warning ("failed to attach server");
+      gtp_debug ("failed to attach server");
       r = -1;
       goto out_free;
     }
@@ -894,13 +901,13 @@ proxy_create (vlib_main_t * vm, u32 fib_index, int is_ip4)
       if ((rv = proxy_server_attach ()))
 	{
 	  assert (rv == 0);
-	  clib_warning ("failed to attach server app");
+	  gtp_debug ("failed to attach server app");
 	  return -1;
 	}
       if ((rv = active_open_attach ()))
 	{
 	  assert (rv == 0);
-	  clib_warning ("failed to attach active open app");
+	  gtp_debug ("failed to attach active open app");
 	  return -1;
 	}
 
@@ -947,10 +954,10 @@ upf_proxy_main_init (vlib_main_t * vm)
   pm->server_client_index = ~0;
   pm->active_open_client_index = ~0;
 
-  clib_warning ("TCP4 Output Node Index %u, IP4 Proxy Output Node Index %u",
-		tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
-  clib_warning ("TCP6 Output Node Index %u, IP6 Proxy Output Node Index %u",
-		tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
+  gtp_debug ("TCP4 Output Node Index %u, IP4 Proxy Output Node Index %u",
+	     tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
+  gtp_debug ("TCP6 Output Node Index %u, IP6 Proxy Output Node Index %u",
+	     tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
   pm->tcp4_server_output_next =
     vlib_node_add_next (vm, tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
   pm->tcp6_server_output_next =

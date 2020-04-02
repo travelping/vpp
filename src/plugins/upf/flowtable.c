@@ -25,6 +25,13 @@
 #include "flowtable.h"
 #include "flowtable_tcp.h"
 
+#if CLIB_DEBUG > 1
+#define gtp_debug clib_warning
+#else
+#define gtp_debug(...)				\
+  do { } while (0)
+#endif
+
 vlib_node_registration_t upf_flow_node;
 
 always_inline void
@@ -72,10 +79,8 @@ flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 	{
 	  u32 f_index = vec_pop (fmt->flow_cache);
 
-#if CLIB_DEBUG > 1
-	  clib_warning ("releasing flow %p, index %u",
+	  gtp_debug ("releasing flow %p, index %u",
 			pool_elt_at_index (fm->flows, f_index), f_index);
-#endif
 #if CLIB_DEBUG > 0
 	  ASSERT (pool_elt_at_index (fm->flows, f_index)->cpu_index ==
 		  cpu_index);
@@ -142,7 +147,7 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
   /* timers unlink */
   clib_dlist_remove (fmt->timers, e - fmt->timers);
 
-  clib_warning ("Flow Timeout Check %p: %u (%u) > %u (%u)",
+  gtp_debug ("Flow Timeout Check %p: %u (%u) > %u (%u)",
 		f, f->active + f->lifetime,
 		(f->active + f->lifetime) % fm->timer_max_lifetime,
 		now, fmt->time_index);
@@ -150,17 +155,17 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
   if (f->active + f->lifetime > now)
     {
       /* There was activity on the entry, so the idle timeout
-         has not passed. Enqueue for another time period. */
+	 has not passed. Enqueue for another time period. */
       u32 timer_slot_head_index;
 
       timer_slot_head_index =
 	(f->active + f->lifetime) % fm->timer_max_lifetime;
-      clib_warning ("Flow Reshedule %p to %u", f, timer_slot_head_index);
+      gtp_debug ("Flow Reshedule %p to %u", f, timer_slot_head_index);
       clib_dlist_addtail (fmt->timers, timer_slot_head_index, f->timer_index);
     }
   else
     {
-      clib_warning ("Flow Remove %p", f);
+      gtp_debug ("Flow Remove %p", f);
       pool_put (fmt->timers, e);
 
       /* hashtable unlink */

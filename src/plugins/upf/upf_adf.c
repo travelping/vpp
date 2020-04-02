@@ -25,9 +25,6 @@
 #include <vnet/fib/ip6_fib.h>
 #include <vnet/ethernet/ethernet.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
-
 #include <upf/upf.h>
 #include <upf/upf_app_db.h>
 #include <upf/upf_pfcp.h>
@@ -63,11 +60,11 @@ upf_adr_try_tls (u16 port, u8 * p, u8 ** uri)
   word frgmt_len, hsk_len, len;
   uword length = vec_len (p);
 
-  clib_warning ("Length: %d", length);
+  gtp_debug ("Length: %d", length);
   if (length < sizeof (*hdr))
     return ADR_NEED_MORE_DATA;
 
-  clib_warning ("HDR: %u, v: %u.%u, Len: %d",
+  gtp_debug ("HDR: %u, v: %u.%u, Len: %d",
 		hdr->type, hdr->major, hdr->minor,
 		clib_net_to_host_u16 (hdr->length));
   if (hdr->type != TLS_HANDSHAKE)
@@ -87,7 +84,7 @@ upf_adr_try_tls (u16 port, u8 * p, u8 ** uri)
     return ADR_NEED_MORE_DATA;
 
   hsk_len = hsk->length[0] << 16 | hsk->length[1] << 8 | hsk->length[2];
-  clib_warning ("TLS Hello: %u, v: Len: %d", hsk->type, hsk_len);
+  gtp_debug ("TLS Hello: %u, v: Len: %d", hsk->type, hsk_len);
 
   if (hsk_len + sizeof (*hsk) < frgmt_len)
     /* Hello is longer that the current fragment */
@@ -96,7 +93,7 @@ upf_adr_try_tls (u16 port, u8 * p, u8 ** uri)
   if (hsk->type != TLS_CLIENT_HELLO)
     return ADR_FAIL;
 
-  clib_warning ("TLS Client Hello: %u.%u", hlo->major, hlo->minor);
+  gtp_debug ("TLS Client Hello: %u.%u", hlo->major, hlo->minor);
   if (hlo->major != 3 || hlo->minor < 1 || hlo->minor > 3)
     /* TLS 1.0, 1.1 and 1.2 only (for now) */
     return ADR_FAIL;
@@ -199,15 +196,15 @@ upf_adr_try_http (u16 port, u8 * p, u8 ** uri)
     /* payload to short, abort ADR scanning for this flow */
     return ADR_NEED_MORE_DATA;
 
-  clib_warning ("p: %*s", len, p);
+  gtp_debug ("p: %*s", len, p);
   eol = memchr (p, '\n', len);
-  clib_warning ("eol %p", eol);
+  gtp_debug ("eol %p", eol);
   if (!eol)
     /* not EOL found */
     return ADR_NEED_MORE_DATA;
 
   s = memchr (p, ' ', eol - p);
-  clib_warning ("s: %p", s);
+  gtp_debug ("s: %p", s);
   if (!s)
     /* HTTP/0.9 - can find the Host Header */
     return ADR_FAIL;
@@ -217,7 +214,7 @@ upf_adr_try_http (u16 port, u8 * p, u8 ** uri)
   {
     u64 d0 = *(u64 *) (s + 1);
 
-    clib_warning ("d0: 0x%016x, 1.0: 0x%016x, 1.1: 0x%016x", d0,
+    gtp_debug ("d0: 0x%016x, 1.0: 0x%016x, 1.1: 0x%016x", d0,
 		  char_to_u64 ('H', 'T', 'T', 'P', '/', '1', '.', '0'),
 		  char_to_u64 ('H', 'T', 'T', 'P', '/', '1', '.', '1'));
     if (d0 != char_to_u64 ('H', 'T', 'T', 'P', '/', '1', '.', '0') &&
@@ -238,7 +235,7 @@ upf_adr_try_http (u16 port, u8 * p, u8 ** uri)
       if (!eol)
 	return ADR_NEED_MORE_DATA;
 
-      clib_warning ("l: %*s", eol-s, s);
+      gtp_debug ("l: %*s", eol-s, s);
 
       ll = eol - s;
       if (ll == 0 || (ll == 1 && s[0] == '\r'))
@@ -312,7 +309,7 @@ app_scan_for_uri (u8 *uri, flow_entry_t * flow, struct rules *active,
 	addr =
 	  &flow->key.ip[direction ^ flow->is_reverse ^
 			!! (pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD)];
-	clib_warning("Using %U as UE IP, S/D: %u",
+	gtp_debug("Using %U as UE IP, S/D: %u",
 		     format_ip46_address, addr, IP46_TYPE_ANY,
 		     !!(pdr->pdi.ue_addr.flags & IE_UE_IP_ADDRESS_SD));
 
@@ -392,8 +389,8 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
 	     reverse, flow_pdr_id(flow, FT_REVERSE));
 
   port = clib_net_to_host_u16 (flow->key.port[FT_REVERSE ^ flow->is_reverse]);
-  clib_warning("Using port %u, instead of %u", port,
-	       clib_net_to_host_u16 (flow->key.port[FT_ORIGIN ^ flow->is_reverse]));
+  gtp_debug("Using port %u, instead of %u", port,
+	    clib_net_to_host_u16 (flow->key.port[FT_ORIGIN ^ flow->is_reverse]));
 
   if (*p == TLS_HANDSHAKE)
     r = upf_adr_try_tls (port, p, &uri);

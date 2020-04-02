@@ -30,8 +30,6 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -171,12 +169,12 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 		     flow, flow_id, format_flow_key, &flow->key);
 	  gtp_debug ("flow: %U\n", format_flow, flow);
 
-	  clib_warning ("IP hdr: %U", format_ip4_header, vlib_buffer_get_current (b));
-	  clib_warning ("Flow ORIGIN/REVERSE Pdr Id: %u/%u, FT Next %u/%u",
-			flow_pdr_id(flow, FT_ORIGIN),
-			flow_pdr_id(flow, FT_REVERSE),
-			flow_next(flow, FT_ORIGIN),
-			flow_next(flow, FT_REVERSE));
+	  gtp_debug ("IP hdr: %U", format_ip4_header, vlib_buffer_get_current (b));
+	  gtp_debug ("Flow ORIGIN/REVERSE Pdr Id: %u/%u, FT Next %u/%u",
+		     flow_pdr_id(flow, FT_ORIGIN),
+		     flow_pdr_id(flow, FT_REVERSE),
+		     flow_next(flow, FT_ORIGIN),
+		     flow_next(flow, FT_REVERSE));
 
 	  upf_buffer_opaque (b)->gtpu.session_index = flow->session_index;
 	  upf_buffer_opaque (b)->gtpu.flow_id = flow_id;

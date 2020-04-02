@@ -127,7 +127,7 @@ upf_tdf (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame,
 	   * aka at &b0->data[0]
 	   */
 	  ASSERT (b0->current_data != 0);
-	  clib_warning ("Data Offset: %u\n", b0->current_data);
+	  gtp_debug ("Data Offset: %u\n", b0->current_data);
 
 	  /* en0 = vlib_buffer_get_current (b0); */
 

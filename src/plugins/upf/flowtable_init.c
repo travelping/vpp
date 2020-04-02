@@ -20,6 +20,13 @@
 #include <vppinfra/types.h>
 #include <vppinfra/vec.h>
 
+#if CLIB_DEBUG > 1
+#define gtp_debug clib_warning
+#else
+#define gtp_debug(...)				\
+  do { } while (0)
+#endif
+
 #include "flowtable.h"
 
 flowtable_main_t flowtable_main;
@@ -71,7 +78,7 @@ flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 
   /* alloc TIMER_MAX_LIFETIME heads from the timers pool and fill them with defaults */
   pool_validate_index (fmt->timers, TIMER_MAX_LIFETIME - 1);
-  clib_warning ("POOL SIZE %u", pool_elts (fmt->timers));
+  gtp_debug ("POOL SIZE %u", pool_elts (fmt->timers));
 
   /* *INDENT-OFF* */
   pool_foreach (timer_slot, fmt->timers,

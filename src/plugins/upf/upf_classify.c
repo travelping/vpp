@@ -25,9 +25,6 @@
 #include <vnet/fib/ip6_fib.h>
 #include <vnet/ethernet/ethernet.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
-
 #include <upf/upf.h>
 #include <upf/upf_app_db.h>
 #include <upf/upf_pfcp.h>
@@ -456,7 +453,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    next = upf_acl_classify_return (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
 					    active, is_ip4,
 					    &upf_buffer_opaque (b)->gtpu.pdr_idx);
-	  clib_warning("Next: %u", next);
+	  gtp_debug("Next: %u", next);
 
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;

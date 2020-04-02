@@ -30,8 +30,6 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
-#undef CLIB_DEBUG
-#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define gtp_debug clib_warning
 #else
@@ -155,11 +153,11 @@ upf_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = pfcp_get_far_by_id (active, pdr->far_id);
 	    }
 
-	  clib_warning ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
+	  gtp_debug ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
-	  clib_warning ("PDR: %u, FAR: %u", pdr->id, far->id);
+	  gtp_debug ("PDR: %u, FAR: %u", pdr->id, far->id);
 
 	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
