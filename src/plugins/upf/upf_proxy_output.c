@@ -31,9 +31,9 @@
 #include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -165,12 +165,12 @@ upf_proxy_output (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  flow = pool_elt_at_index (fm->flows, flow_id);
 
-	  gtp_debug ("flow: %p (0x%08x): %U\n",
+	  upf_debug ("flow: %p (0x%08x): %U\n",
 		     flow, flow_id, format_flow_key, &flow->key);
-	  gtp_debug ("flow: %U\n", format_flow, flow);
+	  upf_debug ("flow: %U\n", format_flow, flow);
 
-	  gtp_debug ("IP hdr: %U", format_ip4_header, vlib_buffer_get_current (b));
-	  gtp_debug ("Flow ORIGIN/REVERSE Pdr Id: %u/%u, FT Next %u/%u",
+	  upf_debug ("IP hdr: %U", format_ip4_header, vlib_buffer_get_current (b));
+	  upf_debug ("Flow ORIGIN/REVERSE Pdr Id: %u/%u, FT Next %u/%u",
 		     flow_pdr_id(flow, FT_ORIGIN),
 		     flow_pdr_id(flow, FT_REVERSE),
 		     flow_next(flow, FT_ORIGIN),

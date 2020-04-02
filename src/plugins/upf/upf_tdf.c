@@ -28,9 +28,9 @@
 #include <upf/upf.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -127,7 +127,7 @@ upf_tdf (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * frame,
 	   * aka at &b0->data[0]
 	   */
 	  ASSERT (b0->current_data != 0);
-	  gtp_debug ("Data Offset: %u\n", b0->current_data);
+	  upf_debug ("Data Offset: %u\n", b0->current_data);
 
 	  /* en0 = vlib_buffer_get_current (b0); */
 

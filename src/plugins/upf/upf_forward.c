@@ -31,9 +31,9 @@
 #include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -153,11 +153,11 @@ upf_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = pfcp_get_far_by_id (active, pdr->far_id);
 	    }
 
-	  gtp_debug ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
+	  upf_debug ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
-	  gtp_debug ("PDR: %u, FAR: %u", pdr->id, far->id);
+	  upf_debug ("PDR: %u, FAR: %u", pdr->id, far->id);
 
 	  if (PREDICT_TRUE (far->apply_action & FAR_FORWARD))
 	    {
@@ -225,7 +225,7 @@ upf_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 #define IS_UL(_pdr, _far)						\
 	  ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
 
-	  gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
+	  upf_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
 	  next = process_qers (vm, sess, active, pdr, b,
 			       IS_DL (pdr, far), IS_UL (pdr, far), next);
 	  next = process_urrs (vm, sess, active, pdr, b,

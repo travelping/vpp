@@ -21,9 +21,9 @@
 #include <vppinfra/vec.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -78,7 +78,7 @@ flowtable_init_cpu (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 
   /* alloc TIMER_MAX_LIFETIME heads from the timers pool and fill them with defaults */
   pool_validate_index (fmt->timers, TIMER_MAX_LIFETIME - 1);
-  gtp_debug ("POOL SIZE %u", pool_elts (fmt->timers));
+  upf_debug ("POOL SIZE %u", pool_elts (fmt->timers));
 
   /* *INDENT-OFF* */
   pool_foreach (timer_slot, fmt->timers,

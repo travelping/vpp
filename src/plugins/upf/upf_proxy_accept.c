@@ -32,9 +32,9 @@
 #include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -117,7 +117,7 @@ proxy_session_stream_accept (transport_connection_t * tc, u32 flow_id,
   s->app_wrk_index = app_wrk->wrk_index;
   s->opaque = flow_id;
 
-  gtp_debug ("proxy session @ %p, app %p, wrk %p (idx %u), flow: 0x%08x",
+  upf_debug ("proxy session @ %p, app %p, wrk %p (idx %u), flow: 0x%08x",
 		s, app, app_wrk, app_wrk->wrk_index, flow_id);
 
   if ((rv = app_worker_init_connected (app_wrk, s)))
@@ -131,7 +131,7 @@ proxy_session_stream_accept (transport_connection_t * tc, u32 flow_id,
       return app_worker_accept_notify (app_wrk, s);
     }
 
-  gtp_debug ("proxy session flow: 0x%08x", s->opaque);
+  upf_debug ("proxy session flow: 0x%08x", s->opaque);
   return 0;
 }
 
@@ -165,17 +165,17 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       b = vlib_get_buffer (vm, bi);
 
       flow_id = upf_buffer_opaque (b)->gtpu.flow_id;
-      gtp_debug ("flow_id: 0x%08x", flow_id);
+      upf_debug ("flow_id: 0x%08x", flow_id);
 
       /* make sure connection_index is invalid */
       vnet_buffer (b)->tcp.connection_index = ~0;
       tcp_input_lookup_buffer (b, thread_index, &error, is_ip4, 1 /* is_nolookup */);
-      gtp_debug ("tcp_input_lookup error: %d", error);
+      upf_debug ("tcp_input_lookup error: %d", error);
       if (error != TCP_ERROR_NONE)
 	goto done;
 
       tcp = tcp_buffer_hdr (b);
-      gtp_debug ("TCP SYN: %d", tcp_syn (tcp));
+      upf_debug ("TCP SYN: %d", tcp_syn (tcp));
       if (PREDICT_FALSE (!tcp_syn (tcp)))
 	{
 	  error = UPF_PROXY_ERROR_NO_LISTENER;
@@ -183,7 +183,7 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 	}
 
       fib_idx = vnet_buffer (b)->sw_if_index[VLIB_TX];
-      gtp_debug ("FIB: %u", fib_idx);
+      upf_debug ("FIB: %u", fib_idx);
 
       /* Create child session and send SYN-ACK */
       child = tcp_connection_alloc (thread_index);
@@ -207,7 +207,7 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
       child->next_node_index = is_ip4 ?
 	pm->tcp4_server_output_next : pm->tcp6_server_output_next;
       child->next_node_opaque = flow_id;
-      gtp_debug ("Next Node: %u, Opaque: 0x%08x",
+      upf_debug ("Next Node: %u, Opaque: 0x%08x",
 		 child->next_node_index, child->next_node_opaque);
 
       if (proxy_session_stream_accept

@@ -351,7 +351,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  flow->session_index = upf_buffer_opaque (b0)->gtpu.session_index;
 	  FLOW_DEBUG (fm, flow);
 
-	  gtp_debug ("is_rev: %u, flow: %u, c: %u", is_reverse, flow->is_reverse, created);
+	  upf_debug ("is_rev: %u, flow: %u, c: %u", is_reverse, flow->is_reverse, created);
 
 	  /* timer management */
 	  flow_update_lifetime (flow, b0, is_ip4);
@@ -363,7 +363,7 @@ upf_flow_process (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  /* fill opaque buffer with flow data */
 	  next0 = load_gtpu_flow_info (fm, b0, flow, active0, is_reverse);
-	  gtp_debug ("flow next: %u, origin: %u, reverse: %u",
+	  upf_debug ("flow next: %u, origin: %u, reverse: %u",
 		     next0, flow_next(flow, FT_ORIGIN), flow_next(flow, FT_REVERSE));
 
 	  /* flowtable counters */

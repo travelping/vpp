@@ -40,12 +40,12 @@
 #define TW_CLOCKS_PER_SECOND (1 / TW_SECS_PER_CLOCK)
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #define urr_debug_out(format, args...)				\
   _clib_error (CLIB_ERROR_WARNING, NULL, 0, format, ## args)
 
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 
 #define urr_debug_out(...)			\
@@ -127,7 +127,7 @@ encode_pfcp_session_msg (upf_session_t * sx, u8 type,
   msg->lcl.port = clib_host_to_net_u16 (UDP_DST_PORT_PFCP);
   msg->rmt.port = clib_host_to_net_u16 (UDP_DST_PORT_PFCP);
 
-  gtp_debug ("PFCP Session Msg on session 0x%016lx from %U:%d to %U:%d\n",
+  upf_debug ("PFCP Session Msg on session 0x%016lx from %U:%d to %U:%d\n",
 	     msg->session_handle,
 	     format_ip46_address, &msg->lcl.address, IP46_TYPE_ANY,
 	     clib_net_to_host_u16 (msg->lcl.port),
@@ -176,7 +176,7 @@ encode_pfcp_node_msg (upf_node_assoc_t * n, u8 type, struct pfcp_group *grp,
   msg->lcl.port = clib_host_to_net_u16 (UDP_DST_PORT_PFCP);
   msg->rmt.port = clib_host_to_net_u16 (UDP_DST_PORT_PFCP);
 
-  gtp_debug ("PFCP Node Msg on session 0x%016lx from %U:%d to %U:%d\n",
+  upf_debug ("PFCP Node Msg on session 0x%016lx from %U:%d to %U:%d\n",
 	     msg->session_handle,
 	     format_ip46_address, &msg->lcl.address, IP46_TYPE_ANY,
 	     clib_net_to_host_u16 (msg->lcl.port),
@@ -196,13 +196,13 @@ upf_pfcp_server_rx_msg (pfcp_msg_t * msg)
   if (len < 4)
     return -1;
 
-  gtp_debug ("%U", format_pfcp_msg_hdr, msg->hdr);
+  upf_debug ("%U", format_pfcp_msg_hdr, msg->hdr);
 
   if (msg->hdr->version != 1)
     {
       pfcp_msg_t resp;
 
-      gtp_debug ("PFCP: msg version invalid: %d.", msg->hdr->version);
+      upf_debug ("PFCP: msg version invalid: %d.", msg->hdr->version);
 
       memset (&resp, 0, sizeof (resp));
       upf_pfcp_make_response (&resp, msg, sizeof (pfcp_header_t));
@@ -223,7 +223,7 @@ upf_pfcp_server_rx_msg (pfcp_msg_t * msg)
       (!msg->hdr->s_flag && len < offsetof (pfcp_header_t, msg_hdr.ies)) ||
       (msg->hdr->s_flag && len < offsetof (pfcp_header_t, session_hdr.ies)))
     {
-      gtp_debug ("PFCP: msg length invalid, data %d, msg %d.",
+      upf_debug ("PFCP: msg length invalid, data %d, msg %d.",
 		 len, clib_net_to_host_u16 (msg->hdr->length));
       return -1;
     }
@@ -259,7 +259,7 @@ upf_pfcp_server_rx_msg (pfcp_msg_t * msg)
 	  {
 	    pfcp_msg_t *resp = pfcp_msg_pool_elt_at_index (psm, p[0]);
 
-	    gtp_debug ("resend... %d\n", p[0]);
+	    upf_debug ("resend... %d\n", p[0]);
 	    upf_pfcp_send_data (resp);
 	    restart_response_timer (resp);
 	  }
@@ -283,7 +283,7 @@ upf_pfcp_server_rx_msg (pfcp_msg_t * msg)
 	uword *p;
 
 	p = hash_get (psm->request_q, msg->seq_no);
-	gtp_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, p,
+	upf_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, p,
 		   p ? p[0] : ~0);
 	if (!p)
 	  break;
@@ -359,7 +359,7 @@ upf_pfcp_send_request (upf_session_t * sx, u8 type, struct pfcp_group *grp)
       goto out_free;
     }
 
-  gtp_debug ("sending NOTIFY event %p", msg);
+  upf_debug ("sending NOTIFY event %p", msg);
   vlib_process_signal_event_mt (vm, pfcp_api_process_node.index, EVENT_TX,
 				(uword) msg);
 
@@ -374,7 +374,7 @@ enqueue_request (pfcp_msg_t * msg, u32 n1, u32 t1)
   pfcp_server_main_t *psm = &pfcp_server_main;
   u32 id = pfcp_msg_get_index (psm, msg);
 
-  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  upf_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
   msg->n1 = n1;
   msg->t1 = t1;
 
@@ -392,17 +392,17 @@ request_t1_expired (u32 seq_no)
   uword *p;
 
   p = hash_get (psm->request_q, seq_no);
-  gtp_debug ("Msg Seq No: %u, %p, idx %u\n", seq_no, p, p ? p[0] : ~0);
+  upf_debug ("Msg Seq No: %u, %p, idx %u\n", seq_no, p, p ? p[0] : ~0);
   if (!p)
     /* msg already processed, overlap of timeout and late answer */
     return;
 
   msg = pfcp_msg_pool_elt_at_index (psm, p[0]);
-  gtp_debug ("Msg Seq No: %u, %p, n1 %u\n", msg->seq_no, msg, msg->n1);
+  upf_debug ("Msg Seq No: %u, %p, n1 %u\n", msg->seq_no, msg, msg->n1);
 
   if (--msg->n1 != 0)
     {
-      gtp_debug ("resend...\n");
+      upf_debug ("resend...\n");
       msg->timer =
 	upf_pfcp_server_start_timer (PFCP_SERVER_T1, msg->seq_no, msg->t1);
 
@@ -413,7 +413,7 @@ request_t1_expired (u32 seq_no)
       u8 type = msg->hdr->type;
       u32 node = msg->node;
 
-      gtp_debug ("abort...\n");
+      upf_debug ("abort...\n");
       // TODO: handle communication breakdown....
 
       hash_unset (psm->request_q, msg->seq_no);
@@ -444,7 +444,7 @@ upf_pfcp_server_send_session_request (upf_session_t * sx, u8 type,
 
   if ((msg = build_pfcp_session_msg (sx, type, grp)))
     {
-      gtp_debug ("Msg: %p\n", msg);
+      upf_debug ("Msg: %p\n", msg);
       upf_pfcp_server_send_request (msg);
     }
 }
@@ -457,7 +457,7 @@ upf_pfcp_server_send_node_request (upf_node_assoc_t * n, u8 type,
 
   if ((msg = build_pfcp_node_msg (n, type, grp)))
     {
-      gtp_debug ("Node Msg: %p\n", msg);
+      upf_debug ("Node Msg: %p\n", msg);
       upf_pfcp_server_send_request (msg);
     }
 }
@@ -468,8 +468,8 @@ response_expired (u32 id)
   pfcp_server_main_t *psm = &pfcp_server_main;
   pfcp_msg_t *msg = pfcp_msg_pool_elt_at_index (psm, id);
 
-  gtp_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
-  gtp_debug ("release...\n");
+  upf_debug ("Msg Seq No: %u, %p, idx %u\n", msg->seq_no, msg, id);
+  upf_debug ("release...\n");
 
   mhash_unset (&psm->response_q, msg->request_key, NULL);
   pfcp_msg_pool_put (psm, msg);
@@ -481,7 +481,7 @@ restart_response_timer (pfcp_msg_t * msg)
   pfcp_server_main_t *psm = &pfcp_server_main;
   u32 id = pfcp_msg_get_index (psm, msg);
 
-  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  upf_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   if (msg->timer != ~0)
     upf_pfcp_server_stop_timer (msg->timer);
@@ -495,7 +495,7 @@ enqueue_response (pfcp_msg_t * msg)
   pfcp_server_main_t *psm = &pfcp_server_main;
   u32 id = pfcp_msg_get_index (psm, msg);
 
-  gtp_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
+  upf_debug ("Msg Seq No: %u, idx %u\n", msg->seq_no, id);
 
   mhash_set (&psm->response_q, msg->request_key, id, NULL);
   msg->timer =
@@ -591,7 +591,7 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
   active = pfcp_get_rules (sx, PFCP_ACTIVE);
 
-  gtp_debug ("Active: %p (%d)\n", active, vec_len (active->urr));
+  upf_debug ("Active: %p (%d)\n", active, vec_len (active->urr));
 
   if (vec_len (active->urr) == 0)
     /* how could that happen? */
@@ -629,7 +629,7 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
   {
     u32 trigger = 0;
 
-    gtp_debug ("URR: %p\n", urr);
+    upf_debug ("URR: %p\n", urr);
 
 #define urr_check(V, D)					\
       urr_check_counter(				\
@@ -695,7 +695,7 @@ upf_pfcp_session_start_up_inactivity_timer (u32 si, f64 last, urr_time_t * t)
   interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
   t->handle = TW (tw_timer_start) (&psm->timer, si, 0, interval);
 
-  gtp_debug
+  upf_debug
     ("starting UP inactivity timer on sidx %u, handle 0x%08x: "
      "now is %.4f, expire in %lu ticks "
      " clib_now %.4f, current tick: %u",
@@ -748,7 +748,7 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
       t->handle = TW (tw_timer_start) (&psm->timer, si, 0, interval);
 
-      gtp_debug
+      upf_debug
 	("starting URR timer on sidx %u, handle 0x%08x: "
 	 "now is %.4f, base is %.4f, expire in %lu ticks "
 	 " @ %.4f (%U), clib_now %.4f, current tick: %u",
@@ -774,7 +774,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
   active = pfcp_get_rules (sx, PFCP_ACTIVE);
 
-  gtp_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)\n"
+  upf_debug ("upf_pfcp_session_urr_timer (%p, 0x%016" PRIx64 " @ %u, %.4f)\n"
 	     "  UP Inactivity Timer: %u secs, inactive %12.4f secs (0x%08x)",
 	     sx, sx->cp_seid, sx - gtm->sessions, now,
 	     active->inactivity_timer.period,
@@ -838,7 +838,7 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
       format_vlib_time, gtm->vlib_main, (t).vlib_time,			\
       (t).vlib_time - vnow
 
-    gtp_debug ("URR: %p, Id: %u", urr, urr->id);
+    upf_debug ("URR: %p, Id: %u", urr, urr->id);
     urr_debug_out
       (URR_DEBUG_HEADER
        URR_DEUBG_LINE
@@ -1126,7 +1126,7 @@ static uword
       switch (event_type)
 	{
 	case ~0:		/* timeout */
-	  // gtp_debug ("timeout....");
+	  // upf_debug ("timeout....");
 	  break;
 
 	case EVENT_RX:
@@ -1179,7 +1179,7 @@ static uword
 		upf_session_t *sx;
 
 		sx = pool_elt_at_index (gtm->sessions, ueh->session_idx);
-		gtp_debug
+		upf_debug
 		  ("URR Event on Session Idx: %wd, %p, UE: %U, Events: %u\n",
 		   ueh->session_idx, sx, format_ip46_address, &ueh->ue,
 		   IP46_TYPE_ANY, vec_len (uev));
@@ -1191,7 +1191,7 @@ static uword
 	  }
 
 	default:
-	  gtp_debug ("event %ld, %p. ", event_type, event_data[0]);
+	  upf_debug ("event %ld, %p. ", event_type, event_data[0]);
 	  break;
 	}
 
@@ -1220,25 +1220,25 @@ static uword
 	      break;
 
 	    case 0x80 | PFCP_SERVER_HB_TIMER:
-	      gtp_debug ("PFCP Server Heartbeat Timeout: %u",
+	      upf_debug ("PFCP Server Heartbeat Timeout: %u",
 			 expired[i] & 0x00FFFFFF);
 	      upf_server_send_heartbeat (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    case 0x80 | PFCP_SERVER_T1:
-	      gtp_debug ("PFCP Server T1 Timeout: %u",
+	      upf_debug ("PFCP Server T1 Timeout: %u",
 			 expired[i] & 0x00FFFFFF);
 	      request_t1_expired (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    case 0x80 | PFCP_SERVER_RESPONSE:
-	      gtp_debug ("PFCP Server Response Timeout: %u",
+	      upf_debug ("PFCP Server Response Timeout: %u",
 			 expired[i] & 0x00FFFFFF);
 	      response_expired (expired[i] & 0x00FFFFFF);
 	      break;
 
 	    default:
-	      gtp_debug ("timeout for unknown id: %u", expired[i] >> 24);
+	      upf_debug ("timeout for unknown id: %u", expired[i] >> 24);
 	      break;
 	    }
 	}
@@ -1280,7 +1280,7 @@ clib_error_t *pfcp_server_main_init (vlib_main_t * vm)
   TW (tw_timer_wheel_init) (&psm->timer, NULL,
 			    TW_SECS_PER_CLOCK /* 10ms timer interval */ , ~0);
 
-  gtp_debug ("PFCP: start_time: %p, %d, %x.", psm, psm->start_time,
+  upf_debug ("PFCP: start_time: %p, %d, %x.", psm, psm->start_time,
 	     psm->start_time);
   return 0;
 }

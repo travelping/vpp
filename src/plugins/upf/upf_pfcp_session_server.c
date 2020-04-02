@@ -123,20 +123,20 @@ pfcp_session_server_rx_callback (session_t * s)
 static int
 pfcp_session_server_session_accept_callback (session_t * s)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
   return -1;
 }
 
 static void
 pfcp_session_server_session_disconnect_callback (session_t * s)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
 }
 
 static void
 pfcp_session_server_session_reset_callback (session_t * s)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
 }
 
 static int
@@ -144,7 +144,7 @@ pfcp_session_server_session_connected_callback (u32 app_index,
 						u32 api_context,
 						session_t * s, u8 is_fail)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
   return -1;
 }
 
@@ -152,7 +152,7 @@ static int
 pfcp_session_server_add_segment_callback (u32 client_index,
 					  u64 segment_handle)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
   return -1;
 }
 
@@ -170,7 +170,7 @@ static session_cb_vft_t pfcp_session_server_session_cb_vft = {
 static void
 pfcp_session_server_session_cleanup_cb (void *ps_handlep)
 {
-  gtp_debug ("called...");
+  upf_debug ("called...");
 }
 
 static void
@@ -252,7 +252,7 @@ pfcp_server_attach (vlib_main_t * vm)
   if (vnet_application_attach (a))
     {
       vec_free (a->name);
-      gtp_debug ("failed to attach server");
+      upf_debug ("failed to attach server");
       return -1;
     }
 

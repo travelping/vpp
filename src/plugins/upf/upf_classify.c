@@ -31,9 +31,9 @@
 #include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -96,7 +96,7 @@ ip4_address_is_equal_masked (const ip4_address_t * a,
 			     const ip4_address_t * b,
 			     const ip4_address_t * mask)
 {
-  gtp_debug ("IP: %U/%U, %U\n",
+  upf_debug ("IP: %U/%U, %U\n",
 	     format_ip4_address, a,
 	     format_ip4_address, b, format_ip4_address, mask);
 
@@ -159,7 +159,7 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
   if (!!is_ip4 != !!acl->is_ip4)
     return 0;
 
-  gtp_debug ("TEID %08x, Match %u, ACL %08x\n",
+  upf_debug ("TEID %08x, Match %u, ACL %08x\n",
 	     teid, acl->match_teid, acl->teid);
   if (acl->match_teid && teid != acl->teid)
     return 0;
@@ -167,7 +167,7 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
   switch (acl->match_ue_ip)
     {
     case UPF_ACL_UL:
-      gtp_debug ("UL: UE %U, Src: %U\n",
+      upf_debug ("UL: UE %U, Src: %U\n",
 		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
 		 format_ip46_address, &flow->key.ip[FT_ORIGIN ^ is_reverse],
 		 IP46_TYPE_ANY);
@@ -177,7 +177,7 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
 	return 0;
       break;
     case UPF_ACL_DL:
-      gtp_debug ("DL: UE %U, Dst: %U\n",
+      upf_debug ("DL: UE %U, Dst: %U\n",
 		 format_ip46_address, &acl->ue_ip, IP46_TYPE_ANY,
 		 format_ip46_address, &flow->key.ip[FT_REVERSE ^ is_reverse],
 		 IP46_TYPE_ANY);
@@ -190,7 +190,7 @@ upf_acl_classify_one (vlib_main_t * vm, u32 teid,
       break;
     }
 
-  gtp_debug ("Protocol: 0x%04x/0x%04x, 0x%04x\n",
+  upf_debug ("Protocol: 0x%04x/0x%04x, 0x%04x\n",
 	     acl->match.protocol, acl->mask.protocol, flow->key.proto);
 
   if ((flow->key.proto & acl->mask.protocol) !=
@@ -244,7 +244,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
     }
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
-  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+  upf_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
 
   /* find ACL with the highest precedenc that matches this flow */
   vec_foreach (acl, acl_vec)
@@ -283,7 +283,7 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	      }
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+	upf_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
 		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
@@ -302,7 +302,7 @@ upf_acl_classify_proxied (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   flow_teid(flow, FT_REVERSE) = teid;
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
-  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+  upf_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
 
   /* find ACL with the highest precedenc that matches this flow */
   vec_foreach (acl, acl_vec)
@@ -321,7 +321,7 @@ upf_acl_classify_proxied (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    flow_pdr_id(flow, FT_REVERSE) = pdr->id;
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+	upf_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
 		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
@@ -340,7 +340,7 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   flow_teid(flow, FT_REVERSE) = teid;
 
   acl_vec = is_ip4 ? active->v4_acls : active->v6_acls;
-  gtp_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
+  upf_debug ("TEID %08x, ACLs %p (%u)\n", teid, acl_vec, vec_len (acl_vec));
 
   /* find ACL with the highest precedenc that matches this flow */
   vec_foreach (acl, acl_vec)
@@ -365,7 +365,7 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    next = UPF_CLASSIFY_NEXT_PROCESS;
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+	upf_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
 		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
@@ -428,7 +428,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  next = UPF_CLASSIFY_NEXT_PROCESS;
 
-	  gtp_debug ("flow: %p (%u): %U\n",
+	  upf_debug ("flow: %p (%u): %U\n",
 		     fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
 		     upf_buffer_opaque (b)->gtpu.flow_id,
 		     format_flow_key,
@@ -439,7 +439,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
 	  is_reverse = upf_buffer_opaque (b)->gtpu.is_reverse;
 	  is_forward = (is_reverse == flow->is_reverse) ? 1 : 0;
-	  gtp_debug ("is_rev %u, is_fwd %d\n", is_reverse, is_forward);
+	  upf_debug ("is_rev %u, is_fwd %d\n", is_reverse, is_forward);
 
 	  if (is_forward)
 	    next = upf_acl_classify_forward (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
@@ -453,7 +453,7 @@ upf_classify_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    next = upf_acl_classify_return (vm, upf_buffer_opaque (b)->gtpu.teid, flow,
 					    active, is_ip4,
 					    &upf_buffer_opaque (b)->gtpu.pdr_idx);
-	  gtp_debug("Next: %u", next);
+	  upf_debug("Next: %u", next);
 
 	  len = vlib_buffer_length_in_chain (vm, b);
 	  stats_n_packets += 1;

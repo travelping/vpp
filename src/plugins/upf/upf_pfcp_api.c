@@ -43,9 +43,9 @@
 #include "upf_app_db.h"
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -117,7 +117,7 @@ upf_pfcp_handle_msg (pfcp_msg_t * msg)
       return session_msg (msg);
 
     default:
-      gtp_debug ("PFCP: msg type invalid: %d.", msg->hdr->type);
+      upf_debug ("PFCP: msg type invalid: %d.", msg->hdr->type);
       break;
     }
 
@@ -406,7 +406,7 @@ handle_heartbeat_request (pfcp_msg_t * req, pfcp_heartbeat_request_t * msg)
   SET_BIT (resp.grp.fields, PFCP_RESPONSE_RECOVERY_TIME_STAMP);
   resp.response.recovery_time_stamp = psm->start_time;
 
-  gtp_debug ("PFCP: start_time: %p, %d, %x.",
+  upf_debug ("PFCP: start_time: %p, %d, %x.",
 	     &psm, psm->start_time, psm->start_time);
 
   upf_pfcp_send_response (req, 0, PFCP_HEARTBEAT_RESPONSE, &resp.grp);
@@ -442,7 +442,7 @@ handle_heartbeat_response (pfcp_msg_t * req, pfcp_simple_response_t * msg)
     }
   else
     {
-      gtp_debug ("restarting HB timer\n");
+      upf_debug ("restarting HB timer\n");
       n->heartbeat_handle = upf_pfcp_server_start_timer
 	(PFCP_SERVER_HB_TIMER, n - gtm->nodes, PFCP_HB_INTERVAL);
     }
@@ -662,7 +662,7 @@ node_msg (pfcp_msg_t * msg)
 
   if (msg->hdr->s_flag)
     {
-      gtp_debug ("PFCP: node msg with SEID.");
+      upf_debug ("PFCP: node msg with SEID.");
       return -1;
     }
 
@@ -823,10 +823,10 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	upf_nwi_t *nwi = lookup_nwi (pdr->pdi.network_instance);
 	if (!nwi)
 	  {
-	    gtp_debug ("PDR: %d, PDI for unknown network instance\n",
+	    upf_debug ("PDR: %d, PDI for unknown network instance\n",
 		       pdr->pdr_id);
 	    if (ISSET_BIT (pdr->pdi.grp.fields, PDI_NETWORK_INSTANCE))
-	      gtp_debug ("NWI: %v (%d)", pdr->pdi.network_instance,
+	      upf_debug ("NWI: %v (%d)", pdr->pdi.network_instance,
 			 vec_len (pdr->pdi.network_instance));
 	    failed_rule_id->id = pdr->pdr_id;
 	    r = -1;
@@ -845,7 +845,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	/* TODO validate TEID and mask
 	   if (nwi->teid != (pdr->pdi.f_teid.teid & nwi->mask))
 	   {
-	   gtp_debug("PDR: %d, TEID not within configure partition\n", pdr->pdr_id);
+	   upf_debug("PDR: %d, TEID not within configure partition\n", pdr->pdr_id);
 	   failed_rule_id->id = pdr->pdr_id;
 	   r = -1;
 	   vec_pop (rules->pdr);
@@ -879,7 +879,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	    {
 	      failed_rule_id->id = pdr->pdr_id;
 	      vec_pop (rules->pdr);
-	      gtp_debug ("failed to parse SDF '%s'", sdf->flow);
+	      upf_debug ("failed to parse SDF '%s'", sdf->flow);
 	      r = -1;
 	      break;
 	    }
@@ -910,7 +910,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	create->pdi.adr.db_id = upf_adf_get_adr_db (p[0]);
 	create->pdi.adr.flags = app->flags;
 
-	gtp_debug ("app: %v, ADR DB id %u", app->name, create->pdi.adr.db_id);
+	upf_debug ("app: %v, ADR DB id %u", app->name, create->pdi.adr.db_id);
       }
 
     create->outer_header_removal = OPT (pdr, CREATE_PDR_OUTER_HEADER_REMOVAL,
@@ -978,7 +978,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
     update = pfcp_get_pdr (sx, PFCP_PENDING, pdr->pdr_id);
     if (!update)
       {
-	gtp_debug ("PFCP Session %" PRIu64 ", update PDR Id %d not found.\n",
+	upf_debug ("PFCP Session %" PRIu64 ", update PDR Id %d not found.\n",
 		   sx->cp_seid, pdr->pdr_id);
 	failed_rule_id->id = pdr->pdr_id;
 	r = -1;
@@ -992,7 +992,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 	    upf_nwi_t *nwi = lookup_nwi (pdr->pdi.network_instance);
 	    if (!nwi)
 	      {
-		gtp_debug ("PDR: %d, PDI for unknown network instance\n",
+		upf_debug ("PDR: %d, PDI for unknown network instance\n",
 			   pdr->pdr_id);
 		failed_rule_id->id = pdr->pdr_id;
 		r = -1;
@@ -1038,7 +1038,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 	  if (!unformat_ipfilter (&input, acl))
 	    {
 	      failed_rule_id->id = pdr->pdr_id;
-	      gtp_debug ("failed to parse SDF '%s'", sdf->flow);
+	      upf_debug ("failed to parse SDF '%s'", sdf->flow);
 	      r = -1;
 	      break;
 	    }
@@ -1069,7 +1069,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 	update->pdi.adr.db_id = upf_adf_get_adr_db (p[0]);
 	update->pdi.adr.flags = app->flags;
 
-	gtp_debug ("app: %v, ADR DB id %u", app->name, update->pdi.adr.db_id);
+	upf_debug ("app: %v, ADR DB id %u", app->name, update->pdi.adr.db_id);
       }
 
     update->outer_header_removal = OPT (pdr, UPDATE_PDR_OUTER_HEADER_REMOVAL,
@@ -1133,7 +1133,7 @@ handle_remove_pdr (upf_session_t * sx, pfcp_remove_pdr_t * remove_pdr,
   {
     if ((r = pfcp_delete_pdr (sx, pdr->pdr_id)) != 0)
       {
-	gtp_debug ("Failed to remove PDR %d\n", pdr->pdr_id);
+	upf_debug ("Failed to remove PDR %d\n", pdr->pdr_id);
 	failed_rule_id->id = pdr->pdr_id;
 	r = -1;
 	break;
@@ -1338,7 +1338,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 	      lookup_nwi (far->forwarding_parameters.network_instance);
 	    if (!nwi)
 	      {
-		gtp_debug
+		upf_debug
 		  ("FAR: %d, Parameter with unknown network instance\n",
 		   far->far_id);
 		failed_rule_id->id = far->far_id;
@@ -1380,7 +1380,7 @@ handle_create_far (upf_session_t * sx, pfcp_create_far_t * create_far,
 				 create->forward.nwi_index);
 	    if (~0 == fib_index)
 	      {
-		gtp_debug
+		upf_debug
 		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
 		   far->far_id, is_ip4 ? 4 : 6);
 		failed_rule_id->id = far->far_id;
@@ -1449,7 +1449,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
     update = pfcp_get_far (sx, PFCP_PENDING, far->far_id);
     if (!update)
       {
-	gtp_debug ("PFCP Session %" PRIu64 ", update FAR Id %d not found.\n",
+	upf_debug ("PFCP Session %" PRIu64 ", update FAR Id %d not found.\n",
 		   sx->cp_seid, far->far_id);
 	failed_rule_id->id = far->far_id;
 	r = -1;
@@ -1473,7 +1473,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 			      update_forwarding_parameters.network_instance);
 		if (!nwi)
 		  {
-		    gtp_debug
+		    upf_debug
 		      ("FAR: %d, Update Parameter with unknown network instance\n",
 		       far->far_id);
 		    failed_rule_id->id = far->far_id;
@@ -1523,7 +1523,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 				 update->forward.nwi_index);
 	    if (~0 == fib_index)
 	      {
-		gtp_debug
+		upf_debug
 		  ("FAR: %d, Network instance with invalid VRF for IPv%d\n",
 		   far->far_id, is_ip4 ? 4 : 6);
 		failed_rule_id->id = far->far_id;
@@ -1535,7 +1535,7 @@ handle_update_far (upf_session_t * sx, pfcp_update_far_t * update_far,
 	      upf_ip46_get_resolving_interface (fib_index, &ohc->ip, is_ip4);
 	    if (~0 == update->forward.dst_sw_if_index)
 	      {
-		gtp_debug
+		upf_debug
 		  ("FAR: %d, No route to %U in table %d\n",
 		   far->far_id, format_ip46_address, &ohc->ip, IP46_TYPE_ANY,
 		   is_ip4 ? ip4_fib_get (fib_index)->table_id :
@@ -1585,7 +1585,7 @@ handle_remove_far (upf_session_t * sx, pfcp_remove_far_t * remove_far,
   {
     if ((r = pfcp_delete_far (sx, far->far_id)) != 0)
       {
-	gtp_debug ("Failed to add FAR %d\n", far->far_id);
+	upf_debug ("Failed to add FAR %d\n", far->far_id);
 	failed_rule_id->id = far->far_id;
 	r = -1;
 	break;
@@ -1741,7 +1741,7 @@ handle_update_urr (upf_session_t * sx, pfcp_update_urr_t * update_urr,
     update = pfcp_get_urr (sx, PFCP_PENDING, urr->urr_id);
     if (!update)
       {
-	gtp_debug ("PFCP Session %" PRIu64 ", update URR Id %d not found.\n",
+	upf_debug ("PFCP Session %" PRIu64 ", update URR Id %d not found.\n",
 		   sx->cp_seid, urr->urr_id);
 	failed_rule_id->id = urr->urr_id;
 	r = -1;
@@ -1857,7 +1857,7 @@ handle_remove_urr (upf_session_t * sx, pfcp_remove_urr_t * remove_urr,
   {
     if ((r = pfcp_delete_urr (sx, urr->urr_id)) != 0)
       {
-	gtp_debug ("Failed to add URR %d\n", urr->urr_id);
+	upf_debug ("Failed to add URR %d\n", urr->urr_id);
 	failed_rule_id->id = urr->urr_id;
 	r = -1;
 	break;
@@ -1960,7 +1960,7 @@ handle_update_qer (upf_session_t * sx, pfcp_update_qer_t * update_qer,
     update = pfcp_get_qer (sx, PFCP_PENDING, qer->qer_id);
     if (!update)
       {
-	gtp_debug ("PFCP Session %" PRIu64 ", update QER Id %d not found.\n",
+	upf_debug ("PFCP Session %" PRIu64 ", update QER Id %d not found.\n",
 		   sx->cp_seid, qer->qer_id);
 	failed_rule_id->id = qer->qer_id;
 	r = -1;
@@ -2021,7 +2021,7 @@ handle_remove_qer (upf_session_t * sx, pfcp_remove_qer_t * remove_qer,
   {
     if ((r = pfcp_delete_qer (sx, qer->qer_id)) != 0)
       {
-	gtp_debug ("Failed to add QER %d\n", qer->qer_id);
+	upf_debug ("Failed to add QER %d\n", qer->qer_id);
 	failed_rule_id->id = qer->qer_id;
 	r = -1;
 	break;
@@ -2393,11 +2393,11 @@ handle_session_establishment_request (pfcp_msg_t * req,
     goto out_send_resp;
 
   r = pfcp_update_apply (sess);
-  gtp_debug ("Appy: %d\n", r);
+  upf_debug ("Appy: %d\n", r);
 
   pfcp_update_finish (sess);
 
-  gtp_debug ("%U", format_pfcp_session, sess, PFCP_ACTIVE, /*debug */ 1);
+  upf_debug ("%U", format_pfcp_session, sess, PFCP_ACTIVE, /*debug */ 1);
 
 out_send_resp:
   if (r == 0)
@@ -2446,7 +2446,7 @@ handle_session_modification_request (pfcp_msg_t * req,
 
   if (!(sess = pfcp_lookup (be64toh (req->hdr->session_hdr.seid))))
     {
-      gtp_debug ("PFCP Session %" PRIu64 " not found.\n",
+      upf_debug ("PFCP Session %" PRIu64 " not found.\n",
 		 be64toh (req->hdr->session_hdr.seid));
       resp.response.cause = PFCP_CAUSE_SESSION_CONTEXT_NOT_FOUND;
 
@@ -2591,7 +2591,7 @@ handle_session_modification_request (pfcp_msg_t * req,
 out_update_finish:
   pfcp_update_finish (sess);
 
-  gtp_debug ("%U", format_pfcp_session, sess, PFCP_ACTIVE, /*debug */ 1);
+  upf_debug ("%U", format_pfcp_session, sess, PFCP_ACTIVE, /*debug */ 1);
 
 out_send_resp:
   if (r == 0)
@@ -2629,7 +2629,7 @@ handle_session_deletion_request (pfcp_msg_t * req,
 
   if (!(sess = pfcp_lookup (be64toh (req->hdr->session_hdr.seid))))
     {
-      gtp_debug ("PFCP Session %" PRIu64 " not found.\n",
+      upf_debug ("PFCP Session %" PRIu64 " not found.\n",
 		 be64toh (req->hdr->session_hdr.seid));
       resp.response.cause = PFCP_CAUSE_SESSION_CONTEXT_NOT_FOUND;
 
@@ -2641,7 +2641,7 @@ handle_session_deletion_request (pfcp_msg_t * req,
 
   if ((r = pfcp_disable_session (sess, true)) != 0)
     {
-      gtp_debug ("PFCP Session %" PRIu64 " could no be disabled.\n",
+      upf_debug ("PFCP Session %" PRIu64 " could no be disabled.\n",
 		 be64toh (req->hdr->session_hdr.seid));
       goto out_send_resp;
     }
@@ -2719,7 +2719,7 @@ session_msg (pfcp_msg_t * msg)
 
   if (!msg->hdr->s_flag)
     {
-      gtp_debug ("PFCP: session msg without SEID.");
+      upf_debug ("PFCP: session msg without SEID.");
       return -1;
     }
 

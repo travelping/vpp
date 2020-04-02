@@ -41,9 +41,9 @@
 #include "upf_pfcp_server.h"
 
 #if CLIB_DEBUG > 2
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -411,7 +411,7 @@ pfcp_release_association (upf_node_assoc_t * n)
       break;
     }
 
-  gtp_debug ("pfcp_release_association idx: %u");
+  upf_debug ("pfcp_release_association idx: %u");
 
   while (idx != ~0)
     {
@@ -513,7 +513,7 @@ pfcp_create_session (upf_node_assoc_t * assoc,
   upf_main_t *gtm = &upf_main;
   upf_session_t *sx;
 
-  gtp_debug ("CP F-SEID: 0x%016" PRIx64 " @ %U\n"
+  upf_debug ("CP F-SEID: 0x%016" PRIx64 " @ %U\n"
 	     "UP F-SEID: 0x%016" PRIx64 " @ %U\n",
 	     cp_seid, format_ip46_address, cp_address, IP46_TYPE_ANY,
 	     cp_seid, format_ip46_address, up_address, IP46_TYPE_ANY);
@@ -1218,7 +1218,7 @@ pfcp_add_del_v4_teid (const void *teid, void *si, int is_add)
   kv.key = v4_teid->key.as_u64;
   kv.value = ((u64) v4_teid->rule_index << 32) | (sess - gtm->sessions);
 
-  gtp_debug
+  upf_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
      is_add, v4_teid->key.teid, format_ip4_address, &v4_teid->key.dst, sess,
      sess - gtm->sessions);
@@ -1239,7 +1239,7 @@ pfcp_add_del_v6_teid (const void *teid, void *si, int is_add)
   kv.key[2] = v6_teid->key.teid;
   kv.value = ((u64) v6_teid->rule_index << 32) | (sess - gtm->sessions);
 
-  gtp_debug
+  upf_debug
     ("upf_pfcp: is_add: %d, TEID: 0x%08x, IP:%U, Session:%p, idx: %p.",
      is_add, v6_teid->key.teid, format_ip6_address, &v6_teid->key.dst, sess,
      sess - gtm->sessions);
@@ -1261,7 +1261,7 @@ pfcp_add_del_tdf (const void *tdf, void *si, int is_ip4, int is_add)
   if (acl->fib_index >= vec_len (gtm->tdf_ul_table[pfx.fp_proto]))
     return;
 
-  gtp_debug ("acl fib idx: 0x%08x, tdf fib idx: 0x%08x, ACL: %U\n",
+  upf_debug ("acl fib idx: 0x%08x, tdf fib idx: 0x%08x, ACL: %U\n",
 	     acl->fib_index,
 	     vec_elt (gtm->tdf_ul_table[pfx.fp_proto], acl->fib_index),
 	     format_upf_acl, acl);
@@ -1503,7 +1503,7 @@ compile_ipfilter_rule (int is_ip4, const upf_pdr_t * pdr,
   compile_sdf (is_ip4, pdr, rule, acl);
   compile_ue_ip (is_ip4, pdr, acl);
 
-  gtp_debug ("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
+  upf_debug ("ACL: ip4 %u, %U\n", is_ip4, format_upf_acl, acl);
   return 0;
 }
 
@@ -1618,7 +1618,7 @@ build_pfcp_rules (upf_session_t * sx)
 	      upf_fib_index_by_sw_if_index (sw_if_index, 1 /* is_ip4 */ );
 	    ue_ip.sw_if_index = sw_if_index;
 
-	    gtp_debug ("UP FIB Idx %u, sw_if_index %u",
+	    upf_debug ("UP FIB Idx %u, sw_if_index %u",
 		       ue_ip.fib_index, ue_ip.sw_if_index);
 	    rules_add_ue_ip (pending, FIB_PROTOCOL_IP4, &ue_ip, is_dst);
 	  }
@@ -1834,11 +1834,11 @@ pfcp_update_apply (upf_session_t * sx)
       vec_diff (pending->v6_teid, active->v6_teid, v6_teid_cmp,
 		pfcp_add_del_v6_teid, sx);
 
-      gtp_debug ("v4 TEIDs %u\n", pending->v4_teid);
-      gtp_debug ("v6 TEIDs %u\n", pending->v6_teid);
-      gtp_debug ("UE Src IPs %u\n", pending->ue_src_ip);
-      gtp_debug ("v4 ACLs %u\n", pending->v4_acls);
-      gtp_debug ("v6 ACLs %u\n", pending->v6_acls);
+      upf_debug ("v4 TEIDs %u\n", pending->v4_teid);
+      upf_debug ("v6 TEIDs %u\n", pending->v6_teid);
+      upf_debug ("UE Src IPs %u\n", pending->ue_src_ip);
+      upf_debug ("v4 ACLs %u\n", pending->v4_acls);
+      upf_debug ("v6 ACLs %u\n", pending->v6_acls);
 
       vec_diff (pending->ue_src_ip, active->ue_src_ip, ip46_address_fib_cmp,
 		pfcp_add_del_ue_ip, sx);
@@ -1893,7 +1893,7 @@ pfcp_update_apply (upf_session_t * sx)
 	  !!(far->forward.outer_header_creation.description &
 	     OUTER_HEADER_CREATION_ANY_IP4);
 
-	gtp_debug ("TODO: send_end_marker for FAR %d", far->id);
+	upf_debug ("TODO: send_end_marker for FAR %d", far->id);
 	bi = upf_gtpu_end_marker (send_em->fib_index, send_em->dpoi_index,
 				  far->forward.rewrite, is_ip4);
 	upf_ip_lookup_tx (bi, is_ip4);
@@ -2057,7 +2057,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
   int status = URR_OK;
   u16 *urr_id;
 
-  gtp_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
+  upf_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
 
   clib_spinlock_lock (&sess->lock);
 
@@ -2074,7 +2074,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
 #if CLIB_DEBUG > 2
     f64 unow = unix_time_now ();
-    gtp_debug
+    upf_debug
       ("Monitoring Time: %12.4f - %12.4f : %12.4f Unix: %U - %U : %12.4f",
        urr->monitoring_time.vlib_time, now,
        urr->monitoring_time.vlib_time - now, format_time_float, 0,
@@ -2160,7 +2160,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	      }
 	  }
 
-	gtp_debug ("Start Of Traffic UE IP: %U, Pool: %p, Hash: %p\n",
+	upf_debug ("Start Of Traffic UE IP: %U, Pool: %p, Hash: %p\n",
 		   format_ip46_address, &tt.ip, IP46_TYPE_ANY,
 		   urr->traffic, urr->traffic_by_ue);
 
@@ -2228,7 +2228,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
       ueh->session_idx = (uword) (sess - gtm->sessions);
       ueh->ue = tt.ip;
 
-      gtp_debug ("sending URR event on %wd\n", (uword) ueh->session_idx);
+      upf_debug ("sending URR event on %wd\n", (uword) ueh->session_idx);
       upf_pfcp_server_session_usage_report (uev);
     }
 
@@ -2247,7 +2247,7 @@ process_qers (vlib_main_t * vm, upf_session_t * sess,
   u32 *qer_id;
   u32 len;
 
-  gtp_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
+  upf_debug ("DL: %d, UL: %d\n", is_dl, is_ul);
 
   /* must be UL or DL, not both and not none */
   if ((is_ul + is_dl) != 1)
@@ -2280,7 +2280,7 @@ process_qers (vlib_main_t * vm, upf_session_t * sess,
     col =
       vnet_police_packet (&pol->policer[direction], len, POLICE_CONFORM,
 			  time_in_policer_periods);
-    gtp_debug ("QER color: %d\n", col);
+    upf_debug ("QER color: %d\n", col);
   }
 
   return next;

@@ -31,9 +31,9 @@
 #include <upf/upf_proxy.h>
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -188,7 +188,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      break;
 	    }
 
-	  gtp_debug ("flow: %p (0x%08x): %U\n",
+	  upf_debug ("flow: %p (0x%08x): %U\n",
 		     fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
 		     upf_buffer_opaque (b)->gtpu.flow_id,
 		     format_flow_key,
@@ -203,17 +203,17 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  direction = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse) ?
 	    FT_ORIGIN : FT_REVERSE;
 
-	  gtp_debug ("direction: %u, buffer: %u, flow: %u", direction,
+	  upf_debug ("direction: %u, buffer: %u, flow: %u", direction,
 		     upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
 
 	  ftc = &flow_tc(flow, direction);
-	  gtp_debug ("ftc conn_index %u", ftc->conn_index);
+	  upf_debug ("ftc conn_index %u", ftc->conn_index);
 
 	  if (ftc->conn_index != ~0)
 	    {
 	      ASSERT (ftc->thread_index == thread_index);
 
-	      gtp_debug ("existing connection 0x%08x", ftc->conn_index);
+	      upf_debug ("existing connection 0x%08x", ftc->conn_index);
 	      vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
 
 	      /* transport connection already setup */
@@ -221,12 +221,12 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    }
 	  else if (direction == FT_ORIGIN)
 	    {
-	      gtp_debug ("PROXY_ACCEPT");
+	      upf_debug ("PROXY_ACCEPT");
 	      next = UPF_PROXY_INPUT_NEXT_PROXY_ACCEPT;
 	    }
 	  else if (direction == FT_REVERSE && ftc->conn_index == ~0)
 	    {
-	      gtp_debug ("INPUT_LOOKUP");
+	      upf_debug ("INPUT_LOOKUP");
 	      next = UPF_PROXY_INPUT_NEXT_TCP_INPUT_LOOKUP;
 	    }
 	  else
@@ -250,7 +250,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 #define IS_UL(_pdr, _far)						\
 	  ((_pdr)->pdi.src_intf == SRC_INTF_ACCESS || (_far)->forward.dst_intf == DST_INTF_CORE)
 
-	  gtp_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
+	  upf_debug ("pdr: %d, far: %d\n", pdr->id, far->id);
 	  next = process_qers (vm, sess, active, pdr, b,
 			       IS_DL (pdr, far), IS_UL (pdr, far), next);
 	  next = process_urrs (vm, sess, active, pdr, b,

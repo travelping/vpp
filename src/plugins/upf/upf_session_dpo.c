@@ -27,9 +27,9 @@
 #include <upf/upf_pfcp.h>
 
 #if CLIB_DEBUG > 2
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -344,13 +344,13 @@ VLIB_NODE_FN (upf_ip4_session_dpo_node) (vlib_main_t * vm,
 	  b = vlib_get_buffer (vm, bi);
 
 	  sidx = vnet_buffer (b)->ip.adj_index[VLIB_TX];
-	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
+	  upf_debug ("Session %d (0x%08x)", sidx, sidx);
 	  ASSERT (~0 != sidx);
 
 	  ip0 = vlib_buffer_get_current (b);
 	  error0 = IP4_ERROR_NONE;
 	  next = UPF_SESSION_DPO_NEXT_FLOW_PROCESS;
-	  gtp_debug ("IP hdr: %U", format_ip4_header, ip0);
+	  upf_debug ("IP hdr: %U", format_ip4_header, ip0);
 
 	  ip4_ttl_and_checksum_check (b, ip0, &next, &error0);
 
@@ -465,7 +465,7 @@ VLIB_NODE_FN (upf_ip6_session_dpo_node) (vlib_main_t * vm,
 	  b = vlib_get_buffer (vm, bi);
 
 	  sidx = vnet_buffer (b)->ip.adj_index[VLIB_TX];
-	  gtp_debug ("Session %d (0x%08x)", sidx, sidx);
+	  upf_debug ("Session %d (0x%08x)", sidx, sidx);
 	  ASSERT (~0 != sidx);
 
 	  ip0 = vlib_buffer_get_current (b);

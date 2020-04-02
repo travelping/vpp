@@ -26,9 +26,9 @@
 #include "flowtable_tcp.h"
 
 #if CLIB_DEBUG > 1
-#define gtp_debug clib_warning
+#define upf_debug clib_warning
 #else
-#define gtp_debug(...)				\
+#define upf_debug(...)				\
   do { } while (0)
 #endif
 
@@ -79,7 +79,7 @@ flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 	{
 	  u32 f_index = vec_pop (fmt->flow_cache);
 
-	  gtp_debug ("releasing flow %p, index %u",
+	  upf_debug ("releasing flow %p, index %u",
 			pool_elt_at_index (fm->flows, f_index), f_index);
 #if CLIB_DEBUG > 0
 	  ASSERT (pool_elt_at_index (fm->flows, f_index)->cpu_index ==
@@ -147,7 +147,7 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
   /* timers unlink */
   clib_dlist_remove (fmt->timers, e - fmt->timers);
 
-  gtp_debug ("Flow Timeout Check %p: %u (%u) > %u (%u)",
+  upf_debug ("Flow Timeout Check %p: %u (%u) > %u (%u)",
 		f, f->active + f->lifetime,
 		(f->active + f->lifetime) % fm->timer_max_lifetime,
 		now, fmt->time_index);
@@ -160,12 +160,12 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
 
       timer_slot_head_index =
 	(f->active + f->lifetime) % fm->timer_max_lifetime;
-      gtp_debug ("Flow Reshedule %p to %u", f, timer_slot_head_index);
+      upf_debug ("Flow Reshedule %p to %u", f, timer_slot_head_index);
       clib_dlist_addtail (fmt->timers, timer_slot_head_index, f->timer_index);
     }
   else
     {
-      gtp_debug ("Flow Remove %p", f);
+      upf_debug ("Flow Remove %p", f);
       pool_put (fmt->timers, e);
 
       /* hashtable unlink */
