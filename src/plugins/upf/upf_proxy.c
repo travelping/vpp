@@ -622,13 +622,11 @@ proxy_rx_callback (session_t * s)
       return -1;
     }
 
-#if TBD
-  if (ps->session_state == PROXY_STATE_FORWARDING)
+  if (ps->active_open_session_index != ~0)
     {
       svm_fifo_t *ao_tx_fifo;
 
       proxy_server_sessions_reader_unlock ();
-
       ao_tx_fifo = ps->rx_fifo;
 
       /*
@@ -648,56 +646,10 @@ proxy_rx_callback (session_t * s)
 	svm_fifo_add_want_deq_ntf (ao_tx_fifo, SVM_FIFO_WANT_DEQ_NOTIF);
     }
   else
-#endif
     {
       proxy_server_sessions_reader_unlock ();
 
       return proxy_rx_callback_static (s, ps);
-#if 0
-      int actual_transfer __attribute__((unused));
-      vnet_connect_args_t _a, *a = &_a;
-      svm_fifo_t *tx_fifo, *rx_fifo;
-      upf_proxy_session_t *ps;
-      int proxy_index;
-      u32 max_dequeue;
-
-      rx_fifo = s->rx_fifo;
-      tx_fifo = s->tx_fifo;
-
-      ASSERT (rx_fifo->master_thread_index == thread_index);
-      ASSERT (tx_fifo->master_thread_index == thread_index);
-
-      max_dequeue = svm_fifo_max_dequeue (s->rx_fifo);
-
-      if (PREDICT_FALSE (max_dequeue == 0))
-	return 0;
-
-      actual_transfer = svm_fifo_peek (rx_fifo, 0 /* relative_offset */ ,
-				       max_dequeue, pm->rx_buf[thread_index]);
-
-      /* $$$ your message in this space: parse url, etc. */
-
-      clib_memset (a, 0, sizeof (*a));
-
-      clib_spinlock_lock_if_init (&pm->sessions_lock);
-      pool_get (pm->sessions, ps);
-      clib_memset (ps, 0, sizeof (*ps));
-      ps->rx_fifo = rx_fifo;
-      ps->tx_fifo = tx_fifo;
-      ps->vpp_server_handle = session_handle (s);
-
-      proxy_index = ps - pm->sessions;
-
-      hash_set (pm->session_by_server_handle, ps->vpp_server_handle,
-		proxy_index);
-
-      clib_spinlock_unlock_if_init (&pm->sessions_lock);
-
-      a->uri = (char *) pm->client_uri;
-      a->api_context = proxy_index;
-      a->app_index = pm->active_open_app_index;
-      proxy_call_main_thread (a);
-#endif
     }
 
   return 0;
