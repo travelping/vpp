@@ -118,7 +118,7 @@ proxy_session_stream_accept (transport_connection_t * tc, u32 flow_id,
   s->opaque = flow_id;
 
   upf_debug ("proxy session @ %p, app %p, wrk %p (idx %u), flow: 0x%08x",
-		s, app, app_wrk, app_wrk->wrk_index, flow_id);
+	     s, app, app_wrk, app_wrk->wrk_index, flow_id);
 
   if ((rv = app_worker_init_connected (app_wrk, s)))
     return rv;
@@ -169,7 +169,8 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       /* make sure connection_index is invalid */
       vnet_buffer (b)->tcp.connection_index = ~0;
-      tcp_input_lookup_buffer (b, thread_index, &error, is_ip4, 1 /* is_nolookup */);
+      tcp_input_lookup_buffer (b, thread_index, &error, is_ip4,
+			       1 /* is_nolookup */ );
       upf_debug ("tcp_input_lookup error: %d", error);
       if (error != TCP_ERROR_NONE)
 	goto done;
@@ -222,8 +223,8 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       flow = pool_elt_at_index (fm->flows, flow_id);
       ASSERT (flow);
-      flow_tc(flow, FT_ORIGIN).conn_index = child->c_c_index;
-      flow_tc(flow, FT_ORIGIN).thread_index = thread_index;
+      flow_tc (flow, FT_ORIGIN).conn_index = child->c_c_index;
+      flow_tc (flow, FT_ORIGIN).thread_index = thread_index;
 
       child->tx_fifo_size = transport_tx_fifo_size (&child->connection);
 
@@ -234,8 +235,7 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
     done:
       if (PREDICT_FALSE (b->flags & VLIB_BUFFER_IS_TRACED))
 	{
-	  upf_proxy_trace_t *tr =
-	    vlib_add_trace (vm, node, b, sizeof (*tr));
+	  upf_proxy_trace_t *tr = vlib_add_trace (vm, node, b, sizeof (*tr));
 	  clib_memcpy (tr->packet_data, vlib_buffer_get_current (b),
 		       sizeof (tr->packet_data));
 	}

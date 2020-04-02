@@ -100,7 +100,7 @@ upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 
 static uword
 upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
-	     vlib_frame_t * from_frame, int is_ip4)
+		 vlib_frame_t * from_frame, int is_ip4)
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
@@ -192,21 +192,22 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 		     fm->flows + upf_buffer_opaque (b)->gtpu.flow_id,
 		     upf_buffer_opaque (b)->gtpu.flow_id,
 		     format_flow_key,
-		     &(fm->flows +
-		       upf_buffer_opaque (b)->gtpu.flow_id)->key);
+		     &(fm->flows + upf_buffer_opaque (b)->gtpu.flow_id)->key);
 
 	  flow =
 	    pool_elt_at_index (fm->flows,
 			       upf_buffer_opaque (b)->gtpu.flow_id);
 	  ASSERT (flow);
 
-	  direction = (flow->is_reverse == upf_buffer_opaque (b)->gtpu.is_reverse) ?
-	    FT_ORIGIN : FT_REVERSE;
+	  direction =
+	    (flow->is_reverse ==
+	     upf_buffer_opaque (b)->gtpu.is_reverse) ? FT_ORIGIN : FT_REVERSE;
 
 	  upf_debug ("direction: %u, buffer: %u, flow: %u", direction,
-		     upf_buffer_opaque (b)->gtpu.is_reverse, flow->is_reverse);
+		     upf_buffer_opaque (b)->gtpu.is_reverse,
+		     flow->is_reverse);
 
-	  ftc = &flow_tc(flow, direction);
+	  ftc = &flow_tc (flow, direction);
 	  upf_debug ("ftc conn_index %u", ftc->conn_index);
 
 	  if (ftc->conn_index != ~0)
@@ -235,7 +236,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  /* Get next node index and adj index from tunnel next_dpo */
 	  sess = pool_elt_at_index (gtm->sessions, flow->session_index);
 	  active = pfcp_get_rules (sess, PFCP_ACTIVE);
-	  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, direction));
+	  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id (flow, direction));
 	  far = pdr ? pfcp_get_far_by_id (active, pdr->far_id) : NULL;
 
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
@@ -311,15 +312,15 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 }
 
 VLIB_NODE_FN (upf_ip4_proxy_input_node) (vlib_main_t * vm,
-				     vlib_node_runtime_t * node,
-				     vlib_frame_t * from_frame)
+					 vlib_node_runtime_t * node,
+					 vlib_frame_t * from_frame)
 {
   return upf_proxy_input (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
 VLIB_NODE_FN (upf_ip6_proxy_input_node) (vlib_main_t * vm,
-				     vlib_node_runtime_t * node,
-				     vlib_frame_t * from_frame)
+					 vlib_node_runtime_t * node,
+					 vlib_frame_t * from_frame)
 {
   return upf_proxy_input (vm, node, from_frame, /* is_ip4 */ 0);
 }

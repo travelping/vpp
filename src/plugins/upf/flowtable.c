@@ -80,7 +80,7 @@ flow_entry_cache_empty (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt)
 	  u32 f_index = vec_pop (fmt->flow_cache);
 
 	  upf_debug ("releasing flow %p, index %u",
-			pool_elt_at_index (fm->flows, f_index), f_index);
+		     pool_elt_at_index (fm->flows, f_index), f_index);
 #if CLIB_DEBUG > 0
 	  ASSERT (pool_elt_at_index (fm->flows, f_index)->cpu_index ==
 		  cpu_index);
@@ -148,14 +148,14 @@ expire_single_flow (flowtable_main_t * fm, flowtable_main_per_cpu_t * fmt,
   clib_dlist_remove (fmt->timers, e - fmt->timers);
 
   upf_debug ("Flow Timeout Check %p: %u (%u) > %u (%u)",
-		f, f->active + f->lifetime,
-		(f->active + f->lifetime) % fm->timer_max_lifetime,
-		now, fmt->time_index);
+	     f, f->active + f->lifetime,
+	     (f->active + f->lifetime) % fm->timer_max_lifetime,
+	     now, fmt->time_index);
 
   if (f->active + f->lifetime > now)
     {
       /* There was activity on the entry, so the idle timeout
-	 has not passed. Enqueue for another time period. */
+         has not passed. Enqueue for another time period. */
       u32 timer_slot_head_index;
 
       timer_slot_head_index =
@@ -300,16 +300,16 @@ flowtable_entry_lookup_create (flowtable_main_t * fm,
   f->lifetime = flowtable_lifetime_calculate (fm, &f->key);
   f->active = now;
   f->application_id = ~0;
-  flow_pdr_id(f, FT_ORIGIN) = ~0;
-  flow_pdr_id(f, FT_REVERSE) = ~0;
-  flow_teid(f, FT_ORIGIN) = ~0;
-  flow_teid(f, FT_REVERSE) = ~0;
-  flow_next(f, FT_ORIGIN) = FT_NEXT_CLASSIFY;
-  flow_next(f, FT_REVERSE) = FT_NEXT_CLASSIFY;
-  flow_tc(f, FT_ORIGIN).conn_index = ~0;
-  flow_tc(f, FT_ORIGIN).thread_index = ~0;
-  flow_tc(f, FT_REVERSE).conn_index = ~0;
-  flow_tc(f, FT_REVERSE).thread_index = ~0;
+  flow_pdr_id (f, FT_ORIGIN) = ~0;
+  flow_pdr_id (f, FT_REVERSE) = ~0;
+  flow_teid (f, FT_ORIGIN) = ~0;
+  flow_teid (f, FT_REVERSE) = ~0;
+  flow_next (f, FT_ORIGIN) = FT_NEXT_CLASSIFY;
+  flow_next (f, FT_REVERSE) = FT_NEXT_CLASSIFY;
+  flow_tc (f, FT_ORIGIN).conn_index = ~0;
+  flow_tc (f, FT_ORIGIN).thread_index = ~0;
+  flow_tc (f, FT_REVERSE).conn_index = ~0;
+  flow_tc (f, FT_REVERSE).thread_index = ~0;
 
   /* insert in timer list */
   pool_get (fmt->timers, timer_entry);
@@ -421,9 +421,8 @@ format_flow (u8 * s, va_list * args)
 	      format_flow_key, &flow->key,
 	      flow->stats[is_reverse].pkts,
 	      flow->stats[is_reverse ^ FT_REVERSE].pkts,
-	      flow_pdr_id(flow, FT_ORIGIN),
-	      flow_pdr_id(flow, FT_REVERSE),
-	      app_name, flow->lifetime);
+	      flow_pdr_id (flow, FT_ORIGIN),
+	      flow_pdr_id (flow, FT_REVERSE), app_name, flow->lifetime);
 #if CLIB_DEBUG > 1
   s = format (s, ", cpu %u", flow->cpu_index);
 #endif

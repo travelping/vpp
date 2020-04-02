@@ -43,8 +43,7 @@ typedef enum
 
 upf_proxy_main_t upf_proxy_main;
 
-static void
-delete_proxy_session (session_t * s, int is_active_open);
+static void delete_proxy_session (session_t * s, int is_active_open);
 
 static void
 proxy_server_sessions_reader_lock (void)
@@ -110,7 +109,8 @@ proxy_session_lookup_add (session_t * s, upf_proxy_session_t * ps)
 {
   upf_proxy_main_t *pm = &upf_proxy_main;
 
-  vec_validate (pm->session_to_proxy_session[s->thread_index], s->session_index);
+  vec_validate (pm->session_to_proxy_session[s->thread_index],
+		s->session_index);
   pm->session_to_proxy_session[s->thread_index][s->session_index] =
     ps->session_index;
 }
@@ -129,9 +129,11 @@ proxy_session_lookup (session_t * s)
   upf_proxy_main_t *pm = &upf_proxy_main;
   u32 ps_index;
 
-  if (s->session_index < vec_len (pm->session_to_proxy_session[s->thread_index]))
+  if (s->session_index <
+      vec_len (pm->session_to_proxy_session[s->thread_index]))
     {
-      ps_index = pm->session_to_proxy_session[s->thread_index][s->session_index];
+      ps_index =
+	pm->session_to_proxy_session[s->thread_index][s->session_index];
       return proxy_session_get (ps_index);
     }
   return 0;
@@ -142,7 +144,8 @@ active_open_session_lookup_add (session_t * s, upf_proxy_session_t * ps)
 {
   upf_proxy_main_t *pm = &upf_proxy_main;
 
-  vec_validate (pm->session_to_active_open_session[s->thread_index], s->session_index);
+  vec_validate (pm->session_to_active_open_session[s->thread_index],
+		s->session_index);
   pm->session_to_active_open_session[s->thread_index][s->session_index] =
     ps->session_index;
 }
@@ -161,21 +164,25 @@ active_open_session_lookup (session_t * s)
   upf_proxy_main_t *pm = &upf_proxy_main;
   u32 ps_index;
 
-  if (s->session_index < vec_len (pm->session_to_active_open_session[s->thread_index]))
+  if (s->session_index <
+      vec_len (pm->session_to_active_open_session[s->thread_index]))
     {
-      ps_index = pm->session_to_active_open_session[s->thread_index][s->session_index];
+      ps_index =
+	pm->session_to_active_open_session[s->thread_index][s->session_index];
       return proxy_session_get (ps_index);
     }
   return 0;
 }
 
 static session_t *
-session_from_proxy_session_get (upf_proxy_session_t *ps, int is_active_open)
+session_from_proxy_session_get (upf_proxy_session_t * ps, int is_active_open)
 {
   if (!is_active_open)
-    return session_get_if_valid (ps->proxy_session_index, ps->proxy_thread_index);
+    return session_get_if_valid (ps->proxy_session_index,
+				 ps->proxy_thread_index);
   else
-    return session_get_if_valid (ps->active_open_session_index, ps->active_open_thread_index);
+    return session_get_if_valid (ps->active_open_session_index,
+				 ps->active_open_thread_index);
 }
 
 static void
@@ -185,7 +192,7 @@ proxy_start_connect_fn (const u32 * session_index)
   upf_proxy_main_t *pm = &upf_proxy_main;
   flowtable_main_t *fm = &flowtable_main;
   vnet_connect_args_t _a, *a = &_a;
-  ip46_address_t * src, * dst;
+  ip46_address_t *src, *dst;
   upf_proxy_session_t *ps;
   struct rules *active;
   flow_entry_t *flow;
@@ -212,7 +219,7 @@ proxy_start_connect_fn (const u32 * session_index)
   dst = &flow->key.ip[FT_REVERSE ^ flow->is_reverse];
   is_ip4 = ip46_address_is_ip4 (dst);
 
-  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
+  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id (flow, FT_ORIGIN));
   far = pfcp_get_far_by_id (active, pdr->far_id);
 
   fib_index =
@@ -236,7 +243,7 @@ proxy_start_connect_fn (const u32 * session_index)
   rv = vnet_connect (a);
   upf_debug ("Connect Result: %u", rv);
 
- out:
+out:
   proxy_server_sessions_reader_unlock ();
 }
 
@@ -250,7 +257,8 @@ proxy_start_connect (u32 session_index)
   else
     {
       vl_api_rpc_call_main_thread (proxy_start_connect_fn,
-				   (u8 *) & session_index, sizeof (session_index));
+				   (u8 *) & session_index,
+				   sizeof (session_index));
     }
 }
 
@@ -380,8 +388,8 @@ delete_proxy_session (session_t * s, int is_active_open)
 	{
 	  u64 handle = session_handle (s);
 	  upf_debug ("proxy session for %s handle %lld (%llx) AWOL",
-			is_active_open ? "active open" : "server",
-			handle, handle);
+		     is_active_open ? "active open" : "server",
+		     handle, handle);
 	}
       else
 	{
@@ -500,8 +508,9 @@ proxy_close_session (session_t * s, upf_proxy_session_t * ps)
 }
 
 static int
-proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
-		  upf_session_t *sx, struct rules *active)
+proxy_send_redir (session_t * s, upf_proxy_session_t * ps,
+		  flow_entry_t * flow, upf_session_t * sx,
+		  struct rules *active)
 {
   upf_pdr_t *pdr;
   upf_far_t *far;
@@ -530,7 +539,7 @@ proxy_send_redir (session_t * s, upf_proxy_session_t * ps,  flow_entry_t *flow,
   goto out;
 
 found:
-  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id(flow, FT_ORIGIN));
+  pdr = pfcp_get_pdr_by_id (active, flow_pdr_id (flow, FT_ORIGIN));
   far = pfcp_get_far_by_id (active, pdr->far_id);
 
   /* Send it */
@@ -581,33 +590,34 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   upf_debug ("proxy: %v", ps->rx_buf);
   r = upf_application_detection (gtm->vlib_main, ps->rx_buf, flow, active);
   upf_debug ("r: %d", r);
-  switch (r) {
-  case ADR_NEED_MORE_DATA:
-    upf_debug ("ADR_NEED_MORE_DATA");
+  switch (r)
+    {
+    case ADR_NEED_MORE_DATA:
+      upf_debug ("ADR_NEED_MORE_DATA");
 
-    /* abort ADR scan after 4k of data */
-    if (svm_fifo_max_dequeue_cons (ps->rx_fifo) < 4096)
+      /* abort ADR scan after 4k of data */
+      if (svm_fifo_max_dequeue_cons (ps->rx_fifo) < 4096)
+	break;
+
+      /* FALL-THRU */
+
+    case ADR_FAIL:
+      upf_debug ("ADR_FAIL, close incomming session");
+      proxy_close_session (s, ps);
       break;
 
-    /* FALL-THRU */
+    case ADR_OK:
+      upf_debug ("connect outgoing session");
 
-  case ADR_FAIL:
-    upf_debug ("ADR_FAIL, close incomming session");
-    proxy_close_session (s, ps);
-    break;
+      /* we are done with scanning for PDRs */
+      flow_next (flow, FT_ORIGIN) =
+	flow_next (flow, FT_REVERSE) = FT_NEXT_PROXY;
 
-  case ADR_OK:
-    upf_debug ("connect outgoing session");
+      /* start outgoing connect to server */
+      proxy_start_connect (ps->session_index);
 
-    /* we are done with scanning for PDRs */
-    flow_next(flow, FT_ORIGIN) =
-      flow_next(flow, FT_REVERSE) = FT_NEXT_PROXY;
-
-    /* start outgoing connect to server */
-    proxy_start_connect (ps->session_index);
-
-    break;
-  }
+      break;
+    }
 
   return 0;
 }
@@ -798,7 +808,7 @@ proxy_server_attach ()
   u32 segment_size = 128 << 20;
   app_worker_t *app_wrk;
   application_t *app;
-  u8 * name;
+  u8 *name;
   int r = 0;
 
   clib_memset (a, 0, sizeof (*a));
@@ -833,7 +843,7 @@ proxy_server_attach ()
   app_wrk = application_get_worker (app, 0 /* default wrk only */ );
   app_worker_alloc_connects_segment_manager (app_wrk);
 
- out_free:
+out_free:
   vec_free (name);
   return r;
 }
@@ -844,7 +854,7 @@ active_open_attach (void)
   upf_proxy_main_t *pm = &upf_proxy_main;
   vnet_app_attach_args_t _a, *a = &_a;
   u64 options[16];
-  u8 * name;
+  u8 *name;
   int r = 0;
 
   clib_memset (a, 0, sizeof (*a));
@@ -875,7 +885,7 @@ active_open_attach (void)
 
   pm->active_open_app_index = a->app_index;
 
- out_free:
+out_free:
   vec_free (name);
   return r;
 }
@@ -937,7 +947,7 @@ upf_proxy_create (u32 fib_index, int is_ip4)
 
   rv = proxy_create (vm, fib_index, is_ip4);
   if (rv != 0)
-      clib_error ("UPF http redirect server create returned %d", rv);
+    clib_error ("UPF http redirect server create returned %d", rv);
 }
 
 clib_error_t *
@@ -959,9 +969,11 @@ upf_proxy_main_init (vlib_main_t * vm)
   upf_debug ("TCP6 Output Node Index %u, IP6 Proxy Output Node Index %u",
 	     tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
   pm->tcp4_server_output_next =
-    vlib_node_add_next (vm, tcp4_output_node.index, upf_ip4_proxy_server_output_node.index);
+    vlib_node_add_next (vm, tcp4_output_node.index,
+			upf_ip4_proxy_server_output_node.index);
   pm->tcp6_server_output_next =
-    vlib_node_add_next (vm, tcp6_output_node.index, upf_ip6_proxy_server_output_node.index);
+    vlib_node_add_next (vm, tcp6_output_node.index,
+			upf_ip6_proxy_server_output_node.index);
 
   upf_proxy_create (0, 1);
 

@@ -100,7 +100,7 @@ upf_vnet_buffer_l3_hdr_offset_is_current (vlib_buffer_t * b)
 
 static uword
 upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
-	     vlib_frame_t * from_frame, int is_ip4)
+	   vlib_frame_t * from_frame, int is_ip4)
 {
   u32 n_left_from, next_index, *from, *to_next;
   upf_main_t *gtm = &upf_main;
@@ -160,9 +160,10 @@ upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      far = pfcp_get_far_by_id (active, pdr->far_id);
 	    }
 
-	  upf_debug ("IP hdr: %U", format_ip4_header,  vlib_buffer_get_current (b));
+	  upf_debug ("IP hdr: %U", format_ip4_header,
+		     vlib_buffer_get_current (b));
 	  upf_debug ("PDR Idx: %u, PDR: %p, FAR: %p",
-			upf_buffer_opaque (b)->gtpu.pdr_idx, pdr, far);
+		     upf_buffer_opaque (b)->gtpu.pdr_idx, pdr, far);
 	  if (PREDICT_FALSE (!pdr) || PREDICT_FALSE (!far))
 	    goto stats;
 
@@ -302,15 +303,15 @@ upf_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 }
 
 VLIB_NODE_FN (upf_ip4_input_node) (vlib_main_t * vm,
-				     vlib_node_runtime_t * node,
-				     vlib_frame_t * from_frame)
+				   vlib_node_runtime_t * node,
+				   vlib_frame_t * from_frame)
 {
   return upf_input (vm, node, from_frame, /* is_ip4 */ 1);
 }
 
 VLIB_NODE_FN (upf_ip6_input_node) (vlib_main_t * vm,
-				     vlib_node_runtime_t * node,
-				     vlib_frame_t * from_frame)
+				   vlib_node_runtime_t * node,
+				   vlib_frame_t * from_frame)
 {
   return upf_input (vm, node, from_frame, /* is_ip4 */ 0);
 }
