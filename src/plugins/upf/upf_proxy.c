@@ -562,7 +562,7 @@ proxy_rx_callback_static (session_t * s, upf_proxy_session_t * ps)
   sx = pool_elt_at_index (gtm->sessions, flow->session_index);
   active = pfcp_get_rules (sx, PFCP_ACTIVE);
 
-  if (flow->is_decided)
+  if (flow->is_redirect)
     {
       /* if we get here, it has to be a ACL based redirect */
       return proxy_send_redir (s, ps, flow, sx, active);

@@ -225,7 +225,6 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
   u32 next = UPF_CLASSIFY_NEXT_DROP;
   upf_acl_t *acl, *acl_vec;
 
-  ASSERT (!flow->is_decided);
   ASSERT (!flow->is_l3_proxy);
 
   *pdr_idx = ~0;
@@ -266,13 +265,13 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    upf_far_t *far;
 
 	    *pdr_idx = acl->pdr_idx;
-	    flow->is_decided = 1;
 
 	    far = pfcp_get_far_by_id (active, pdr->far_id);
 	    if (flow->key.proto == IP_PROTOCOL_TCP &&
 		far && far->forward.flags & FAR_F_REDIRECT_INFORMATION)
 	      {
 		flow->is_l3_proxy = 1;
+		flow->is_redirect = 1;
 		flow_next(flow, FT_ORIGIN) = FT_NEXT_PROXY;
 		flow_next(flow, FT_REVERSE) = FT_NEXT_CLASSIFY;
 		flow_pdr_id(flow, FT_REVERSE) = pdr->id;
@@ -287,8 +286,8 @@ upf_acl_classify_forward (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	      }
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
-		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
   }
@@ -325,8 +324,8 @@ upf_acl_classify_proxied (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    flow_pdr_id(flow, FT_REVERSE) = pdr->id;
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
-		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
   }
@@ -369,8 +368,8 @@ upf_acl_classify_return (vlib_main_t * vm, u32 teid, flow_entry_t * flow,
 	    next = UPF_CLASSIFY_NEXT_PROCESS;
 	  }
 
-	gtp_debug ("match PDR: %u, Proxy: %d, Decided: %d\n",
-		   acl->pdr_idx, flow->is_l3_proxy, flow->is_decided);
+	gtp_debug ("match PDR: %u, Proxy: %d, Redirect: %d\n",
+		   acl->pdr_idx, flow->is_l3_proxy, flow->is_redirect);
 	break;
       }
   }

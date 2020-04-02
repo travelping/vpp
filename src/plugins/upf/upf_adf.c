@@ -378,7 +378,6 @@ adr_result_t
 upf_application_detection (vlib_main_t * vm, u8 * p,
 			   flow_entry_t * flow, struct rules *active)
 {
-  int is_redirect = 0;
   adr_result_t r;
   upf_pdr_t *origin, *reverse;
   u16 port;
@@ -420,16 +419,14 @@ upf_application_detection (vlib_main_t * vm, u8 * p,
       upf_far_t *far;
 
       far = pfcp_get_far_by_id (active, origin->far_id);
-      is_redirect = (far && far->forward.flags & FAR_F_REDIRECT_INFORMATION);
+      flow->is_redirect = (far && far->forward.flags & FAR_F_REDIRECT_INFORMATION);
     }
-  reverse = is_redirect ?
+  reverse = flow->is_redirect ?
     origin : app_scan_for_uri (uri, flow, active, FT_REVERSE, reverse);
 
   vec_free (uri);
 
  out:
-  flow->is_decided = 1;
-
   if (!origin)
     return ADR_FAIL;
 
