@@ -104,7 +104,7 @@ build:debug:
 
 test:debug:
   stage: test
-  image: quay.io/travelping/upf-build
+  image: quay.io/travelping/upf-debian-build
   # FIXME: try not to use docker:dind. This may cause problems with shm_size
   services:
   - docker:19.03.8-dind

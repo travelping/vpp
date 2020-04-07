@@ -6,7 +6,7 @@ set -o pipefail
 # set -o errtrace
 # cd "$(dirname "${BASH_SOURCE}")/../.."
 
-: "${BUILD_IMAGE_NAME:=quay.io/travelping/upf-build}"
+: "${BUILD_IMAGE_NAME:=quay.io/travelping/upf-debian-build}"
 : "${PUSH_BUILD_IMAGE:=}"
 
 build_hash="$(git ls-tree HEAD -- Makefile build/external extras/docker/Dockerfile.build | md5sum | awk '{print $1}')"

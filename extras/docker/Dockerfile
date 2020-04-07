@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM quay.io/travelping/upf-build AS build-stage
+FROM quay.io/travelping/upf-debian-build AS build-stage
 
 ADD . /src/vpp
 
@@ -10,7 +10,7 @@ ENTRYPOINT ["/bin/sh", "-c", "cd /src/vpp/build-root; find . -type f -name '*.de
 
 #
 # --- final image --------------------------------------------
-FROM ubuntu:bionic AS final-stage
+FROM debian:sid-slim AS final-stage
 WORKDIR /
 RUN --mount=target=/var/lib/apt/lists,type=cache \
     --mount=target=/var/cache/apt,type=cache \
@@ -22,7 +22,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache \
 RUN --mount=target=/var/lib/apt/lists,type=cache \
     --mount=target=/var/cache/apt,type=cache \
     --mount=target=/src,source=/src,from=build-stage,type=bind \
-    apt-get install --no-install-recommends -yy liblz4-tool tar \
+    apt-get install --no-install-recommends -yy liblz4-tool tar procps \
 	/src/vpp/build-root/vpp_*.deb \
 	/src/vpp/build-root/vpp-dbg_*.deb \
 	/src/vpp/build-root/vpp-plugin-core_*.deb \

@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:bionic AS build-stage
+FROM debian:sid-slim AS build-stage
 
 WORKDIR /
 
@@ -10,7 +10,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache \
     apt-get update && \
     apt-get dist-upgrade -yy && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	    build-essential sudo git netbase
+	    build-essential libelf-dev libbpf-dev sudo git netbase
 
 COPY Makefile /src/vpp/Makefile
 COPY build/external /src/vpp/build/external
