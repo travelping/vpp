@@ -65,8 +65,8 @@ DEB_DEPENDS  = curl build-essential autoconf automake ccache
 DEB_DEPENDS += debhelper dkms git libtool libapr1-dev dh-systemd
 DEB_DEPENDS += libconfuse-dev git-review exuberant-ctags cscope pkg-config
 DEB_DEPENDS += lcov chrpath autoconf indent clang-format libnuma-dev
-DEB_DEPENDS += python-all python3-all python3-setuptools
-DEB_DEPENDS += python-virtualenv python-pip check
+DEB_DEPENDS += python3-all python3-setuptools
+DEB_DEPENDS += python3-virtualenv check
 DEB_DEPENDS += libboost-all-dev libffi-dev python3-ply libmbedtls-dev
 DEB_DEPENDS += liburcu-dev
 DEB_DEPENDS += cmake ninja-build uuid-dev python3-jsonschema python3-yaml
@@ -81,20 +81,25 @@ endif
 LIBFFI=libffi6 # works on all but 20.04
 
 ifeq ($(OS_VERSION_ID),16.04)
-	DEB_DEPENDS += python-dev
+	DEB_DEPENDS += python-all python-dev python-pip
 	DEB_DEPENDS += libssl-dev
 else ifeq ($(OS_VERSION_ID),18.04)
-	DEB_DEPENDS += python-dev
+	DEB_DEPENDS += python-all python-dev python-pip
 	DEB_DEPENDS += libssl-dev
 	DEB_DEPENDS += clang-9
 else ifeq ($(OS_VERSION_ID),20.04)
+	DEB_DEPENDS += python3-all python3-dev python3-pip
 	LIBFFI=libffi7
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),debian-8)
+	DEB_DEPENDS += python-all python-dev dh-python python-setuptools
 	DEB_DEPENDS += libssl-dev
 	APT_ARGS = -t jessie-backports
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),debian-9)
+	DEB_DEPENDS += python-all python-dev dh-python python-setuptools
 	DEB_DEPENDS += libssl1.0-dev
 else
+	DEB_DEPENDS += python-all python-dev dh-python python-setuptools
+	DEB_DEPENDS += python3-all python3-dev python3-pip
 	DEB_DEPENDS += libssl-dev
 endif
 
