@@ -1,6 +1,7 @@
 from datetime import datetime
 import uuid
 import framework
+from random import getrandbits
 from scapy.contrib.pfcp import CauseValues, IE_ApplyAction, IE_Cause, \
     IE_CreateFAR, IE_CreatePDR, IE_CreateURR, IE_DestinationInterface, \
     IE_DurationMeasurement, IE_EndTime, IE_EnterpriseSpecific, IE_FAR_Id, \
@@ -17,6 +18,9 @@ from scapy.contrib.pfcp import CauseValues, IE_ApplyAction, IE_Cause, \
     PFCPSessionModificationResponse, PFCPSessionReportRequest
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, UDP, TCP
+from scapy.layers.tls.all import TLS, TLSClientHello, TLS_Ext_ServerName, \
+    ServerName, TLS_Ext_SupportedPointFormat, TLS_Ext_SupportedGroups, \
+    TLS_Ext_SignatureAlgorithms, TLS_Ext_ALPN, ProtocolName
 from scapy.packet import Raw
 
 
@@ -34,6 +38,7 @@ REDIR_TARGET_IP = "198.51.100.42"
 APP_RULE_IP = "192.0.2.101"
 NON_APP_RULE_IP = "192.0.9.201"
 NON_APP_RULE_IP_2 = "192.0.9.202"
+NON_APP_RULE_IP_3 = "192.0.9.203"
 
 
 class TestUPF(framework.VppTestCase):
@@ -85,7 +90,7 @@ class TestUPF(framework.VppTestCase):
             (cls.if_sgi.remote_ip4, cls.if_sgi.name),
             "create upf application name TST",
             "upf application TST rule 3000 add l7 regex " +
-            r"^http?://(.*\\.)*(example)\\.com/",
+            r"^https?://(.*\\.)*(example)\\.com/",
             "upf application TST rule 3001 add ipfilter " +
             "permit out ip from %s to assigned" % APP_RULE_IP,
         ]
@@ -404,7 +409,9 @@ class TestUPF(framework.VppTestCase):
             IP(src=remote_ip, dst=self.if_access.remote_ip4) / \
             l4proto(sport=remote_port, dport=ue_port, **kwargs)
         if payload is not None:
-            to_send /= Raw(payload)
+            if isinstance(payload, bytes):
+                payload = Raw(payload)
+            to_send /= payload
         self.if_sgi.add_stream(to_send)
         self.pg_enable_capture(self.pg_interfaces)
         self.pg_start()
@@ -534,45 +541,126 @@ class TestUPF(framework.VppTestCase):
         self.assertEqual(vm.uplink, up_len)
         self.assertEqual(vm.downlink, down_len)
 
-    def verify_app_reporting(self):
-        s1, s2 = 2767216324, 3845532842
-        self.send_from_access_to_sgi(l4proto=TCP, flags="S", remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s1, ack=0)
-        self.assert_packet_sent_to_sgi(l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP)
+    def tcp_handshake(self, remote_ip, remote_port):
+        # 31 instead of 32 to make it a little bit easier to deal
+        # with integer overflows
+        s1, s2 = getrandbits(31), getrandbits(31)
 
-        self.send_from_sgi_to_access(l4proto=TCP, flags="SA", remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s2, ack=s1+1)
-        self.assert_packet_sent_to_access(l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP)
+        self.send_from_access_to_sgi(
+            l4proto=TCP, flags="S",
+            remote_ip=remote_ip, remote_port=remote_port, seq=s1, ack=0)
+        self.assert_packet_sent_to_sgi(
+            l4proto=TCP,
+            remote_ip=remote_ip, remote_port=remote_port)
 
-        self.send_from_access_to_sgi(l4proto=TCP, flags="A", remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s1+1, ack=s2+1)
-        self.assert_packet_sent_to_sgi(l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP)
+        self.send_from_sgi_to_access(
+            l4proto=TCP,
+            flags="SA",
+            remote_ip=remote_ip, remote_port=remote_port,
+            seq=s2, ack=s1+1)
+        self.assert_packet_sent_to_access(
+            l4proto=TCP,
+            remote_ip=remote_ip, remote_port=remote_port)
 
+        self.send_from_access_to_sgi(
+            l4proto=TCP,
+            flags="A",
+            remote_ip=remote_ip, remote_port=remote_port,
+            seq=s1+1, ack=s2+1)
+        self.assert_packet_sent_to_sgi(
+            l4proto=TCP,
+            remote_ip=remote_ip, remote_port=remote_port)
+
+        return s1, s2
+
+    def verify_app_reporting_http(self):
+        s1, s2 = self.tcp_handshake(remote_ip=NON_APP_RULE_IP, remote_port=80)
         http_get = b"GET / HTTP/1.1\r\nHost: example.com/\r\n\r\n"
-        up_len = self.send_from_access_to_sgi(http_get, flags="P", l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s1+1, ack=s2+1)
-        self.assert_packet_sent_to_sgi(http_get, l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP)
+        up_len = self.send_from_access_to_sgi(
+            http_get, flags="P", l4proto=TCP,
+            remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s1+1, ack=s2+1)
+        self.assert_packet_sent_to_sgi(
+            http_get, l4proto=TCP,
+            remote_port=80, remote_ip=NON_APP_RULE_IP)
 
         http_resp = b"HTTP/1.1 200 OK\nContent-Type: text/plain\r\n\r\nfoo"
-        down_len = self.send_from_sgi_to_access(http_resp, l4proto=TCP, flags="A", remote_port=80, remote_ip=NON_APP_RULE_IP, seq=s2+1, ack=s1+1+len(http_get))
-        self.assert_packet_sent_to_access(http_resp, l4proto=TCP, remote_port=80, remote_ip=NON_APP_RULE_IP)
+        down_len = self.send_from_sgi_to_access(
+            http_resp, l4proto=TCP, flags="A",
+            remote_port=80, remote_ip=NON_APP_RULE_IP,
+            seq=s2+1, ack=s1+1+len(http_get))
+        self.assert_packet_sent_to_access(
+            http_resp, l4proto=TCP,
+            remote_port=80, remote_ip=NON_APP_RULE_IP)
 
         self.verify_traffic_reporting(up_len, down_len)
 
-        # Access -> SGi
+    def verify_app_reporting_tls(self):
+        s1, s2 = self.tcp_handshake(remote_ip=NON_APP_RULE_IP_2, remote_port=443)
+        tls = TLS(msg=[
+            TLSClientHello(
+                version=771,
+                gmt_unix_time=2183047903,
+                random_bytes=b"\x9f\x98\x0b\x13\x05\xa5O\xd0?\x8d\xc8\xdc)\x86\xb0W\xd7\xc1\x7f'\x19sg\x84%\xa8\xc4\xc4",
+                ciphers=[
+                    49200, 49196, 49192, 49188, 49172, 49162, 159, 107,
+                    57, 52393, 52392, 52394, 65413, 196, 136, 129,
+                    157, 61, 53, 192, 132, 49199, 49195, 49191,
+                    49187, 49171, 49161, 158, 103, 51, 190, 69,
+                    156, 60, 47, 186, 65, 49169, 49159, 5,
+                    4, 49170, 49160, 22, 10, 255
+                ],
+                comp=[0],
+                ext=[
+                    TLS_Ext_ServerName(servernames=[
+                        ServerName(nametype=0, servername=b'example.com')
+                    ]),
+                    TLS_Ext_SupportedPointFormat(ecpl=[0]),
+                    TLS_Ext_SupportedGroups(groups=[29, 23, 24]),
+                    TLS_Ext_SignatureAlgorithms(sig_algs=[
+                        1537, 1539, 61423, 1281, 1283, 1025, 1027, 61166,
+                        60909, 769, 771, 513, 515
+                    ]),
+                    TLS_Ext_ALPN(protocols=[
+                        ProtocolName(protocol=b'h2'),
+                        ProtocolName(protocol=b'http/1.1')
+                    ])
+                ])
+        ], version=769)
+
+        up_len = self.send_from_access_to_sgi(tls, flags="P", l4proto=TCP, remote_port=443, remote_ip=NON_APP_RULE_IP_2, seq=s1+1, ack=s2+1)
+        self.assert_packet_sent_to_sgi(l4proto=TCP, remote_port=443, remote_ip=NON_APP_RULE_IP_2)
+
+        down_len = self.send_from_sgi_to_access(
+            l4proto=TCP, flags="A",
+            remote_port=443, remote_ip=NON_APP_RULE_IP_2, seq=s2+1, ack=s1+1+len(tls))
+        self.assert_packet_sent_to_access(
+            l4proto=TCP,
+            remote_port=443, remote_ip=NON_APP_RULE_IP_2)
+
+        self.verify_traffic_reporting(up_len, down_len)
+
+    def verify_app_reporting_ipfilter(self):
+        # Access -> SGi (IP rule)
         up_len = self.send_from_access_to_sgi(b"42", remote_ip=APP_RULE_IP)
         self.assert_packet_sent_to_sgi(b"42", remote_ip=APP_RULE_IP)
 
-        # SGi -> Access
+        # SGi -> Access (IP rule)
         down_len = self.send_from_sgi_to_access(b"4242", remote_ip=APP_RULE_IP)
         self.assert_packet_sent_to_access(b"4242", remote_ip=APP_RULE_IP)
 
         # the following packets aren't counted
-        self.send_from_access_to_sgi(b"1234567", remote_ip=NON_APP_RULE_IP_2)
-        self.assert_packet_sent_to_sgi(b"1234567", remote_ip=NON_APP_RULE_IP_2)
-        self.send_from_sgi_to_access(b"foobarbaz", remote_ip=NON_APP_RULE_IP_2)
-        self.assert_packet_sent_to_access(b"foobarbaz", remote_ip=NON_APP_RULE_IP_2)
+        self.send_from_access_to_sgi(b"1234567", remote_ip=NON_APP_RULE_IP_3)
+        self.assert_packet_sent_to_sgi(b"1234567", remote_ip=NON_APP_RULE_IP_3)
+        self.send_from_sgi_to_access(b"foobarbaz", remote_ip=NON_APP_RULE_IP_3)
+        self.assert_packet_sent_to_access(b"foobarbaz", remote_ip=NON_APP_RULE_IP_3)
 
         self.verify_traffic_reporting(up_len, down_len)
 
-# TODO: test https app detection
-# TODO: verify non-matching packets
+    def verify_app_reporting(self):
+        self.verify_app_reporting_http()
+        self.verify_app_reporting_tls()
+        self.verify_app_reporting_ipfilter()
+
 # TODO: send session report response
 # TODO: check for heartbeat requests from UPF
 # TODO: check redirects (perhaps IPv4 type redirect) -- currently broken
