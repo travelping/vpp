@@ -675,7 +675,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
       {
 	upf_adf_app_t *app;
 	uword *p = NULL;
-        acl_rule_t *acl, *acl_rule;
+        acl_rule_t *acl;
 
 	create->pdi.fields |= F_PDI_APPLICATION_ID;
 
@@ -697,10 +697,7 @@ handle_create_pdr (upf_session_t * sx, pfcp_create_pdr_t * create_pdr,
 	create->pdi.adr.db_id = upf_adf_get_adr_db (p[0], &acl);
 	create->pdi.adr.flags = app->flags;
 
-        vec_foreach (acl_rule, acl)
-          {
-            vec_add1(create->pdi.acl, *acl_rule);
-          }
+        vec_append (create->pdi.acl, acl);
 
 	gtp_debug ("app: %v, ADR DB id %u", app->name,
 		   create->pdi.adr.db_id);
@@ -842,7 +839,7 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
       {
 	upf_adf_app_t *app;
 	uword *p = NULL;
-        acl_rule_t *acl, *acl_rule;
+        acl_rule_t *acl;
 
 	update->pdi.fields |= F_PDI_APPLICATION_ID;
 
@@ -864,16 +861,9 @@ handle_update_pdr (upf_session_t * sx, pfcp_update_pdr_t * update_pdr,
 	update->pdi.adr.flags = app->flags;
 
         if (!ISSET_BIT (pdr->pdi.grp.fields, PDI_SDF_FILTER))
-          {
             vec_reset_length (update->pdi.acl);
-            if (vec_len(acl) > 0)
-              vec_alloc (update->pdi.acl, _vec_len(acl));
-          }
 
-        vec_foreach (acl_rule, acl)
-          {
-            vec_add1(update->pdi.acl, *acl_rule);
-          }
+        vec_append(update->pdi.acl, acl);
 
 	gtp_debug ("app: %v, ADR DB id %u", app->name,
 		   update->pdi.adr.db_id);
