@@ -734,14 +734,7 @@ sx_make_pending_pdr (upf_session_t * sx)
       vec_foreach_index (i, active->pdr)
       {
 	upf_pdr_t *pdr = vec_elt_at_index (pending->pdr, i);
-        acl_rule_t *acl, *acl_rule;
-
-	pdr->pdi.adr.db_id = upf_adf_get_adr_db (pdr->pdi.adr.application_id, &acl);
 	pdr->pdi.acl = vec_dup (vec_elt (active->pdr, i).pdi.acl);
-        vec_foreach (acl_rule, acl)
-          {
-            vec_add1(pdr->pdi.acl, *acl_rule);
-          }
 	pdr->urr_ids = vec_dup (vec_elt (active->pdr, i).urr_ids);
 	pdr->qer_ids = vec_dup (vec_elt (active->pdr, i).qer_ids);
       }
