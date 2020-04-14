@@ -39,6 +39,7 @@ APP_RULE_IP = "192.0.2.101"
 NON_APP_RULE_IP = "192.0.9.201"
 NON_APP_RULE_IP_2 = "192.0.9.202"
 NON_APP_RULE_IP_3 = "192.0.9.203"
+EXTRA_SDF_IP = "192.0.9.204"
 
 
 class TestUPF(framework.VppTestCase):
@@ -337,6 +338,9 @@ class TestUPF(framework.VppTestCase):
             IE_CreatePDR(IE_list=[
                 IE_FAR_Id(id=1),
                 IE_PDI(IE_list=[
+                    IE_SDF_Filter(
+                        FD=1,
+                        flow_description="permit out ip from %s to assigned" % EXTRA_SDF_IP),
                     IE_ApplicationId(id="TST"),
                     IE_NetworkInstance(instance="access"),
                     IE_SourceInterface(interface="Access"),
@@ -349,6 +353,9 @@ class TestUPF(framework.VppTestCase):
             IE_CreatePDR(IE_list=[
                 IE_FAR_Id(id=2),
                 IE_PDI(IE_list=[
+                    IE_SDF_Filter(
+                        FD=1,
+                        flow_description="permit out ip from %s to assigned" % EXTRA_SDF_IP),
                     IE_ApplicationId(id="TST"),
                     IE_NetworkInstance(instance="sgi"),
                     IE_SourceInterface(interface="SGi-LAN/N6-LAN"),
@@ -639,14 +646,14 @@ class TestUPF(framework.VppTestCase):
 
         self.verify_traffic_reporting(up_len, down_len)
 
-    def verify_app_reporting_ipfilter(self):
+    def verify_app_reporting_ip(self, ip):
         # Access -> SGi (IP rule)
-        up_len = self.send_from_access_to_sgi(b"42", remote_ip=APP_RULE_IP)
-        self.assert_packet_sent_to_sgi(b"42", remote_ip=APP_RULE_IP)
+        up_len = self.send_from_access_to_sgi(b"42", remote_ip=ip)
+        self.assert_packet_sent_to_sgi(b"42", remote_ip=ip)
 
         # SGi -> Access (IP rule)
-        down_len = self.send_from_sgi_to_access(b"4242", remote_ip=APP_RULE_IP)
-        self.assert_packet_sent_to_access(b"4242", remote_ip=APP_RULE_IP)
+        down_len = self.send_from_sgi_to_access(b"4242", remote_ip=ip)
+        self.assert_packet_sent_to_access(b"4242", remote_ip=ip)
 
         # the following packets aren't counted
         self.send_from_access_to_sgi(b"1234567", remote_ip=NON_APP_RULE_IP_3)
@@ -659,7 +666,8 @@ class TestUPF(framework.VppTestCase):
     def verify_app_reporting(self):
         self.verify_app_reporting_http()
         self.verify_app_reporting_tls()
-        self.verify_app_reporting_ipfilter()
+        self.verify_app_reporting_ip(ip=APP_RULE_IP)
+        self.verify_app_reporting_ip(ip=EXTRA_SDF_IP)
 
 # TODO: send session report response
 # TODO: check for heartbeat requests from UPF
