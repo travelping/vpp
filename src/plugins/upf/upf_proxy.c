@@ -27,6 +27,8 @@
 #include "upf_proxy.h"
 #include "upf_app_db.h"
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define upf_debug clib_warning
 #else
@@ -800,14 +802,21 @@ active_open_connected_callback (u32 app_index, u32 opaque,
     {
       transport_connection_t *tc;
       flow_entry_t *flow;
-      flow_tc_t *ftc;
+      flow_tc_t *ftc, *rev;
 
       flow = pool_elt_at_index (fm->flows, ps->flow_index);
       tc = session_get_transport (s);
 
       ASSERT (tc->thread_index == thread_index);
 
+      clib_warning ("tc index: %u, thread: %u - %u",
+		    tc->c_index, tc->thread_index, thread_index);
+
       ftc = &flow_tc (flow, FT_REVERSE);
+      rev = &flow_tc (flow, FT_ORIGIN);
+      upf_debug ("ftc conn_index %u", ftc->conn_index);
+      upf_debug ("rev conn_index %u", rev->conn_index);
+
       ftc->conn_index = tc->c_index;
       ftc->thread_index = tc->thread_index;
     }

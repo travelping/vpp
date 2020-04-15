@@ -30,6 +30,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define upf_debug clib_warning
 #else
@@ -144,12 +146,36 @@ upf_tcp_tstamp_mod (tcp_header_t * th, flow_direction_t direction, flow_entry_t 
 	case TCP_OPTION_TIMESTAMP:
 	  if (opt_len == TCP_OPTION_LEN_TIMESTAMP)
 	    {
-	      /* tsval */
+	      u32 tsval, tsecr;
+
+	      tsval = clib_net_to_host_u32 (*(u32 *) (data + 2));
+	      clib_warning ("TsVal[%u]: %12u -> %12u, %12u / %12u / %12u -->  %12u / %12u / %12u / %12u",
+			    direction,
+			    tsval, tcp_time_now (),
+			    (u32)(tsval + tcp_time_now ()),
+			    (u32)(tsval - tcp_time_now ()),
+			    (u32)(tcp_time_now () - tsval),
+			    (u32)(tsval + flow_tsval_offs(flow, direction)),
+			    (u32)(tsval - flow_tsval_offs(flow, direction)),
+			    (u32)(tsval + flow_tsval_offs(flow, FT_REVERSE ^ direction)),
+			    (u32)(tsval - flow_tsval_offs(flow, FT_REVERSE ^ direction)));
 	      net_sub ((u32 *)(data + 2), flow_tsval_offs(flow, direction));
 
 	      if (tcp_ack(th))
-		/* tsecr */
-		net_add((u32 *)(data + 6), flow_tsval_offs(flow, FT_REVERSE ^ direction));
+		{
+		  tsecr = clib_net_to_host_u32 (*(u32 *) (data + 6));
+		  clib_warning ("TsECR[%u]: %12u -> %12u, %12u / %12u / %12u -->   %12u / %12u / %12u / %12u",
+				direction,
+				tsecr, tcp_time_now (),
+				(u32)(tsecr + tcp_time_now ()),
+				(u32)(tsecr - tcp_time_now ()),
+				(u32)(tcp_time_now () - tsecr),
+				(u32)(tsecr + flow_tsval_offs(flow, direction)),
+				(u32)(tsecr - flow_tsval_offs(flow, direction)),
+				(u32)(tsecr + flow_tsval_offs(flow, FT_REVERSE ^ direction)),
+				(u32)(tsecr - flow_tsval_offs(flow, FT_REVERSE ^ direction)));
+		  net_add((u32 *)(data + 6), flow_tsval_offs(flow, FT_REVERSE ^ direction));
+		}
 	    }
 	  break;
 
@@ -255,6 +281,10 @@ upf_tcp_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    (flow->is_reverse ==
 	     upf_buffer_opaque (b)->gtpu.is_reverse) ? FT_ORIGIN : FT_REVERSE;
 
+	  upf_debug ("flow: %p (0x%08x): %U\n",
+		     flow, flow_id, format_flow_key, &flow->key);
+	  upf_debug ("flow: %U\n", format_flow, flow);
+
 	  /* mostly borrowed from vnet/interface_output.c calc_checksums */
 	  if (is_ip4)
 	    {
@@ -267,6 +297,7 @@ upf_tcp_forward (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      th = (tcp_header_t *) ip6_next_header (ip6);
 	    }
 
+	  clib_warning ("TCP: %U", format_tcp_header, th, 128);
 	  seq = clib_net_to_host_u32 (th->seq_number);
 	  ack = clib_net_to_host_u32 (th->ack_number);
 

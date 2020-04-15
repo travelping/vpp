@@ -30,6 +30,8 @@
 #include <upf/upf_pfcp.h>
 #include <upf/upf_proxy.h>
 
+#undef CLIB_DEBUG
+#define CLIB_DEBUG 10
 #if CLIB_DEBUG > 1
 #define upf_debug clib_warning
 #else
@@ -103,22 +105,33 @@ splice_tcp_connection (flow_entry_t *flow, flow_direction_t direction)
   tcp_connection_t *tcpRx, *tcpTx;
   session_t *s;
 
+  upf_debug ("ftc conn_index %u", ftc->conn_index);
+  upf_debug ("rev conn_index %u", rev->conn_index);
+
   if (rev->conn_index == ~0)
     return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 
   if (flow->dont_splice)
     return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 
+  upf_debug ("existing reverse connection %u / %u",
+	     rev->conn_index, rev->thread_index);
+
   // lookup connections
   tc = transport_get_connection (TRANSPORT_PROTO_TCP, ftc->conn_index, ftc->thread_index);
+  clib_warning ("tc: %p", tc);
   if (!tc)
     return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 
   s = session_get_if_valid (tc->s_index, tc->thread_index);
+  clib_warning ("s: %p", s);
   if (!s)
     return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
 
   // check fifo, proxy Tx/Rx are connected...
+  clib_warning ("Rx: %u, Tx: %u",
+		svm_fifo_max_dequeue (s->rx_fifo),
+		svm_fifo_max_dequeue (s->tx_fifo));
   if (svm_fifo_max_dequeue (s->rx_fifo) != 0 ||
       svm_fifo_max_dequeue (s->tx_fifo) != 0)
     return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
@@ -128,18 +141,25 @@ splice_tcp_connection (flow_entry_t *flow, flow_direction_t direction)
   tcpTx = tcp_get_connection_from_transport
     (transport_get_connection (TRANSPORT_PROTO_TCP, rev->conn_index, rev->thread_index));
 
+  clib_warning ("Rx: snd-nxt: %12u, snd-una: %12u, rcv-nxt: %12u, rcv-las: %12u",
+		tcpRx->snd_nxt, tcpRx->snd_una, tcpRx->rcv_nxt, tcpRx->rcv_las);
+  clib_warning ("Tx: snd-nxt: %12u, snd-una: %12u, rcv-nxt: %12u, rcv-las: %12u",
+		tcpTx->snd_nxt, tcpTx->snd_una, tcpTx->rcv_nxt, tcpTx->rcv_las);
+
   /* check TCP connection properties */
+  clib_warning ("Rx: snd mss: %12u, rvc mss: %12u", tcpRx->snd_mss, tcpRx->rcv_opts.mss);
+  clib_warning ("Tx: snd mss: %12u, rvc mss: %12u", tcpTx->snd_mss, tcpTx->rcv_opts.mss);
   if ((tcpRx->snd_mss > tcpTx->rcv_opts.mss) ||
       (tcpTx->snd_mss > tcpRx->rcv_opts.mss))
     {
-      upf_debug ("=============> DON'T SPLICE <=============");
+      clib_warning ("=============> DON'T SPLICE <=============");
       flow->dont_splice = 1;
       return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
     }
 
   if (tcp_opts_tstamp (&tcpTx->rcv_opts) != tcp_opts_tstamp (&tcpRx->rcv_opts))
     {
-      upf_debug ("=============> DON'T SPLICE <=============");
+      clib_warning ("=============> DON'T SPLICE <=============");
       flow->dont_splice = 1;
       return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
     }
@@ -147,16 +167,49 @@ splice_tcp_connection (flow_entry_t *flow, flow_direction_t direction)
   if (tcp_opts_sack_permitted (&tcpTx->rcv_opts) !=
       tcp_opts_sack_permitted (&tcpRx->rcv_opts))
     {
-      upf_debug ("=============> DON'T SPLICE <=============");
+      clib_warning ("=============> DON'T SPLICE <=============");
       flow->dont_splice = 1;
       return UPF_PROXY_INPUT_NEXT_TCP_INPUT;
     }
 
+  // try to directly translate seq no
+  clib_warning ("%u: OrigSEQ: %12u -> %12u, OrigACK: %12u -> %12u,"
+		" Diff-SEQ: %12u / %12u, Diff-ACK: %12u / %12u",
+		direction,
+		tcpRx->rcv_nxt, tcpTx->snd_nxt,
+		tcpRx->snd_nxt, tcpTx->rcv_nxt,
+		(u32)(tcpRx->rcv_nxt - tcpTx->snd_nxt),
+		(u32)(tcpRx->snd_nxt - tcpTx->rcv_nxt));
+
   if (flow_seq_offs(flow, origin) == 0)
-    flow_seq_offs(flow, origin) = tcpRx->rcv_nxt - tcpTx->snd_nxt;
+    {
+      flow_seq_offs(flow, origin) = tcpRx->rcv_nxt - tcpTx->snd_nxt;
+      clib_warning ("SeqOffs[%u]: %12u", origin, flow_seq_offs(flow, origin));
+    }
 
   if (flow_seq_offs(flow, reverse) == 0)
-    flow_seq_offs(flow, reverse) = tcpRx->snd_nxt - tcpTx->rcv_nxt;
+    {
+      flow_seq_offs(flow, reverse) = tcpRx->snd_nxt - tcpTx->rcv_nxt;
+      clib_warning ("SeqOffs[%u]: %12u", reverse, flow_seq_offs(flow, reverse));
+    }
+
+  if (direction == FT_ORIGIN)
+    {
+      clib_warning ("%u: CalcSEQ: %12u -> %12u, CalcACK: %12u -> %12u",
+		    direction,
+		    tcpRx->rcv_nxt, (u32)(tcpRx->rcv_nxt + flow_seq_offs(flow, origin)),
+		    tcpRx->snd_nxt, (u32)(tcpRx->snd_nxt + flow_seq_offs(flow, reverse)));
+    }
+  else
+    {
+      clib_warning ("%u: CalcSEQ: %12u -> %12u, CalcACK: %12u -> %12u",
+		    direction,
+		    tcpRx->rcv_nxt, (u32)(tcpRx->rcv_nxt - flow_seq_offs(flow, origin)),
+		    tcpRx->snd_nxt, (u32)(tcpRx->snd_nxt - flow_seq_offs(flow, reverse)));
+    }
+
+  clib_warning ("TsValOffs[%u]: %12u", origin,  flow_tsval_offs(flow, origin));
+  clib_warning ("TsValOffs[%u]: %12u", reverse, flow_tsval_offs(flow, reverse));
 
   /* kill the TCP connections, session and proxy session */
   tcp_connection_set_state (tcpRx, TCP_STATE_CLOSED);
@@ -221,6 +274,8 @@ load_tstamp_offset (vlib_buffer_t * b, flow_direction_t direction, flow_entry_t 
     return;
 
   flow_tsval_offs (flow, direction) = opts.tsval - tcp_time_now ();
+  clib_warning ("TsValOffs[%u]: %12u (%12u)",
+		direction, flow_tsval_offs(flow, direction), opts.tsval);
 }
 
 static uword
@@ -259,7 +314,10 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  flow_direction_t direction;
 	  flow_entry_t *flow = NULL;
-	  flow_tc_t *ftc;
+	  upf_pdr_t *pdr = NULL;
+	  upf_far_t *far = NULL;
+	  struct rules *active;
+	  flow_tc_t *ftc, *rev;
 
 	  bi = from[0];
 	  to_next[0] = bi;
@@ -329,6 +387,9 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 		     flow->is_reverse);
 
 	  ftc = &flow_tc (flow, direction);
+	  rev = &flow_tc (flow, FT_REVERSE ^ direction);
+	  upf_debug ("ftc conn_index %u", ftc->conn_index);
+	  upf_debug ("rev conn_index %u", rev->conn_index);
 
 	  if (flow->is_spliced)
 	    {
@@ -344,6 +405,9 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      vnet_buffer (b)->tcp.connection_index = ftc->conn_index;
 
 	      /* transport connection already setup */
+	      clib_warning ("%U", format_ip4_header, vlib_buffer_get_current (b),
+			    vlib_buffer_length_in_chain (vm, b));
+
 	      next = splice_tcp_connection (flow, direction);
 	    }
 	  else if (direction == FT_ORIGIN)
