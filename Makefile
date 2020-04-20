@@ -72,7 +72,9 @@ DEB_DEPENDS += cmake ninja-build uuid-dev python3-jsonschema python3-yaml
 DEB_DEPENDS += cmake ninja-build uuid-dev python3-jsonschema python3-yaml yamllint
 DEB_DEPENDS += python3-venv  # ensurepip
 DEB_DEPENDS += python3-dev   # needed for python3 -m pip install psutil
+ifeq ($(MACHINE),x86_64)
 DEB_DEPENDS += libhyperscan-dev
+endif
 # python3.6 on 16.04 requires python36-dev
 
 LIBFFI=libffi6 # works on all but 20.04
@@ -140,7 +142,9 @@ endif
 
 # +ganglia-devel if building the ganglia plugin
 
+ifeq ($(MACHINE),x86_64)
 RPM_DEPENDS += hyperscan-devel
+endif
 RPM_DEPENDS += chrpath libffi-devel rpm-build
 
 RPM_DEPENDS_DEBUG  = glibc-debuginfo e2fsprogs-debuginfo
@@ -155,7 +159,9 @@ RPM_SUSE_BUILDTOOLS_DEPS += clang cmake indent libtool make ninja python3-ply
 
 RPM_SUSE_DEVEL_DEPS = glibc-devel-static libnuma-devel
 RPM_SUSE_DEVEL_DEPS += libopenssl-devel openssl-devel mbedtls-devel libuuid-devel
+ifeq ($(MACHINE),x86_64)
 RPM_SUSE_DEVEL_DEPS += hyperscan-devel
+endif
 
 RPM_SUSE_PYTHON_DEPS = python-devel python3-devel python-pip python3-pip
 RPM_SUSE_PYTHON_DEPS += python-rpm-macros python3-rpm-macros
