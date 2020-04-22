@@ -75,7 +75,7 @@ string(CONCAT CMAKE_EXE_LINKER_FLAGS_RELEASE "-pie")
 list(APPEND BUILD_TYPES "debug")
 string(CONCAT CMAKE_C_FLAGS_DEBUG
   "-O0 "
-  "-DCLIB_DEBUG "
+  "-DCLIB_DEBUG=3 "
   "-fstack-protector "
   "-DFORTIFY_SOURCE=2 "
   "-fno-common "
