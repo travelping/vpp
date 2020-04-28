@@ -5,11 +5,16 @@ stages:
 variables:
   REGISTRY: "quay.io"
   CONTAINER_IMAGE: travelping/upf
+  # This is needed to disable TLS in recent docker:...dind images.
+  # TLS there is not really needed as docker client connects
+  # to localhost, and all of the docker certs only cause problems
+  # here
+  DOCKER_TLS_CERTDIR: ""
 
 # prepare:
 #   image: docker:stable
 #   services:
-#     - docker:dind
+#     - docker:19.03.8-dind
 #   stage: prepare
 #   script:
 #     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
@@ -29,7 +34,7 @@ variables:
   #  - docker
   image: docker:git
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   script:
     - export CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
     - export CONTAINER_VARIANT=${CI_BUILD_NAME##*:}
@@ -79,7 +84,7 @@ variables:
     untracked: true
     paths:
     - debs
-    - tst-install
+    # - tst-install
 
 # build container image
 build:release:
@@ -97,13 +102,13 @@ test:debug:
   image: docker:git
   # FIXME: try not to use docker:dind. This may cause problems with shm_size
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   dependencies:
   - build:debug
   script:
   - export DOCKER_HOST="tcp://localhost:2375"
   - docker build -f extras/docker/Dockerfile.test -t vppbuild .
-  - tar -xvzf tst-install/install.tar.gz
+  # - tar -xvzf tst-install/install.tar.gz
   - |
     mkdir -p test-out
     if ! docker run --rm --name vpp-build --shm-size 1024m \
@@ -112,8 +117,9 @@ test:debug:
                -e LANG=C.UTF-8 \
                vppbuild \
                /bin/bash -c \
-               "if ! make -j8 retest-debug TEST=test_upf V=1; then tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true; tar -C /src/vpp/build-root/install-vpp_debug-native/ -cvzf /src/vpp/test-out/vpp.tar.gz vpp; exit 1; fi"; then
+               "if ! make -j8 test-debug TEST=test_upf V=1; then tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true; tar -C /src/vpp/build-root/install-vpp_debug-native/ -cvzf /src/vpp/test-out/vpp.tar.gz vpp; exit 1; fi"; then
       ls -l test-out/
+      sleep 3600
       exit 1
     fi
   artifacts:
@@ -125,7 +131,7 @@ test:external:
   stage: test
   image: quay.io/travelping/upf-test:v0.0.1
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   script:
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
   - CONTAINER_VARIANT=release
