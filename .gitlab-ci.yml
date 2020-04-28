@@ -5,11 +5,16 @@ stages:
 variables:
   REGISTRY: "quay.io"
   CONTAINER_IMAGE: travelping/upf
+  # This is needed to disable TLS in recent docker:...dind images.
+  # TLS there is not really needed as docker client connects
+  # to localhost, and all of the docker certs only cause problems
+  # here
+  DOCKER_TLS_CERTDIR: ""
 
 # prepare:
 #   image: docker:stable
 #   services:
-#     - docker:dind
+#     - docker:19.03.8-dind
 #   stage: prepare
 #   script:
 #     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
@@ -29,7 +34,7 @@ variables:
   #  - docker
   image: docker:git
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   script:
     - export CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
     - export CONTAINER_VARIANT=${CI_BUILD_NAME##*:}
@@ -97,13 +102,15 @@ test:debug:
   image: docker:git
   # FIXME: try not to use docker:dind. This may cause problems with shm_size
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   dependencies:
   - build:debug
   script:
   - export DOCKER_HOST="tcp://localhost:2375"
   - docker build -f extras/docker/Dockerfile.test -t vppbuild .
   - tar -xvzf tst-install/install.tar.gz
+  # temporary workaround for the hugepages issue
+  - sysctl vm.nr_hugepages=0
   - |
     mkdir -p test-out
     if ! docker run --rm --name vpp-build --shm-size 1024m \
@@ -123,9 +130,9 @@ test:debug:
 
 test:external:
   stage: test
-  image: quay.io/travelping/upf-test:v0.0.1
+  image: quay.io/travelping/upf-test:v0.0.5
   services:
-  - docker:dind
+  - docker:19.03.8-dind
   script:
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
   - CONTAINER_VARIANT=release
@@ -133,6 +140,8 @@ test:external:
   - CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
   - SRC_DIR="${PWD}"
   - cd /test
+  # temporary workaround for the hugepages issue
+  - sysctl vm.nr_hugepages=0
   - docker-compose build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
   - docker-compose run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
   # FIXME: the following fails --
