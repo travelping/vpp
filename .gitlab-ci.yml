@@ -135,7 +135,7 @@ test:external:
   - docker:19.03.8-dind
   script:
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
-  - CONTAINER_VARIANT=release
+  - CONTAINER_VARIANT=debug
   - CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
   - CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
   - SRC_DIR="${PWD}"
@@ -148,7 +148,7 @@ test:external:
   # docker-compose run --rm -T grabpcaps | tar -xv
   - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
   dependencies:
-  - build:release
+  - build:debug
   artifacts:
     paths:
     - pcaps
