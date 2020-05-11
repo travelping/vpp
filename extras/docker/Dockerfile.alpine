@@ -18,7 +18,8 @@ RUN mkdir /src && \
 		       libtool pkgconf make linux-headers \
 		       git pkgconfig openssl-dev numactl-dev \
 		       boost-dev libffi-dev \
-		       userspace-rcu-dev
+		       userspace-rcu-dev \
+                       openssl-dev
 ADD . /src/vpp
 RUN apk add --no-cache bison
 RUN apk add --no-cache file

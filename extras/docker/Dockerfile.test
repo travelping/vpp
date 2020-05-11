@@ -4,6 +4,6 @@ FROM ubuntu:bionic
 ADD . /src/vpp
 WORKDIR /src/vpp
 RUN apt-get update
-RUN apt-get -y install make sudo git curl build-essential
+RUN apt-get -y install make sudo git curl build-essential libssl-dev
 RUN UNATTENDED=y make install-dep
 CMD ["/bin/bash"]

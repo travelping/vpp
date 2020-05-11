@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 
-FROM ubuntu:bionic AS build-stage
+FROM ubuntu:focal AS build-stage
 
 WORKDIR /
 RUN --mount=target=/var/lib/apt/lists,type=cache \
@@ -9,7 +9,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache \
     apt-get update && \
     apt-get dist-upgrade -yy && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	    build-essential sudo
+	    build-essential sudo tzdata libssl-dev
 
 ADD . /src/vpp
 RUN --mount=target=/var/lib/apt/lists,type=cache \
@@ -23,7 +23,7 @@ ENTRYPOINT ["/bin/sh", "-c", "cd /src/vpp/build-root; find . -type f -name '*.de
 
 #
 # --- final image --------------------------------------------
-FROM ubuntu:bionic AS final-stage
+FROM ubuntu:focal AS final-stage
 WORKDIR /
 RUN --mount=target=/var/lib/apt/lists,type=cache \
     --mount=target=/var/cache/apt,type=cache \
@@ -35,6 +35,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache \
     --mount=target=/var/cache/apt,type=cache \
     --mount=target=/src,source=/src,from=build-stage,type=bind \
     apt-get update && apt-get dist-upgrade -yy && \
+    VPP_INSTALL_SKIP_SYSCTL=yes \
     apt-get install --no-install-recommends -yy liblz4-tool tar gdb strace \
 	/src/vpp/build-root/vpp_*.deb \
 	/src/vpp/build-root/vpp-dev_*.deb \
