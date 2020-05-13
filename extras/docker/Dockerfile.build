@@ -1,0 +1,29 @@
+# syntax = docker/dockerfile:experimental
+FROM ubuntu:bionic AS build-stage
+
+WORKDIR /
+
+# netbase is needed for Scapy
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    mkdir /src && \
+    apt-get update && \
+    apt-get dist-upgrade -yy && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+	    build-essential sudo git netbase
+
+COPY Makefile /src/vpp/Makefile
+COPY build/external /src/vpp/build/external
+
+RUN --mount=target=/var/lib/apt/lists,type=cache \
+    --mount=target=/var/cache/apt,type=cache \
+    cd /src/vpp && \
+    git config --global user.email "dummy@example.com" && \
+    git config --global user.name "dummy user" && \
+    git init && \
+    git add Makefile && \
+    git commit -m "dummy commit" && \
+    git tag -a v20.05-rc0 -m "dummy tag" && \
+    make UNATTENDED=yes install-dep install-ext-dep
+
+RUN rm -rf /src/vpp
