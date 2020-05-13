@@ -1,4 +1,5 @@
 stages:
+- prepare
 - build
 - test
 
@@ -11,21 +12,23 @@ variables:
   # here
   DOCKER_TLS_CERTDIR: ""
 
-# prepare:
-#   image: docker:stable
-#   services:
-#     - docker:19.03.8-dind
-#   stage: prepare
-#   script:
-#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-#     - cd .meta
-#     - docker build -t $CI_REGISTRY/travelping/vpp/testimage:latest .
-#     - docker push $CI_REGISTRY/travelping/vpp/testimage:latest
-#   only:
-#     # refs:
-#     #   - master
-#     changes:
-#       - extras/docker/Dockerfile.test
+# prepare build image
+prepare:
+  stage: prepare
+  image: docker:git
+  services:
+  - docker:19.03.8-dind
+  script:
+  - export DOCKER_HOST="tcp://localhost:2375"
+  - echo "quay.io login..."
+  - docker login -u ${QUAY_USER_ID} -p ${QUAY_TOKEN} ${REGISTRY}
+  - echo "Ensuring that proper build image exists ..."
+  - PUSH_BUILD_IMAGE=1 sh extras/docker/ensure-build-image.sh
+  only:
+    changes:
+    - Makefile
+    - extras/docker/Dockerfile.build
+    - build/external/**/*
 
 # build container image
 .build:
@@ -79,6 +82,8 @@ variables:
                -cz build-root/install-vpp_debug-native \
                > tst-install/install.tar.gz
       fi
+  dependencies:
+  - prepare
   artifacts:
     when: always
     untracked: true
@@ -99,27 +104,24 @@ build:debug:
 
 test:debug:
   stage: test
-  image: docker:git
+  image: quay.io/travelping/upf-build
   # FIXME: try not to use docker:dind. This may cause problems with shm_size
   services:
   - docker:19.03.8-dind
   dependencies:
   - build:debug
   script:
-  - export DOCKER_HOST="tcp://localhost:2375"
-  - docker build -f extras/docker/Dockerfile.test -t vppbuild .
   - tar -xvzf tst-install/install.tar.gz
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
   - |
-    mkdir -p test-out
-    if ! docker run --rm --name vpp-build --shm-size 1024m \
-               -v $PWD:/src/vpp:delegated \
-               -e LC_ALL=C.UTF-8 \
-               -e LANG=C.UTF-8 \
-               vppbuild \
-               /bin/bash -c \
-               "if ! make -j8 retest-debug TEST=test_upf V=1; then tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true; tar -C /src/vpp/build-root/install-vpp_debug-native/ -cvzf /src/vpp/test-out/vpp.tar.gz vpp; exit 1; fi"; then
+    mkdir test-out
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    if ! make -j8 retest-debug TEST=test_upf V=1; then
+      tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true
+      tar -C /src/vpp/build-root/install-vpp_debug-native/ \
+          -cvzf /src/vpp/test-out/vpp.tar.gz vpp
       ls -l test-out/
       exit 1
     fi
