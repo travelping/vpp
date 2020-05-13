@@ -128,12 +128,14 @@ test:debug:
     paths:
     - test-out
 
-test:external:
+.test-ext:
   stage: test
-  image: quay.io/travelping/upf-test:v0.0.5
+  image: quay.io/travelping/upf-test:v0.0.6
   services:
   - docker:19.03.8-dind
   script:
+  # https://github.com/docker/compose/issues/5696#issuecomment-377906769
+  - export COMPOSE_INTERACTIVE_NO_CLI=1
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
   - CONTAINER_VARIANT=debug
   - CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
@@ -142,13 +144,28 @@ test:external:
   - cd /test
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
-  - docker-compose build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
-  - docker-compose run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
-  # FIXME: the following fails --
-  # docker-compose run --rm -T grabpcaps | tar -xv
+  - docker-compose -f "${DOCKER_COMPOSE_FILE}" build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
+  - docker-compose -f "${DOCKER_COMPOSE_FILE}" run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
+  - mkdir "${SRC_DIR}/pcaps"
+  - |
+    if ! scripts/vpp-report.sh | gzip >& "${SRC_DIR}/pcaps/report.txt.gz"; then
+      gunzip -c "${SRC_DIR}/pcaps/report.txt.gz"
+    fi
+  # FIXME: the following fails with "invalid tar magic"
+  # - docker-compose -f "${DOCKER_COMPOSE_FILE}" run --rm -T grabpcaps | tar -xv
   - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
   dependencies:
   - build:debug
   artifacts:
     paths:
     - pcaps
+
+test:external-ipv4:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose.yaml
+
+test:external-ipv6:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-v6.yaml
