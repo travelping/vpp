@@ -2,9 +2,12 @@
 set -o errexit
 set -o nounset
 set -o pipefail
-# not compatible with alpine's sh
-# set -o errtrace
-# cd "$(dirname "${BASH_SOURCE}")/../.."
+
+if [[ ${BASH:-} ]]; then
+  # not compatible with alpine's sh
+  set -o errtrace
+  cd "$(dirname "${BASH_SOURCE}")/../.."
+fi
 
 : "${BUILD_IMAGE_NAME:=quay.io/travelping/upf-build}"
 : "${PUSH_BUILD_IMAGE:=}"
@@ -20,6 +23,3 @@ if [[ ! $(docker images -q "${build_image}") ]] && ! docker pull "${build_image}
 fi
 
 docker tag "${build_image}" "${BUILD_IMAGE_NAME}"
-if [[ ${PUSH_BUILD_IMAGE} ]]; then
-  docker push "${BUILD_IMAGE_NAME}"
-fi
