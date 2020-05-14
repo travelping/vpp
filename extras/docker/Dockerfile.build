@@ -4,6 +4,7 @@ FROM debian:sid-slim AS build-stage
 WORKDIR /
 
 # netbase is needed for Scapy
+# libelf and libbpf for XDP
 RUN --mount=target=/var/lib/apt/lists,type=cache \
     --mount=target=/var/cache/apt,type=cache \
     mkdir /src && \
