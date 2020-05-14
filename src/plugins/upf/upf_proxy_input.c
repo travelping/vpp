@@ -314,7 +314,9 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  flow_direction_t direction;
 	  flow_entry_t *flow = NULL;
-	  flow_tc_t *ftc, *rev;
+#if CLIB_DEBUG > 1
+	  flow_tc_t *rev;
+#endif
 
 	  bi = from[0];
 	  to_next[0] = bi;
@@ -384,7 +386,9 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 		     flow->is_reverse);
 
 	  ftc = &flow_tc (flow, direction);
+#if CLIB_DEBUG > 1
 	  rev = &flow_tc (flow, FT_REVERSE ^ direction);
+#endif
 	  upf_debug ("ftc conn_index %u", ftc->conn_index);
 	  upf_debug ("rev conn_index %u", rev->conn_index);
 
