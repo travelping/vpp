@@ -314,9 +314,6 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  flow_direction_t direction;
 	  flow_entry_t *flow = NULL;
-	  upf_pdr_t *pdr = NULL;
-	  upf_far_t *far = NULL;
-	  struct rules *active;
 	  flow_tc_t *ftc, *rev;
 
 	  bi = from[0];
