@@ -314,6 +314,7 @@ upf_proxy_input (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  flow_direction_t direction;
 	  flow_entry_t *flow = NULL;
+	  flow_tc_t *ftc;
 #if CLIB_DEBUG > 1
 	  flow_tc_t *rev;
 #endif
