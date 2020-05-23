@@ -132,10 +132,10 @@ test:debug:
 
 .test-ext:
   stage: test
-  image: quay.io/travelping/upf-test:v0.0.6
+  image: quay.io/travelping/upf-test:v0.0.7
   services:
   - docker:19.03.8-dind
-  script:
+  before_script:
   # https://github.com/docker/compose/issues/5696#issuecomment-377906769
   - export COMPOSE_INTERACTIVE_NO_CLI=1
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
@@ -147,15 +147,22 @@ test:debug:
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
   - docker-compose -f "${DOCKER_COMPOSE_FILE}" build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
-  - docker-compose -f "${DOCKER_COMPOSE_FILE}" run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
+  script:
+  - docker-compose -f "${DOCKER_COMPOSE_FILE}" run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub || exit 1
+  after_script:
+  - SRC_DIR="${PWD}"
   - mkdir "${SRC_DIR}/pcaps"
+  - cd /test
   - |
-    if ! scripts/vpp-report.sh | gzip >& "${SRC_DIR}/pcaps/report.txt.gz"; then
+    if [[ ${TEST_TYPE} = "proxy" ]]; then
+      docker-compose logs unode
+    elif ! scripts/vpp-report.sh | gzip >& "${SRC_DIR}/pcaps/report.txt.gz"; then
       gunzip -c "${SRC_DIR}/pcaps/report.txt.gz"
     fi
   # FIXME: the following fails with "invalid tar magic"
   # - docker-compose -f "${DOCKER_COMPOSE_FILE}" run --rm -T grabpcaps | tar -xv
   - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
+  - ls -l "${SRC_DIR}/pcaps"
   dependencies:
   - build:debug
   artifacts:
@@ -171,3 +178,11 @@ test:external-ipv6:
   extends: .test-ext
   variables:
     DOCKER_COMPOSE_FILE: docker-compose-v6.yaml
+
+test:external-proxy-crash:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
+    TEST_TYPE: proxy
+  script:
+  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
