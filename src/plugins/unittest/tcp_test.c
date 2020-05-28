@@ -865,7 +865,7 @@ tcp_test_lookup (vlib_main_t * vm, unformat_input_t * input)
    */
 
   s1 = pool_elt_at_index (smm->wrk[0].sessions, sidx);
-  session_lookup_add_connection (tc1, session_handle (s1));
+  session_lookup_add_connection (tc1, session_handle (s1), s1);
   tconn = session_lookup_connection_wt4 (0, &tc1->lcl_ip.ip4,
 					 &tc1->rmt_ip.ip4,
 					 tc1->lcl_port, tc1->rmt_port,
@@ -905,7 +905,7 @@ tcp_test_lookup (vlib_main_t * vm, unformat_input_t * input)
   /*
    * Re-add and lookup tc2
    */
-  session_lookup_add_connection (tc1, tc1->s_index);
+  session_lookup_add_connection (tc1, tc1->s_index, s1);
   tconn = session_lookup_connection_wt4 (0, &tc2->lcl_ip.ip4,
 					 &tc2->rmt_ip.ip4,
 					 tc2->lcl_port, tc2->rmt_port,

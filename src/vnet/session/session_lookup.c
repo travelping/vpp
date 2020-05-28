@@ -226,11 +226,12 @@ session_lookup_get_index_for_fib (u32 fib_proto, u32 fib_index)
  * @return non-zero if failure
  */
 int
-session_lookup_add_connection (transport_connection_t * tc, u64 value)
+session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t * s)
 {
   session_table_t *st;
   session_kv4_t kv4;
   session_kv6_t kv6;
+  int rv;
 
   st = session_table_get_or_alloc_for_connection (tc);
   if (!st)
@@ -238,17 +239,40 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value)
   if (tc->is_ip4)
     {
       make_v4_ss_kv_from_tc (&kv4, tc);
+
+      rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
+      ASSERT (rv != 0);
+
       kv4.value = value;
-      return clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
-				       1 /* is_add */ );
+      rv = clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
+				      2 /* is_add */ );
+      ASSERT (rv == 0);
+#if CLIB_DEBUG > 0
+      memcpy (&s->key[0], &kv4.key, sizeof (kv4.key));
+      s->fib_index = tc->fib_index;
+      clib_warning ("add: [%d] %U, sidx %u, cidx: %u, si: %u",
+		    session_table_index (st), format_session_key, s,
+		    s->session_index, s->connection_index, value);
+#endif
     }
   else
     {
       make_v6_ss_kv_from_tc (&kv6, tc);
+
+      rv = clib_bihash_search_inline_48_8 (&st->v6_session_hash, &kv6);
+      ASSERT (rv != 0);
+
       kv6.value = value;
-      return clib_bihash_add_del_48_8 (&st->v6_session_hash, &kv6,
-				       1 /* is_add */ );
+      rv = clib_bihash_add_del_48_8 (&st->v6_session_hash, &kv6,
+				     2 /* is_add */ );
+      ASSERT (rv == 0);
+#if CLIB_DEBUG > 0
+      s->fib_index = tc->fib_index;
+      memcpy (&s->key[0], &kv6.key, sizeof (kv6.key));
+#endif
     }
+
+  return rv;
 }
 
 int
@@ -922,6 +946,9 @@ session_lookup_connection_wt4 (u32 fib_index, ip4_address_t * lcl,
 	  return 0;
 	}
       s = session_get (kv4.value & 0xFFFFFFFFULL, thread_index);
+#if CLIB_DEBUG > 0
+      clib_warning ("found: [%u] %U", session_table_index (st), format_session_key, s);
+#endif
       return transport_get_connection (proto, s->connection_index,
 				       thread_index);
     }
@@ -931,7 +958,10 @@ session_lookup_connection_wt4 (u32 fib_index, ip4_address_t * lcl,
    */
   rv = clib_bihash_search_inline_16_8 (&st->v4_half_open_hash, &kv4);
   if (rv == 0)
-    return transport_get_half_open (proto, kv4.value & 0xFFFFFFFF);
+    {
+      clib_warning ("found half open: %u", (u32)(kv4.value & 0xFFFFFFFFULL));
+      return transport_get_half_open (proto, kv4.value & 0xFFFFFFFF);
+    }
 
   /*
    * Check the session rules table
@@ -956,7 +986,10 @@ session_lookup_connection_wt4 (u32 fib_index, ip4_address_t * lcl,
    */
   s = session_lookup_listener4_i (st, lcl, lcl_port, proto, 1);
   if (s)
-    return transport_get_listener (proto, s->connection_index);
+    {
+      clib_warning ("found listener: %u", s->connection_index);
+      return transport_get_listener (proto, s->connection_index);
+    }
 
   return 0;
 }
@@ -1291,6 +1324,66 @@ session_lookup_safe6 (u32 fib_index, ip6_address_t * lcl, ip6_address_t * rmt,
     return s;
   return 0;
 }
+
+#if CLIB_DEBUG > 0
+u8 *
+format_session_key (u8 * s, va_list * args)
+{
+  session_t * sp = va_arg (*args, session_t *);
+
+  if (session_type_is_ip4 (sp->session_type))
+    {
+      v4_connection_key_t * k = (v4_connection_key_t * )&sp->key;
+
+      s = format (s, "%U:%u -> %U:%u",
+		  format_ip4_address, &k->src, clib_net_to_host_u16 (k->src_port),
+		  format_ip4_address, &k->dst, clib_net_to_host_u16 (k->dst_port));
+    }
+  else
+    {
+      v6_connection_key_t * k = (v6_connection_key_t * )&sp->key;
+
+      s = format (s, "%U:%u -> %U:%u",
+		  format_ip6_address, &k->src, clib_net_to_host_u16 (k->src_port),
+		  format_ip6_address, &k->dst, clib_net_to_host_u16 (k->dst_port));
+    }
+
+  return s;
+}
+
+u32
+session_lookup_index (session_t * s)
+{
+  session_table_t *st;
+  fib_protocol_t fp_proto;
+  session_kv4_t kv4;
+  session_kv6_t kv6;
+  int rv;
+
+  fp_proto = session_get_fib_proto (s);
+  st = session_table_get_for_fib_index (fp_proto, s->fib_index);
+  ASSERT (st);
+
+  /*
+   * Lookup session amongst established ones
+   */
+  if (fp_proto == FIB_PROTOCOL_IP4)
+    {
+      memcpy (&kv4.key, &s->key[0], sizeof (kv4.key));
+      rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
+      if (rv == 0)
+	return kv4.value;
+    }
+  else
+    {
+      memcpy (&kv6.key, &s->key[0], sizeof (kv6.key));
+      rv = clib_bihash_search_inline_48_8 (&st->v6_session_hash, &kv6);
+      if (rv == 0)
+	return kv6.value;
+    }
+  return ~0;
+}
+#endif
 
 transport_connection_t *
 session_lookup_connection (u32 fib_index, ip46_address_t * lcl,
