@@ -29,6 +29,10 @@ typedef enum session_lookup_result_
   SESSION_LOOKUP_RESULT_FILTERED
 } session_lookup_result_t;
 
+#if CLIB_DEBUG > 0
+u32 session_lookup_index (session_t * s);
+#endif
+
 session_t *session_lookup_safe4 (u32 fib_index, ip4_address_t * lcl,
 				 ip4_address_t * rmt, u16 lcl_port,
 				 u16 rmt_port, u8 proto);
@@ -72,7 +76,7 @@ session_t *session_lookup_listener (u32 table_index,
 				    session_endpoint_t * sep);
 session_t *session_lookup_listener_wildcard (u32 table_index,
 					     session_endpoint_t * sep);
-int session_lookup_add_connection (transport_connection_t * tc, u64 value);
+int session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t * s);
 int session_lookup_del_connection (transport_connection_t * tc);
 u64 session_lookup_endpoint_listener (u32 table_index,
 				      session_endpoint_t * sepi,

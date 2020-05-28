@@ -226,11 +226,12 @@ session_lookup_get_index_for_fib (u32 fib_proto, u32 fib_index)
  * @return non-zero if failure
  */
 int
-session_lookup_add_connection (transport_connection_t * tc, u64 value)
+session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t * s)
 {
   session_table_t *st;
   session_kv4_t kv4;
   session_kv6_t kv6;
+  int rv;
 
   st = session_table_get_or_alloc_for_connection (tc);
   if (!st)
@@ -239,16 +240,25 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value)
     {
       make_v4_ss_kv_from_tc (&kv4, tc);
       kv4.value = value;
-      return clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
-				       1 /* is_add */ );
+#if CLIB_DEBUG > 0
+      memcpy (&s->key[0], &kv4.key, sizeof (kv4.key));
+#endif
+      rv = clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
+				      2 /* is_add */ );
     }
   else
     {
       make_v6_ss_kv_from_tc (&kv6, tc);
       kv6.value = value;
-      return clib_bihash_add_del_48_8 (&st->v6_session_hash, &kv6,
-				       1 /* is_add */ );
+#if CLIB_DEBUG > 0
+      memcpy (&s->key[0], &kv6.key, sizeof (kv6.key));
+#endif
+      rv = clib_bihash_add_del_48_8 (&st->v6_session_hash, &kv6,
+				     2 /* is_add */ );
     }
+
+  ASSERT (rv == 0);
+  return rv;
 }
 
 int
@@ -1291,6 +1301,41 @@ session_lookup_safe6 (u32 fib_index, ip6_address_t * lcl, ip6_address_t * rmt,
     return s;
   return 0;
 }
+
+#if CLIB_DEBUG > 0
+u32
+session_lookup_index (session_t * s)
+{
+  session_table_t *st;
+  fib_protocol_t fp_proto;
+  session_kv4_t kv4;
+  session_kv6_t kv6;
+  int rv;
+
+  fp_proto = session_get_fib_proto (s);
+  st = session_table_get_for_fib_index (FIB_PROTOCOL_IP4, fp_proto);
+  ASSERT (st);
+
+  /*
+   * Lookup session amongst established ones
+   */
+  if (fp_proto == FIB_PROTOCOL_IP4)
+    {
+      memcpy (&kv4.key, &s->key[0], sizeof (kv4.key));
+      rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
+      if (rv == 0)
+	return kv4.value;
+    }
+  else
+    {
+      memcpy (&kv6.key, &s->key[0], sizeof (kv6.key));
+      rv = clib_bihash_search_inline_48_8 (&st->v6_session_hash, &kv6);
+      if (rv == 0)
+	return kv6.value;
+    }
+  return ~0;
+}
+#endif
 
 transport_connection_t *
 session_lookup_connection (u32 fib_index, ip46_address_t * lcl,
