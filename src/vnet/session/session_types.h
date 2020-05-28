@@ -220,6 +220,11 @@ typedef struct session_
   /** Opaque, for general use */
   u32 opaque;
 
+#if CLIB_DEBUG > 0
+  u32 fib_index;
+  u64 key[6];
+#endif
+
     CLIB_CACHE_LINE_ALIGN_MARK (pad);
 } session_t;
 

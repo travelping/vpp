@@ -206,19 +206,33 @@ session_alloc (u32 thread_index)
   return s;
 }
 
+#if CLIB_DEBUG > 0
 void
 session_free (session_t * s)
 {
-  if (CLIB_DEBUG)
-    {
-      u8 thread_index = s->thread_index;
-      clib_memset (s, 0xFA, sizeof (*s));
-      pool_put (session_main.wrk[thread_index].sessions, s);
-      return;
-    }
+  u8 thread_index = s->thread_index;
+  u32 si;
+
+  si = session_lookup_index (s);
+  clib_warning ("free: %U, sidx %u, cidx: %u, si: %u",
+		format_session_key, s,
+		s->session_index, s->connection_index, si);
+  ASSERT (si == ~0);
+
+  clib_memset (s, 0xF9, sizeof (*s));
+  pool_put (session_main.wrk[thread_index].sessions, s);
+}
+
+#else
+
+void
+session_free (session_t * s)
+{
   SESSION_EVT (SESSION_EVT_FREE, s);
   pool_put (session_main.wrk[s->thread_index].sessions, s);
 }
+
+#endif
 
 u8
 session_is_valid (u32 si, u8 thread_index)
@@ -808,7 +822,7 @@ session_stream_connect_notify (transport_connection_t * tc,
 
   s = session_get (new_si, new_ti);
   s->session_state = SESSION_STATE_READY;
-  session_lookup_add_connection (tc, session_handle (s));
+  session_lookup_add_connection (tc, session_handle (s), s);
 
   if (app_worker_connect_notify (app_wrk, s, SESSION_E_NONE, opaque))
     {
@@ -914,7 +928,7 @@ session_dgram_connect_notify (transport_connection_t * tc,
   new_s->session_state = SESSION_STATE_READY;
   new_s->flags |= SESSION_F_IS_MIGRATING;
 
-  session_lookup_add_connection (tc, session_handle (new_s));
+  session_lookup_add_connection (tc, session_handle (new_s), new_s);
 
   /*
    * Ask thread owning the old session to clean it up and make us the tx
@@ -1120,7 +1134,7 @@ session_stream_accept (transport_connection_t * tc, u32 listener_index,
       return rv;
     }
 
-  session_lookup_add_connection (tc, session_handle (s));
+  session_lookup_add_connection (tc, session_handle (s), s);
 
   /* Shoulder-tap the server */
   if (notify)
@@ -1164,7 +1178,7 @@ session_dgram_accept (transport_connection_t * tc, u32 listener_index,
     }
 
   s->session_state = SESSION_STATE_READY;
-  session_lookup_add_connection (tc, session_handle (s));
+  session_lookup_add_connection (tc, session_handle (s), s);
 
   return 0;
 }
@@ -1201,7 +1215,7 @@ session_open_cl (u32 app_wrk_index, session_endpoint_t * rmt, u32 opaque)
     }
 
   sh = session_handle (s);
-  session_lookup_add_connection (tc, sh);
+  session_lookup_add_connection (tc, sh, s);
   return app_worker_connect_notify (app_wrk, s, SESSION_E_NONE, opaque);
 }
 

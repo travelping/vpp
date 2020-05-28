@@ -127,7 +127,7 @@ proxy_session_stream_accept_notify (transport_connection_t * tc, u32 flow_id)
       return rv;
     }
 
-  session_lookup_add_connection (tc, session_handle (s));
+  session_lookup_add_connection (tc, session_handle (s), s);
 
   s->session_state = SESSION_STATE_ACCEPTING;
   if ((rv = app_worker_accept_notify (app_wrk, s)))
