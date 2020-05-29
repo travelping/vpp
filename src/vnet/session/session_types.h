@@ -221,6 +221,7 @@ typedef struct session_
   u32 opaque;
 
 #if CLIB_DEBUG > 0
+  u32 fib_index;
   u64 key[6];
 #endif
 

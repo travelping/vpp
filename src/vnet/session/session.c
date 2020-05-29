@@ -211,9 +211,15 @@ void
 session_free (session_t * s)
 {
   u8 thread_index = s->thread_index;
+  u32 si;
 
-  ASSERT (session_lookup_index (s) == ~0);
-  clib_memset (s, 0xFA, sizeof (*s));
+  si = session_lookup_index (s);
+  clib_warning ("free: %U, sidx %u, cidx: %u, si: %u",
+		format_session_key, s,
+		s->session_index, s->connection_index, si);
+  ASSERT (si == ~0);
+
+  clib_memset (s, 0xF9, sizeof (*s));
   pool_put (session_main.wrk[thread_index].sessions, s);
 }
 

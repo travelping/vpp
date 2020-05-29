@@ -30,6 +30,7 @@ typedef enum session_lookup_result_
 } session_lookup_result_t;
 
 #if CLIB_DEBUG > 0
+u8 *format_session_key (u8 * s, va_list * args);
 u32 session_lookup_index (session_t * s);
 #endif
 
