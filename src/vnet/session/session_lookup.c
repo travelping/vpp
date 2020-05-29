@@ -946,7 +946,9 @@ session_lookup_connection_wt4 (u32 fib_index, ip4_address_t * lcl,
 	  return 0;
 	}
       s = session_get (kv4.value & 0xFFFFFFFFULL, thread_index);
+#if CLIB_DEBUG > 0
       clib_warning ("found: [%u] %U", session_table_index (st), format_session_key, s);
+#endif
       return transport_get_connection (proto, s->connection_index,
 				       thread_index);
     }
