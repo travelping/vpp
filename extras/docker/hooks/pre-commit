@@ -50,17 +50,19 @@ fi
 # If there are whitespace errors, print the offending file names and fail.
 git diff-index --check --cached $against --
 
-git diff --cached --name-only --diff-filter=d HEAD |
-  while read f; do
-    case "${f}" in
-      *.md | *pre-commit)
-        continue
-        ;;
-    esac
-    if git show :"${f}" | grep 'ZZZZZ:'; then
-      echo "'ZZZZZ:' found in ${f}, please remove temporary debug print"
-      exit 1
-    fi
-  done
+if ! git ls-files | grep -q .rm-this-allow-zzzzz; then
+  git diff --cached --name-only --diff-filter=d HEAD |
+    while read f; do
+      case "${f}" in
+        *.md | *pre-commit)
+          continue
+          ;;
+      esac
+      if git show :"${f}" | grep 'ZZZZZ:'; then
+        echo "'ZZZZZ:' found in ${f}, please remove temporary debug print"
+        exit 1
+      fi
+    done
+fi
 
 exec extras/docker/update-build-image-tag.sh -verify
