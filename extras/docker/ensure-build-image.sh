@@ -14,7 +14,7 @@ fi
 : ${USE_BUILDCTL_AND_PUSH:=}
 : ${BUILDKITD_ADDR:=tcp://buildkitd:1234}
 
-build_hash="$(git ls-tree HEAD -- Makefile build/external extras/docker/Dockerfile.build | md5sum | awk '{print $1}')"
+build_hash="$(git ls-files -s -- Makefile build/external extras/docker/Dockerfile.build | md5sum | awk '{print $1}')"
 build_image="${BUILD_IMAGE_NAME}:${build_hash}"
 
 if [[ ! $(docker images -q "${build_image}") ]] && ! docker pull "${build_image}"; then

@@ -8,7 +8,7 @@ cd "$(dirname "${BASH_SOURCE}")/../.."
 
 : "${BUILD_IMAGE_NAME:=quay.io/travelping/upf-build}"
 
-build_hash="$(git ls-tree HEAD -- Makefile build/external extras/docker/Dockerfile.build | md5sum | awk '{print $1}')"
+build_hash="$(git ls-files -s HEAD -- Makefile build/external extras/docker/Dockerfile.build | md5sum | awk '{print $1}')"
 build_image="${BUILD_IMAGE_NAME}:${build_hash}"
 files=(.gitlab-ci.yml extras/docker/Dockerfile extras/docker/Dockerfile.devel)
 
