@@ -42,7 +42,7 @@ prepare:
   stage: build
   #tags:
   #  - docker
-  image: quay.io/travelping/upf-build:590252cd3bfec24cb4c1f54c9ec38e32 # XX_DO_NOT_REMOVE_THIS_COMMENT
+  image: quay.io/travelping/upf-build:f955d38d530fe59920c8fff355bb89fb # XX_DO_NOT_REMOVE_THIS_COMMENT
   services:
   - docker:19.03.8-dind
   script:
@@ -80,7 +80,7 @@ build:debug:
 .test:
   stage: test
   # the following is updated automatically by extras/docker/update-build-image-tag.sh
-  image: quay.io/travelping/upf-build:590252cd3bfec24cb4c1f54c9ec38e32 # XX_DO_NOT_REMOVE_THIS_COMMENT
+  image: quay.io/travelping/upf-build:f955d38d530fe59920c8fff355bb89fb # XX_DO_NOT_REMOVE_THIS_COMMENT
   # FIXME: try not to use docker:dind. This may cause problems with shm_size
   services:
   - docker:19.03.8-dind
