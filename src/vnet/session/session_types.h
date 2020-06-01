@@ -16,6 +16,7 @@
 #ifndef SRC_VNET_SESSION_SESSION_TYPES_H_
 #define SRC_VNET_SESSION_SESSION_TYPES_H_
 
+#include <vppinfra/trap.h>
 #include <svm/svm_fifo.h>
 #include <vnet/session/transport_types.h>
 
@@ -224,6 +225,8 @@ typedef struct session_
   u32 fib_index;
   u64 key[6];
 #endif
+
+  TRAP;
 
     CLIB_CACHE_LINE_ALIGN_MARK (pad);
 } session_t;

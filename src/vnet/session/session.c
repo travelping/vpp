@@ -21,6 +21,7 @@
 #include <vnet/session/application.h>
 #include <vnet/dpo/load_balance.h>
 #include <vnet/fib/ip4_fib.h>
+#include <vppinfra/trap.h>
 
 session_main_t session_main;
 
@@ -203,6 +204,7 @@ session_alloc (u32 thread_index)
   s->session_index = s - wrk->sessions;
   s->thread_index = thread_index;
   s->app_index = APP_INVALID_INDEX;
+  SET_TRAP(s);
   return s;
 }
 
