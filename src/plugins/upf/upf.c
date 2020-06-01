@@ -300,6 +300,9 @@ upf_init (vlib_main_t * vm)
   upf_main_t *sm = &upf_main;
   clib_error_t *error;
 
+  clib_warning("this is a test!!!!");
+  ASSERT(0);
+
   sm->vnet_main = vnet_get_main ();
   sm->vlib_main = vm;
 
