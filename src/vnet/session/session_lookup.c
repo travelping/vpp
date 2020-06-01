@@ -29,6 +29,8 @@
 #include <vnet/session/session.h>
 #include <vnet/session/application.h>
 
+#include <vppinfra/trap.h>
+
 /**
  * Network namespace index (i.e., fib index) to session lookup table. We
  * should have one per network protocol type but for now we only support IP4/6
@@ -241,7 +243,11 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t
       make_v4_ss_kv_from_tc (&kv4, tc);
 
       rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
-      ASSERT (rv != 0);
+      if (rv == 0) {
+        session_t *old_session = session_get_from_handle ((session_handle_t)kv4.value);
+        CHECK_TRAP (old_session); // should always fail
+        ASSERT (0);
+      }
 
       kv4.value = value;
       rv = clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
