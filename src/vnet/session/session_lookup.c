@@ -242,17 +242,6 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t
     {
       make_v4_ss_kv_from_tc (&kv4, tc);
 
-      rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
-      if (rv == 0) {
-        session_t *old_session = session_get_from_handle ((session_handle_t)kv4.value);
-        CHECK_TRAP (old_session); // should always fail
-        ASSERT (0);
-      }
-
-      kv4.value = value;
-      rv = clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
-				      2 /* is_add */ );
-      ASSERT (rv == 0);
 #if CLIB_DEBUG > 0
       memcpy (&s->key[0], &kv4.key, sizeof (kv4.key));
       s->fib_index = tc->fib_index;
@@ -260,6 +249,19 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t
 		    session_table_index (st), format_session_key, s,
 		    s->session_index, s->connection_index, value);
 #endif
+
+      rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
+      if (rv == 0) {
+        session_t *old_session = session_get_from_handle ((session_handle_t)kv4.value);
+        CHECK_TRAP (old_session->conn_free_trap); // may or may not fail
+        CHECK_TRAP (old_session->alloc_trap); // should always fail
+        ASSERT (0);
+      }
+
+      kv4.value = value;
+      rv = clib_bihash_add_del_16_8 (&st->v4_session_hash, &kv4,
+				      2 /* is_add */ );
+      ASSERT (rv == 0);
     }
   else
     {

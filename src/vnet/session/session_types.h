@@ -226,7 +226,8 @@ typedef struct session_
   u64 key[6];
 #endif
 
-  TRAP;
+  TRAP(alloc_trap);
+  TRAP(conn_free_trap);
 
     CLIB_CACHE_LINE_ALIGN_MARK (pad);
 } session_t;

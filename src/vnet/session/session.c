@@ -204,7 +204,7 @@ session_alloc (u32 thread_index)
   s->session_index = s - wrk->sessions;
   s->thread_index = thread_index;
   s->app_index = APP_INVALID_INDEX;
-  SET_TRAP(s);
+  SET_TRAP(s->alloc_trap);
   return s;
 }
 
@@ -1030,6 +1030,10 @@ session_transport_delete_notify (transport_connection_t * tc)
       session_delete (s);
       break;
     default:
+      // XXX: session_free() on path from here with state == 4
+      // session_lookup_del_session is called from session_delete()
+      // before session_free() which is ... strange
+      // it's _maybe_ b/c of TRANSPORT_CONNECTION_F_NO_LOOKUP
       clib_warning ("session state %u", s->session_state);
       session_cleanup_notify (s, SESSION_CLEANUP_TRANSPORT);
       session_delete (s);

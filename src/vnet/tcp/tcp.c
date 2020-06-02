@@ -321,6 +321,13 @@ tcp_connection_alloc_w_base (u8 thread_index, tcp_connection_t * base)
 void
 tcp_connection_free (tcp_connection_t * tc)
 {
+  if (tc->c_thread_index < vec_len (session_main.wrk) &&
+      !pool_is_free_index (session_main.wrk[tc->c_thread_index].sessions, tc->c_s_index))
+    {
+      session_t *s = session_get (tc->c_thread_index, tc->c_thread_index);
+      SET_TRAP(s->conn_free_trap);
+    }
+
   tcp_worker_ctx_t *wrk = tcp_get_worker (tc->c_thread_index);
   if (CLIB_DEBUG)
     {

@@ -19,6 +19,7 @@
 #include <vnet/vnet.h>
 #include <vnet/ip/ip.h>
 #include <vnet/tcp/tcp_debug.h>
+#include <vppinfra/trap.h>
 
 #define TRANSPORT_MAX_HDRS_LEN    140	/* Max number of bytes for headers */
 
@@ -114,6 +115,8 @@ typedef struct _transport_connection
   elog_track_t elog_track;	/**< Event logging */
   u32 cc_stat_tstamp;		/**< CC stats timestamp */
 #endif
+
+  TRAP (trap_accepted);
 
   /**
    * Transport specific state starts in next cache line. Meant to avoid
