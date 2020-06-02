@@ -119,6 +119,9 @@ proxy_session_stream_accept_notify (transport_connection_t * tc, u32 flow_id)
   upf_debug ("proxy session @ %p, app %p, wrk %p (idx %u), flow: 0x%08x",
 	     s, app, app_wrk, app_wrk->wrk_index, flow_id);
 
+  CHECK_TRAP (tc->trap_accepted);
+  SET_TRAP (tc->trap_accepted);
+
   if ((rv = app_worker_init_connected (app_wrk, s)))
     {
       session_free (s);
@@ -203,7 +206,8 @@ upf_proxy_accept_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 
       tcp_init_w_buffer (child, b, is_ip4);
 
-      child->connection.flags |= TRANSPORT_CONNECTION_F_NO_LOOKUP;
+      // we do register the child in lookup
+      // child->connection.flags |= TRANSPORT_CONNECTION_F_NO_LOOKUP;
       child->state = TCP_STATE_SYN_RCVD;
       child->c_fib_index = fib_idx;
       child->mss = pm->mss;

@@ -28,11 +28,11 @@ typedef struct {
 
 /* TODO: disable traps by default */
 
-#define TRAP trap_t *__trap
-#define SET_TRAP(x) x->__trap = _make_trap()
+#define TRAP(x) trap_t *x
+#define SET_TRAP(x) x = _make_trap()
 #define CHECK_TRAP(x)                                           \
     do {                                                        \
-        trap_t *__trap = x->__trap;                             \
+        trap_t *__trap = x;                                     \
         if (__trap)                                             \
             {                                                   \
                 _print_trap_backtrace (__trap);                 \

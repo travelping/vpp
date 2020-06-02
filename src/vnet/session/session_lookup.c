@@ -245,7 +245,7 @@ session_lookup_add_connection (transport_connection_t * tc, u64 value, session_t
       rv = clib_bihash_search_inline_16_8 (&st->v4_session_hash, &kv4);
       if (rv == 0) {
         session_t *old_session = session_get_from_handle ((session_handle_t)kv4.value);
-        CHECK_TRAP (old_session); // should always fail
+        CHECK_TRAP (old_session->alloc_trap); // should always fail
         ASSERT (0);
       }
 
