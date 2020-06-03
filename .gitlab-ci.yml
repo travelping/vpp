@@ -122,7 +122,7 @@ test:release:
 
 .test-ext:
   stage: test
-  image: quay.io/travelping/upf-test:69bbd8b
+  image: quay.io/travelping/upf-test:db4000a
   services:
   - docker:19.03.8-dind
   before_script:
@@ -182,5 +182,14 @@ test:external-proxy-crash-netem:
   variables:
     DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
     TEST_TYPE: proxy
+  script:
+  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+
+test:session-deletion:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
+    TEST_TYPE: proxy
+    REPEAT_SESSION_SETUP: "1"
   script:
   - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
