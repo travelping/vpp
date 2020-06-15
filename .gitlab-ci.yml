@@ -1,125 +1,101 @@
 stages:
+- prepare
 - build
 - test
 
 variables:
   REGISTRY: "quay.io"
   CONTAINER_IMAGE: travelping/upf
+  # this points to buildkitd k8s service
+  BUILDKITD_ADDR: tcp://buildkitd:1234
   # This is needed to disable TLS in recent docker:...dind images.
   # TLS there is not really needed as docker client connects
   # to localhost, and all of the docker certs only cause problems
   # here
   DOCKER_TLS_CERTDIR: ""
 
-# prepare:
-#   image: docker:stable
-#   services:
-#     - docker:19.03.8-dind
-#   stage: prepare
-#   script:
-#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-#     - cd .meta
-#     - docker build -t $CI_REGISTRY/travelping/vpp/testimage:latest .
-#     - docker push $CI_REGISTRY/travelping/vpp/testimage:latest
-#   only:
-#     # refs:
-#     #   - master
-#     changes:
-#       - extras/docker/Dockerfile.test
-
-# build container image
-.build:
-  stage: build
-  #tags:
-  #  - docker
+# prepare build image
+prepare:
+  stage: prepare
+  # image: moby/buildkit:v0.7.1@sha256:530396a0ef93eacc025dadeb6a8a69d8c87ca402f48df9bc7c8c767b46fe9cf3
   image: docker:git
   services:
   - docker:19.03.8-dind
   script:
-    - export CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
-    - export CONTAINER_VARIANT=${CI_BUILD_NAME##*:}
-    - export CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
-    - export CONTAINER_COMMIT_SHA=${CONTAINER_BASE_NAME}_${CI_COMMIT_SHA}_${CONTAINER_VARIANT}
-    - export CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
-    - export DOCKER_HOST="tcp://localhost:2375"
-    - |
-      case "$CI_COMMIT_REF_NAME" in
-        stable/* | feature/20* ) export LABELS="";;
-        *)                       export LABELS="--label quay.expires-after=7d";;
-      esac
-    - echo "quay.io login..."
-    - docker login -u ${QUAY_USER_ID} -p ${QUAY_TOKEN} ${REGISTRY}
-    - echo "Building the image from $DOCKER_FILE ..."
-    - >
-      DOCKER_BUILDKIT=1 docker build
-      --target=build-stage
-      -t  artifacts:${CI_COMMIT_SHA}_${CONTAINER_VARIANT}
-      -f ${DOCKER_FILE} .
-    - >
-      DOCKER_BUILDKIT=1 docker build
-      --progress=plain
-      ${LABELS}
-      -t ${CONTAINER_COMMIT_SHA}
-      -t ${CONTAINER_GIT_DESCRIBE}
-      -f ${DOCKER_FILE} .
-    - docker push ${CONTAINER_COMMIT_SHA}
-    - docker push ${CONTAINER_GIT_DESCRIBE}
-    - echo "Extracting *.deb files from the image ..."
-    - mkdir debs
-    - >
-      DOCKER_BUILDKIT=1 docker run
-      --rm artifacts:${CI_COMMIT_SHA}_${CONTAINER_VARIANT} | tar -C "debs" -xf -
-    - |
-      echo "CI_JOB_NAME: ${CI_JOB_NAME}"
-      mkdir tst-install
-      if [[ ${CI_JOB_NAME} = "build:debug" ]]; then
-        docker run --rm --entrypoint /bin/tar \
-               artifacts:${CI_COMMIT_SHA}_${CONTAINER_VARIANT} \
-               -C /src/vpp \
-               -cz build-root/install-vpp_debug-native \
-               > tst-install/install.tar.gz
-      fi
-  artifacts:
-    when: always
-    untracked: true
-    paths:
-    - debs
-    - tst-install
+  - export DOCKER_HOST="tcp://localhost:2375"
+  - echo "quay.io login..."
+  - docker login -u ${QUAY_USER_ID} -p ${QUAY_TOKEN} ${REGISTRY}
+  - echo "Ensuring that proper build image exists ..."
+  - PUSH_BUILD_IMAGE=1 sh extras/docker/ensure-build-image.sh
+  # FIXME: push from buildkit to quay.io fails with '401 UNAUTHORIZED'
+  # for some reason, and it only happens with build images
+  # - echo "registry login..."
+  # # 'docker' command not available in the buildkit image
+  # - >
+  #   REGISTRY_LOGIN=${QUAY_USER_ID}
+  #   REGISTRY_PASSWORD=${QUAY_TOKEN}
+  #   extras/docker/registry-login.sh "${REGISTRY}"
+  # - echo "Ensuring that proper build image exists ..."
+  # - USE_BUILDCTL=1 PUSH_BUILD_IMAGE=1 sh extras/docker/ensure-build-image.sh
+  only:
+    changes:
+    - .gitlab-ci.yml
+    - Makefile
+    - extras/docker/Dockerfile.build
+    - build/external/**/*
+
+# build container image
+.build:
+  stage: build
+  image: quay.io/travelping/upf-build:7fbfb169faf64510b5aec82841c8fa2f # XX_DO_NOT_REMOVE_THIS_COMMENT
+  script:
+  - >
+    REGISTRY_LOGIN=${QUAY_USER_ID}
+    REGISTRY_PASSWORD=${QUAY_TOKEN}
+    extras/docker/ci-build.sh
+  - mv /tmp/_out "${CI_BUILD_NAME##*:}"
+  dependencies:
+  - prepare
 
 # build container image
 build:release:
   extends: .build
   variables:
-    DOCKER_FILE: extras/docker/Dockerfile
+    DOCKERFILE: Dockerfile
+  artifacts:
+    when: always
+    untracked: true
+    paths:
+    - release/debs
+    - release/testfiles.tar.gz
 
 build:debug:
   extends: .build
   variables:
-    DOCKER_FILE: extras/docker/Dockerfile.devel
+    DOCKERFILE: Dockerfile.devel
+  artifacts:
+    when: always
+    untracked: true
+    paths:
+    - debug/debs
+    - debug/testfiles.tar.gz
 
-test:debug:
+.test:
   stage: test
-  image: docker:git
-  # FIXME: try not to use docker:dind. This may cause problems with shm_size
-  services:
-  - docker:19.03.8-dind
-  dependencies:
-  - build:debug
+  # the following is updated automatically by extras/docker/update-build-image-tag.sh
+  image: quay.io/travelping/upf-build:7fbfb169faf64510b5aec82841c8fa2f # XX_DO_NOT_REMOVE_THIS_COMMENT
   script:
-  - export DOCKER_HOST="tcp://localhost:2375"
-  - docker build -f extras/docker/Dockerfile.test -t vppbuild .
-  - tar -xvzf tst-install/install.tar.gz
+  - tar -xvzf ${TEST_ARCHIVE}
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
   - |
-    mkdir -p test-out
-    if ! docker run --rm --name vpp-build --shm-size 1024m \
-               -v $PWD:/src/vpp:delegated \
-               -e LC_ALL=C.UTF-8 \
-               -e LANG=C.UTF-8 \
-               vppbuild \
-               /bin/bash -c \
-               "if ! make -j8 retest-debug TEST=test_upf V=1; then tar -C /tmp -cvzf /src/vpp/test-out/vpp-test.tar.gz . || true; tar -C /src/vpp/build-root/install-vpp_debug-native/ -cvzf /src/vpp/test-out/vpp.tar.gz vpp; exit 1; fi"; then
+    mkdir test-out
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    if ! make -j8 ${TEST_TARGET} TEST=test_upf V=1; then
+      tar -C /tmp -cvzf test-out/vpp-test.tar.gz . || true
+      tar -C build-root/install-vpp_debug-native/ \
+          -cvzf test-out/vpp.tar.gz vpp
       ls -l test-out/
       exit 1
     fi
@@ -128,12 +104,30 @@ test:debug:
     paths:
     - test-out
 
-test:external:
+test:debug:
+  extends: .test
+  variables:
+    TEST_ARCHIVE: debug/testfiles.tar.gz
+    TEST_TARGET: retest-debug
+  dependencies:
+  - build:debug
+
+test:release:
+  extends: .test
+  variables:
+    TEST_ARCHIVE: release/testfiles.tar.gz
+    TEST_TARGET: retest
+  dependencies:
+  - build:release
+
+.test-ext:
   stage: test
-  image: quay.io/travelping/upf-test:v0.0.5
+  image: quay.io/travelping/upf-test:db4000a
   services:
   - docker:19.03.8-dind
-  script:
+  before_script:
+  # https://github.com/docker/compose/issues/5696#issuecomment-377906769
+  - export COMPOSE_INTERACTIVE_NO_CLI=1
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
   - CONTAINER_VARIANT=debug
   - CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
@@ -142,13 +136,60 @@ test:external:
   - cd /test
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
-  - docker-compose build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
-  - docker-compose run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub
-  # FIXME: the following fails --
-  # docker-compose run --rm -T grabpcaps | tar -xv
+  - docker-compose -f "${DOCKER_COMPOSE_FILE}" build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
+  script:
+  - docker-compose -f "${DOCKER_COMPOSE_FILE}" run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub || exit 1
+  after_script:
+  - SRC_DIR="${PWD}"
+  - mkdir "${SRC_DIR}/pcaps"
+  - cd /test
+  - |
+    if [[ ${TEST_TYPE} = "proxy" ]]; then
+      docker-compose logs --tail=1000 unode
+    elif ! scripts/vpp-report.sh | gzip >& "${SRC_DIR}/pcaps/report.txt.gz"; then
+      gunzip -c "${SRC_DIR}/pcaps/report.txt.gz"
+    fi
+  # FIXME: the following fails with "invalid tar magic"
+  # - docker-compose -f "${DOCKER_COMPOSE_FILE}" run --rm -T grabpcaps | tar -xv
   - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
+  - ls -l "${SRC_DIR}/pcaps"
   dependencies:
   - build:debug
   artifacts:
     paths:
     - pcaps
+
+test:external-ipv4:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose.yaml
+
+test:external-ipv6:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-v6.yaml
+
+test:external-proxy-crash:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
+    TEST_TYPE: proxy
+  script:
+  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+
+test:external-proxy-crash-netem:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
+    TEST_TYPE: proxy
+  script:
+  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+
+test:session-deletion:
+  extends: .test-ext
+  variables:
+    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
+    TEST_TYPE: proxy
+    REPEAT_SESSION_SETUP: "1"
+  script:
+  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1

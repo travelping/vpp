@@ -1,43 +1,42 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:bionic AS build-stage
-
-WORKDIR /
-RUN --mount=target=/var/lib/apt/lists,type=cache \
-    --mount=target=/var/cache/apt,type=cache \
-    mkdir /src && \
-    apt-get update && \
-    apt-get dist-upgrade -yy && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	    build-essential sudo
+# the following is updated automatically by extras/docker/update-build-image-tag.sh
+FROM quay.io/travelping/upf-build:7fbfb169faf64510b5aec82841c8fa2f AS build-stage
 
 ADD . /src/vpp
-RUN --mount=target=/var/lib/apt/lists,type=cache \
-    --mount=target=/var/cache/apt,type=cache \
-    cd /src/vpp && \
-    make UNATTENDED=yes install-dep && \
-    make pkg-deb V=1
 
-# --- helper to extract *.deb from CI/CD ---------------------
-ENTRYPOINT ["/bin/sh", "-c", "cd /src/vpp/build-root; find . -type f -name '*.deb' -print0 | tar --null -cf - -T -"]
+RUN --mount=target=/src/vpp/build-root/.ccache,type=cache \
+    make -C /src/vpp pkg-deb V=1 && \
+    mkdir -p /out/debs && \
+    mv /src/vpp/build-root/*.deb /out/debs && \
+    tar -C /src/vpp -cvzf /out/testfiles.tar.gz build-root/install-vpp-native
 
-#
+# pseudo-image to extract artifacts using buildctl
+FROM scratch as artifacts
+
+COPY --from=build-stage /out .
+
 # --- final image --------------------------------------------
 FROM ubuntu:bionic AS final-stage
 WORKDIR /
-RUN --mount=target=/var/lib/apt/lists,type=cache \
-    --mount=target=/var/cache/apt,type=cache \
-    --mount=target=/src,source=/src,from=build-stage,type=bind \
-    ls -l / && \
-    ls -l /src && \
-    ls -l /src/vpp/build-root
-RUN --mount=target=/var/lib/apt/lists,type=cache \
-    --mount=target=/var/cache/apt,type=cache \
-    --mount=target=/src,source=/src,from=build-stage,type=bind \
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
+    --mount=target=/var/cache/apt,type=cache,sharing=private \
     apt-get update && apt-get dist-upgrade -yy && \
     apt-get install --no-install-recommends -yy liblz4-tool tar \
-	/src/vpp/build-root/vpp_*.deb \
-	/src/vpp/build-root/vpp-plugin-core_*.deb \
-	/src/vpp/build-root/libvppinfra_*.deb \
-	/src/vpp/build-root/vpp-api-python_*.deb
+    libhyperscan4 libmbedcrypto1 libmbedtls10 libmbedx509-0 libpython-stdlib \
+    libpython2.7-minimal libpython2.7-stdlib libpython3-stdlib \
+    python python-cffi python-cffi-backend python-ipaddress \
+    python-minimal python-ply python-pycparser python2.7 python2.7-minimal \
+    python3 python3-minimal python3.6 python3.6-minimal
+
+# TODO: add more packages above that are VPP deps
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
+    --mount=target=/var/cache/apt,type=cache,sharing=private \
+    --mount=target=/debs,source=/out/debs,from=build-stage,type=bind \
+    apt-get install --no-install-recommends -yy \
+    /debs/vpp_*.deb \
+    /debs/vpp-dbg_*.deb \
+    /debs/vpp-plugin-core_*.deb \
+    /debs/libvppinfra_*.deb \
+    /debs/vpp-api-python_*.deb
 
 ENTRYPOINT /usr/bin/vpp
