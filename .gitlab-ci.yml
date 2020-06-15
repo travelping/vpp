@@ -47,7 +47,7 @@ prepare:
 # build container image
 .build:
   stage: build
-  image: quay.io/travelping/upf-build:f955d38d530fe59920c8fff355bb89fb # XX_DO_NOT_REMOVE_THIS_COMMENT
+  image: quay.io/travelping/upf-build:2af65efea70b6f70ada849521642a694 # XX_DO_NOT_REMOVE_THIS_COMMENT
   script:
   - >
     REGISTRY_LOGIN=${QUAY_USER_ID}
@@ -83,7 +83,7 @@ build:debug:
 .test:
   stage: test
   # the following is updated automatically by extras/docker/update-build-image-tag.sh
-  image: quay.io/travelping/upf-build:f955d38d530fe59920c8fff355bb89fb # XX_DO_NOT_REMOVE_THIS_COMMENT
+  image: quay.io/travelping/upf-build:2af65efea70b6f70ada849521642a694 # XX_DO_NOT_REMOVE_THIS_COMMENT
   script:
   - tar -xvzf ${TEST_ARCHIVE}
   # temporary workaround for the hugepages issue
