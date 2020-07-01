@@ -122,74 +122,73 @@ test:release:
 
 .test-ext:
   stage: test
-  image: quay.io/travelping/upf-test:db4000a
+  image: quay.io/travelping/upf-test:583031d
   services:
   - docker:19.03.8-dind
-  before_script:
+  script:
   # https://github.com/docker/compose/issues/5696#issuecomment-377906769
   - export COMPOSE_INTERACTIVE_NO_CLI=1
   - CI_COMMIT_DESCRIBE=$(git describe --always --tags --dirty --first-parent)
   - CONTAINER_VARIANT=debug
   - CONTAINER_BASE_NAME=${REGISTRY}/${CONTAINER_IMAGE}:${CI_COMMIT_REF_SLUG}
   - CONTAINER_GIT_DESCRIBE=${CONTAINER_BASE_NAME}_${CI_COMMIT_DESCRIBE}_${CONTAINER_VARIANT}
-  - SRC_DIR="${PWD}"
+  # - pwd
+  # - SRC_DIR="${PWD}"
   - cd /test
   # temporary workaround for the hugepages issue
   - sysctl vm.nr_hugepages=0
-  - docker-compose -f "${DOCKER_COMPOSE_FILE}" build --build-arg UNODE_BASE="${CONTAINER_GIT_DESCRIBE}"
-  script:
-  - docker-compose -f "${DOCKER_COMPOSE_FILE}" run -e SESSION_MODIFICATION_COUNT=10 --rm cnodestub || exit 1
-  after_script:
-  - SRC_DIR="${PWD}"
-  - mkdir "${SRC_DIR}/pcaps"
-  - cd /test
   - |
-    if [[ ${TEST_TYPE} = "proxy" ]]; then
-      docker-compose logs --tail=1000 unode
-    elif ! scripts/vpp-report.sh | gzip >& "${SRC_DIR}/pcaps/report.txt.gz"; then
-      gunzip -c "${SRC_DIR}/pcaps/report.txt.gz"
+    if bash -x scripts/test.sh "${CONTAINER_GIT_DESCRIBE}" ${TEST_PROFILES}; then
+      r=0
+    else
+      r=1
     fi
-  # FIXME: the following fails with "invalid tar magic"
-  # - docker-compose -f "${DOCKER_COMPOSE_FILE}" run --rm -T grabpcaps | tar -xv
-  - docker run --rm -v test_pcaps:/pcaps busybox:1.31.1 tar -C / -c pcaps | tar -C "${SRC_DIR}" -xv
-  - ls -l "${SRC_DIR}/pcaps"
+    mv /test/pcaps "/builds/${CI_PROJECT_PATH}/pcaps"
+    ls -l "/builds/${CI_PROJECT_PATH}/pcaps"
+    exit ${r}
   dependencies:
   - build:debug
   artifacts:
+    when: always
     paths:
     - pcaps
 
-test:external-ipv4:
+test:external-ipv4-ping:
   extends: .test-ext
   variables:
-    DOCKER_COMPOSE_FILE: docker-compose.yaml
+    TEST_PROFILES: type-tdf dispatch-trace proxy ping gdb-batch
 
-test:external-ipv6:
+test:external-ipv4-udp:
   extends: .test-ext
   variables:
-    DOCKER_COMPOSE_FILE: docker-compose-v6.yaml
+    TEST_PROFILES: type-tdf dispatch-trace proxy udp gdb-batch
+
+test:external-ipv4-curl:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-tdf dispatch-trace proxy curl gdb-batch
+
+test:external-ipv4-curl-noproxy:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-tdf dispatch-trace curl gdb-batch
+
+test:external-ipv6-udp:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-tdf dispatch-trace proxy udp gdb-batch ipv6
 
 test:external-proxy-crash:
   extends: .test-ext
   variables:
-    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
-    TEST_TYPE: proxy
-  script:
-  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+    TEST_PROFILES: type-tdf dispatch-trace proxy wrk gdb-batch
 
 test:external-proxy-crash-netem:
   extends: .test-ext
   variables:
-    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
-    TEST_TYPE: proxy
-  script:
-  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+    TEST_PROFILES: type-tdf dispatch-trace proxy wrk netem gdb-batch
 
 test:session-deletion:
   extends: .test-ext
   variables:
-    DOCKER_COMPOSE_FILE: docker-compose-tcp.yaml
-    TEST_TYPE: proxy
-    REPEAT_SESSION_SETUP: "1"
-  script:
-  - USE_GDB=1 GDB_OPTS=--batch docker-compose -f docker-compose-tcp.yaml run client || exit 1
+    TEST_PROFILES: type-tdf dispatch-trace proxy repeat-session wrk gdb-batch
