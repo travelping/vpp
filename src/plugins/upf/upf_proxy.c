@@ -130,7 +130,8 @@ proxy_session_lookup_del (session_t * s)
   if (ps)
     {
       pm->session_to_proxy_session[s->thread_index][s->session_index] = ~0;
-      proxy_session_put (ps);
+      // TODO: !!!!! uncomment !!!!!
+      // proxy_session_put (ps);
     }
 }
 
