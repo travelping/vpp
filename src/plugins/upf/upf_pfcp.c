@@ -2049,7 +2049,7 @@ urr_increment_and_check_counter (u64 * packets, u64 * bytes, u64 * consumed,
   return r;
 }
 
-#if CLIB_DEBUG > 2
+#ifdef UPF_TRAFFIC_LOG
 static u8 *
 format_tcp_flags_brief (u8 * s, va_list * args)
 {
@@ -2131,7 +2131,7 @@ static void display_packet_for_urr(vlib_main_t * vm, vlib_buffer_t * b,
       break;
     }
 
-  upf_debug ("node %s: TRAFFIC LOG: %v", node_name, s);
+  clib_warning ("node %s: TRAFFIC LOG: %v", node_name, s);
   vec_free(s);
 }
 
@@ -2220,7 +2220,7 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 
 	r |= urr_incr_and_check (urr->volume, total, len);
 
-#if CLIB_DEBUG > 2
+#ifdef UPF_TRAFFIC_LOG
         display_packet_for_urr (vm, b, node_name, *urr_id,
                                 is_ul, is_dl,
                                 urr->volume.measure.bytes.ul,
