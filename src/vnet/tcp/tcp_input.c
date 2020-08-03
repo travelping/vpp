@@ -2582,8 +2582,20 @@ tcp46_listen_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      goto done;
 	    }
 	  lc = tcp_lookup_listener (b, tc->c_fib_index, is_ip4);
+
 	  /* clean up the old session */
 	  tcp_connection_del (tc);
+
+	  /*
+	    Edge case: listener removed and TIME_WAIT + SYN -> TCP_INPUT_NEXT_LISTEN
+	    transition just happened. In this case, lc will be null, and the attempt
+	    should fail
+	  */
+	  if (PREDICT_FALSE (lc == 0))
+	    {
+	      error = TCP_ERROR_INVALID_CONNECTION;
+	      goto done;
+	    }
 	}
 
       /* Make sure connection wasn't just created */
