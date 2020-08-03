@@ -85,6 +85,7 @@ ifeq ($(OS_VERSION_ID),18.04)
 	DEB_DEPENDS += clang-9
 else ifeq ($(OS_VERSION_ID),20.04)
 	DEB_DEPENDS += python3-virtualenv
+	DEB_DEPENDS += libssl-dev
 	LIBFFI=libffi7
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),debian-8)
 	DEB_DEPENDS += libssl-dev
@@ -109,6 +110,8 @@ RPM_DEPENDS += selinux-policy selinux-policy-devel
 RPM_DEPENDS += ninja-build
 RPM_DEPENDS += libuuid-devel
 RPM_DEPENDS += mbedtls-devel
+RPM_DEPENDS += ccache
+RPM_DEPENDS += xmlto
 
 ifeq ($(OS_ID),fedora)
 	RPM_DEPENDS += dnf-utils
@@ -122,7 +125,7 @@ ifeq ($(OS_ID),fedora)
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),centos-8)
 	RPM_DEPENDS += yum-utils
 	RPM_DEPENDS += compat-openssl10
-	RPM_DEPENDS += python36-devel python3-ply
+	RPM_DEPENDS += python2-devel python36-devel python3-ply
 	RPM_DEPENDS += python3-virtualenv python3-jsonschema
 	RPM_DEPENDS += cmake
 	RPM_DEPENDS_GROUPS = 'Development Tools'
@@ -143,6 +146,11 @@ ifeq ($(MACHINE),x86_64)
 RPM_DEPENDS += hyperscan-devel
 endif
 RPM_DEPENDS += chrpath libffi-devel rpm-build
+
+RPM_DEPENDS_DEBUG  = glibc-debuginfo e2fsprogs-debuginfo
+RPM_DEPENDS_DEBUG += krb5-debuginfo openssl-debuginfo
+RPM_DEPENDS_DEBUG += zlib-debuginfo nss-softokn-debuginfo
+RPM_DEPENDS_DEBUG += yum-plugin-auto-update-debug-info
 # lowercase- replace spaces with dashes.
 SUSE_NAME= $(shell grep '^NAME=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g' | sed -e 's/ /-/' | awk '{print tolower($$0)}')
 SUSE_ID= $(shell grep '^VERSION_ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g' | cut -d' ' -f2)
@@ -328,13 +336,15 @@ ifeq ($(OS_ID),rhel)
 	@sudo -E yum install $(CONFIRM) $(RPM_DEPENDS)
 	@sudo -E debuginfo-install $(CONFIRM) glibc openssl-libs mbedtls-devel zlib
 else ifeq ($(OS_ID)-$(OS_VERSION_ID),centos-8)
+	@sudo -E dnf install $(CONFIRM) epel-release
+	@sudo -E dnf config-manager --set-enabled PowerTools
 	@sudo -E dnf groupinstall $(CONFIRM) $(RPM_DEPENDS_GROUPS)
 	@sudo -E dnf install $(CONFIRM) $(RPM_DEPENDS)
 else ifeq ($(OS_ID),centos)
 	@sudo -E yum install $(CONFIRM) centos-release-scl-rh epel-release
 	@sudo -E yum groupinstall $(CONFIRM) $(RPM_DEPENDS_GROUPS)
 	@sudo -E yum install $(CONFIRM) $(RPM_DEPENDS)
-	@sudo -E debuginfo-install $(CONFIRM) glibc openssl-libs mbedtls-devel zlib
+	@sudo -E yum install $(CONFIRM) --enablerepo=base-debuginfo $(RPM_DEPENDS_DEBUG)
 else ifeq ($(OS_ID),fedora)
 	@sudo -E dnf groupinstall $(CONFIRM) $(RPM_DEPENDS_GROUPS)
 	@sudo -E dnf install $(CONFIRM) $(RPM_DEPENDS)

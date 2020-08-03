@@ -48,6 +48,32 @@
 #include <vppinfra/fifo.h>
 #include <vppinfra/tw_timer_1t_3w_1024sl_ov.h>
 
+#ifdef CLIB_SANITIZE_ADDR
+#include <sanitizer/asan_interface.h>
+#endif
+
+static_always_inline void
+vlib_process_start_switch_stack (vlib_main_t * vm, vlib_process_t * p)
+{
+#ifdef CLIB_SANITIZE_ADDR
+  void *stack = p ? (void *) p->stack : vlib_thread_stacks[vm->thread_index];
+  u32 stack_bytes = p ? p->log2_n_stack_bytes : VLIB_THREAD_STACK_SIZE;
+  __sanitizer_start_switch_fiber (&vm->asan_stack_save, stack, stack_bytes);
+#endif
+}
+
+static_always_inline void
+vlib_process_finish_switch_stack (vlib_main_t * vm)
+{
+#ifdef CLIB_SANITIZE_ADDR
+  const void *bottom_old;
+  size_t size_old;
+
+  __sanitizer_finish_switch_fiber (&vm->asan_stack_save, &bottom_old,
+				   &size_old);
+#endif
+}
+
 /** \brief Get vlib node by index.
  @warning This function will ASSERT if @c i is out of range.
  @param vm vlib_main_t pointer, varies by thread
@@ -175,6 +201,10 @@ vlib_node_set_state (vlib_main_t * vm, u32 node_index,
       nm->input_node_counts_by_state[new_state] += 1;
     }
 
+  if (PREDICT_FALSE (r->state == VLIB_NODE_STATE_DISABLED))
+    vlib_node_runtime_perf_counter (vm, r, 0, 0, 0,
+				    VLIB_NODE_RUNTIME_PERF_RESET);
+
   n->state = new_state;
   r->state = new_state;
 }
@@ -194,14 +224,37 @@ vlib_node_get_state (vlib_main_t * vm, u32 node_index)
 }
 
 always_inline void
-vlib_node_set_interrupt_pending (vlib_main_t * vm, u32 node_index)
+vlib_node_set_interrupt_pending_with_data (vlib_main_t * vm, u32 node_index,
+					   u32 data)
 {
   vlib_node_main_t *nm = &vm->node_main;
   vlib_node_t *n = vec_elt (nm->nodes, node_index);
+  vlib_node_interrupt_t *i;
   ASSERT (n->type == VLIB_NODE_TYPE_INPUT);
-  clib_spinlock_lock_if_init (&nm->pending_interrupt_lock);
-  vec_add1 (nm->pending_interrupt_node_runtime_indices, n->runtime_index);
-  clib_spinlock_unlock_if_init (&nm->pending_interrupt_lock);
+
+  if (vm == vlib_get_main ())
+    {
+      /* local thread */
+      vec_add2 (nm->pending_local_interrupts, i, 1);
+      i->node_runtime_index = n->runtime_index;
+      i->data = data;
+    }
+  else
+    {
+      /* remote thread */
+      clib_spinlock_lock (&nm->pending_interrupt_lock);
+      vec_add2 (nm->pending_remote_interrupts, i, 1);
+      i->node_runtime_index = n->runtime_index;
+      i->data = data;
+      *nm->pending_remote_interrupts_notify = 1;
+      clib_spinlock_unlock (&nm->pending_interrupt_lock);
+    }
+}
+
+always_inline void
+vlib_node_set_interrupt_pending (vlib_main_t * vm, u32 node_index)
+{
+  vlib_node_set_interrupt_pending_with_data (vm, node_index, 0);
 }
 
 always_inline vlib_process_t *
@@ -434,8 +487,11 @@ vlib_process_suspend (vlib_main_t * vm, f64 dt)
     {
       /* expiration time in 10us ticks */
       p->resume_clock_interval = dt * 1e5;
+      vlib_process_start_switch_stack (vm, 0);
       clib_longjmp (&p->return_longjmp, VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
     }
+  else
+    vlib_process_finish_switch_stack (vm);
 
   return r;
 }
@@ -603,8 +659,13 @@ vlib_process_wait_for_event (vlib_main_t * vm)
       r =
 	clib_setjmp (&p->resume_longjmp, VLIB_PROCESS_RESUME_LONGJMP_SUSPEND);
       if (r == VLIB_PROCESS_RESUME_LONGJMP_SUSPEND)
-	clib_longjmp (&p->return_longjmp,
-		      VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	{
+	  vlib_process_start_switch_stack (vm, 0);
+	  clib_longjmp (&p->return_longjmp,
+			VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	}
+      else
+	vlib_process_finish_switch_stack (vm);
     }
 
   return p->non_empty_event_type_bitmap;
@@ -627,8 +688,13 @@ vlib_process_wait_for_one_time_event (vlib_main_t * vm,
       r =
 	clib_setjmp (&p->resume_longjmp, VLIB_PROCESS_RESUME_LONGJMP_SUSPEND);
       if (r == VLIB_PROCESS_RESUME_LONGJMP_SUSPEND)
-	clib_longjmp (&p->return_longjmp,
-		      VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	{
+	  vlib_process_start_switch_stack (vm, 0);
+	  clib_longjmp (&p->return_longjmp,
+			VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	}
+      else
+	vlib_process_finish_switch_stack (vm);
     }
 
   return vlib_process_get_events_helper (p, with_type_index, data_vector);
@@ -651,8 +717,13 @@ vlib_process_wait_for_event_with_type (vlib_main_t * vm,
       r =
 	clib_setjmp (&p->resume_longjmp, VLIB_PROCESS_RESUME_LONGJMP_SUSPEND);
       if (r == VLIB_PROCESS_RESUME_LONGJMP_SUSPEND)
-	clib_longjmp (&p->return_longjmp,
-		      VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	{
+	  vlib_process_start_switch_stack (vm, 0);
+	  clib_longjmp (&p->return_longjmp,
+			VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
+	}
+      else
+	vlib_process_finish_switch_stack (vm);
 
       /* See if unknown event type has been signaled now. */
       if (!h)
@@ -693,8 +764,11 @@ vlib_process_wait_for_event_or_clock (vlib_main_t * vm, f64 dt)
   if (r == VLIB_PROCESS_RESUME_LONGJMP_SUSPEND)
     {
       p->resume_clock_interval = dt * 1e5;
+      vlib_process_start_switch_stack (vm, 0);
       clib_longjmp (&p->return_longjmp, VLIB_PROCESS_RETURN_LONGJMP_SUSPEND);
     }
+  else
+    vlib_process_finish_switch_stack (vm);
 
   /* Return amount of time still left to sleep.
      If <= 0 then we've been waken up by the clock (and not an event). */

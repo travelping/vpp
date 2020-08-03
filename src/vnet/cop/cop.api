@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 Cisco and/or its affiliates.
+ * Copyright (c) 2015-2020 Cisco and/or its affiliates.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -26,6 +26,7 @@ import "vnet/interface_types.api";
 
 autoreply define cop_interface_enable_disable
 {
+  option deprecated="v21.01";
   u32 client_index;
   u32 context;
   vl_api_interface_index_t sw_if_index;
@@ -46,6 +47,7 @@ autoreply define cop_interface_enable_disable
 
 autoreply define cop_whitelist_enable_disable
 {
+  option deprecated="v21.01";
   u32 client_index;
   u32 context;
   vl_api_interface_index_t sw_if_index;

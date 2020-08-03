@@ -132,6 +132,7 @@ typedef struct
   int replay;			/**< is this message to be replayed?  */
   int message_bounce;		/**< do not free message after processing */
   int is_mp_safe;		/**< worker thread barrier required?  */
+  int is_autoendian;		/**< endian conversion required?  */
 } vl_msg_api_msg_config_t;
 
 /** Message header structure */
@@ -223,7 +224,7 @@ typedef struct
 } api_version_t;
 
 /** API main structure, used by both vpp and binary API clients */
-typedef struct
+typedef struct api_main_t
 {
   /** Message handler vector  */
   void (**msg_handlers) (void *);
@@ -247,6 +248,9 @@ typedef struct
 
   /** Message is mp safe vector */
   u8 *is_mp_safe;
+
+  /** Message requires us to do endian conversion */
+  u8 *is_autoendian;
 
   /** Allocator ring vectors (in shared memory) */
   struct ring_alloc_ *arings;
@@ -369,6 +373,12 @@ typedef struct
   /** event log */
   elog_main_t *elog_main;
   int elog_trace_api_messages;
+
+  /** performance counter callback **/
+  void (**perf_counter_cbs)
+    (struct api_main_t *, u32 id, int before_or_after);
+  void (**perf_counter_cbs_tmp)
+    (struct api_main_t *, u32 id, int before_or_after);
 
 } api_main_t;
 

@@ -256,28 +256,15 @@ static const char modp_dh_2048_256_generator[] =
 v8 *
 ikev2_calc_prf (ikev2_sa_transform_t * tr, v8 * key, v8 * data)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  HMAC_CTX *ctx;
-#else
-  HMAC_CTX ctx;
-#endif
+  ikev2_main_per_thread_data_t *ptd = ikev2_get_per_thread_data ();
+  HMAC_CTX *ctx = ptd->hmac_ctx;
   v8 *prf;
   unsigned int len = 0;
 
   prf = vec_new (u8, tr->key_trunc);
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  ctx = HMAC_CTX_new ();
   HMAC_Init_ex (ctx, key, vec_len (key), tr->md, NULL);
   HMAC_Update (ctx, data, vec_len (data));
   HMAC_Final (ctx, prf, &len);
-  HMAC_CTX_free (ctx);
-#else
-  HMAC_CTX_init (&ctx);
-  HMAC_Init_ex (&ctx, key, vec_len (key), tr->md, NULL);
-  HMAC_Update (&ctx, data, vec_len (data));
-  HMAC_Final (&ctx, prf, &len);
-  HMAC_CTX_cleanup (&ctx);
-#endif
   ASSERT (len == tr->key_trunc);
 
   return prf;
@@ -328,12 +315,9 @@ ikev2_calc_prfplus (ikev2_sa_transform_t * tr, u8 * key, u8 * seed, int len)
 v8 *
 ikev2_calc_integr (ikev2_sa_transform_t * tr, v8 * key, u8 * data, int len)
 {
+  ikev2_main_per_thread_data_t *ptd = ikev2_get_per_thread_data ();
+  HMAC_CTX *ctx = ptd->hmac_ctx;
   v8 *r;
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  HMAC_CTX *hctx;
-#else
-  HMAC_CTX hctx;
-#endif
   unsigned int l;
 
   ASSERT (tr->type == IKEV2_TRANSFORM_TYPE_INTEG);
@@ -350,40 +334,68 @@ ikev2_calc_integr (ikev2_sa_transform_t * tr, v8 * key, u8 * data, int len)
     }
 
   /* verify integrity of data */
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  hctx = HMAC_CTX_new ();
-  HMAC_Init_ex (hctx, key, vec_len (key), tr->md, NULL);
-  HMAC_Update (hctx, (const u8 *) data, len);
-  HMAC_Final (hctx, r, &l);
-  HMAC_CTX_free (hctx);
-#else
-  HMAC_CTX_init (&hctx);
-  HMAC_Init_ex (&hctx, key, vec_len (key), tr->md, NULL);
-  HMAC_Update (&hctx, (const u8 *) data, len);
-  HMAC_Final (&hctx, r, &l);
-  HMAC_CTX_cleanup (&hctx);
-#endif
-
+  HMAC_Init_ex (ctx, key, vec_len (key), tr->md, NULL);
+  HMAC_Update (ctx, (const u8 *) data, len);
+  HMAC_Final (ctx, r, &l);
   ASSERT (l == tr->key_len);
 
   return r;
 }
 
-v8 *
-ikev2_decrypt_data (ikev2_sa_t * sa, u8 * data, int len)
+static_always_inline void
+ikev2_init_gcm_nonce (u8 * nonce, u8 * salt, u8 * iv)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  EVP_CIPHER_CTX *ctx;
-#else
-  EVP_CIPHER_CTX ctx;
-#endif
-  v8 *r;
-  int out_len = 0, block_size;
-  ikev2_sa_transform_t *tr_encr;
-  u8 *key = sa->is_initiator ? sa->sk_er : sa->sk_ei;
+  clib_memcpy (nonce, salt, IKEV2_GCM_SALT_SIZE);
+  clib_memcpy (nonce + IKEV2_GCM_SALT_SIZE, iv, IKEV2_GCM_IV_SIZE);
+}
 
-  tr_encr =
-    ikev2_sa_get_td_for_type (sa->r_proposals, IKEV2_TRANSFORM_TYPE_ENCR);
+u8 *
+ikev2_decrypt_aead_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+			 ikev2_sa_transform_t * tr_encr, u8 * data,
+			 int data_len, u8 * aad, u32 aad_len, u8 * tag)
+{
+  EVP_CIPHER_CTX *ctx = ptd->evp_ctx;
+  int len = 0;
+  u8 *key = sa->is_initiator ? sa->sk_er : sa->sk_ei;
+  u8 nonce[IKEV2_GCM_NONCE_SIZE];
+
+  if (data_len <= IKEV2_GCM_IV_SIZE)
+    /* runt data */
+    return 0;
+
+  /* extract salt from the end of the key */
+  u8 *salt = key + vec_len (key) - IKEV2_GCM_SALT_SIZE;
+  ikev2_init_gcm_nonce (nonce, salt, data);
+
+  data += IKEV2_GCM_IV_SIZE;
+  data_len -= IKEV2_GCM_IV_SIZE;
+  v8 *r = vec_new (u8, data_len);
+
+  EVP_DecryptInit_ex (ctx, tr_encr->cipher, 0, 0, 0);
+  EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_GCM_SET_IVLEN, 12, 0);
+  EVP_DecryptInit_ex (ctx, 0, 0, key, nonce);
+  EVP_DecryptUpdate (ctx, 0, &len, aad, aad_len);
+  EVP_DecryptUpdate (ctx, r, &len, data, data_len);
+  EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_GCM_SET_TAG, IKEV2_GCM_ICV_SIZE, tag);
+
+  if (EVP_DecryptFinal_ex (ctx, r + len, &len) > 0)
+    {
+      /* remove padding */
+      _vec_len (r) -= r[vec_len (r) - 1] + 1;
+      return r;
+    }
+
+  vec_free (r);
+  return 0;
+}
+
+v8 *
+ikev2_decrypt_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+		    ikev2_sa_transform_t * tr_encr, u8 * data, int len)
+{
+  EVP_CIPHER_CTX *ctx = ptd->evp_ctx;
+  int out_len = 0, block_size;
+  u8 *key = sa->is_initiator ? sa->sk_er : sa->sk_ei;
   block_size = tr_encr->block_size;
 
   /* check if data is multiplier of cipher block size */
@@ -393,66 +405,66 @@ ikev2_decrypt_data (ikev2_sa_t * sa, u8 * data, int len)
       return 0;
     }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  ctx = EVP_CIPHER_CTX_new ();
-#else
-  EVP_CIPHER_CTX_init (&ctx);
-#endif
-
-  r = vec_new (u8, len - block_size);
-
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+  v8 *r = vec_new (u8, len - block_size);
   EVP_DecryptInit_ex (ctx, tr_encr->cipher, NULL, key, data);
   EVP_DecryptUpdate (ctx, r, &out_len, data + block_size, len - block_size);
   EVP_DecryptFinal_ex (ctx, r + out_len, &out_len);
-#else
-  EVP_DecryptInit_ex (&ctx, tr_encr->cipher, NULL, key, data);
-  EVP_DecryptUpdate (&ctx, r, &out_len, data + block_size, len - block_size);
-  EVP_DecryptFinal_ex (&ctx, r + out_len, &out_len);
-#endif
   /* remove padding */
   _vec_len (r) -= r[vec_len (r) - 1] + 1;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  EVP_CIPHER_CTX_free (ctx);
-#else
-  EVP_CIPHER_CTX_cleanup (&ctx);
-#endif
   return r;
 }
 
 int
-ikev2_encrypt_data (ikev2_sa_t * sa, v8 * src, u8 * dst)
+ikev2_encrypt_aead_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+			 ikev2_sa_transform_t * tr_encr,
+			 v8 * src, u8 * dst, u8 * aad, u32 aad_len, u8 * tag)
 {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  EVP_CIPHER_CTX *ctx;
-#else
-  EVP_CIPHER_CTX ctx;
-#endif
-  int out_len;
-  int bs;
-  ikev2_sa_transform_t *tr_encr;
+  EVP_CIPHER_CTX *ctx = ptd->evp_ctx;
+  int out_len = 0, len = 0;
+  u8 nonce[IKEV2_GCM_NONCE_SIZE];
   u8 *key = sa->is_initiator ? sa->sk_ei : sa->sk_er;
 
-  tr_encr =
-    ikev2_sa_get_td_for_type (sa->r_proposals, IKEV2_TRANSFORM_TYPE_ENCR);
-  bs = tr_encr->block_size;
+  /* generate IV; its length must be 8 octets for aes-gcm (rfc5282) */
+  RAND_bytes (dst, IKEV2_GCM_IV_SIZE);
+  ikev2_init_gcm_nonce (nonce, key + vec_len (key) - IKEV2_GCM_SALT_SIZE,
+			dst);
+  dst += IKEV2_GCM_IV_SIZE;
+
+  EVP_EncryptInit_ex (ctx, tr_encr->cipher, 0, 0, 0);
+  EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL);
+  EVP_EncryptInit_ex (ctx, 0, 0, key, nonce);
+  EVP_EncryptUpdate (ctx, NULL, &out_len, aad, aad_len);
+  EVP_EncryptUpdate (ctx, dst, &out_len, src, vec_len (src));
+  EVP_EncryptFinal_ex (ctx, dst + out_len, &len);
+  EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_GCM_GET_TAG, 16, tag);
+  out_len += len;
+  ASSERT (vec_len (src) == out_len);
+
+  return out_len + IKEV2_GCM_IV_SIZE;
+}
+
+int
+ikev2_encrypt_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+		    ikev2_sa_transform_t * tr_encr, v8 * src, u8 * dst)
+{
+  EVP_CIPHER_CTX *ctx = ptd->evp_ctx;
+  int out_len = 0, len = 0;
+  int bs = tr_encr->block_size;
+  u8 *key = sa->is_initiator ? sa->sk_ei : sa->sk_er;
 
   /* generate IV */
-  RAND_bytes (dst, bs);
+  u8 *iv = dst;
+  RAND_bytes (iv, bs);
+  dst += bs;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-  ctx = EVP_CIPHER_CTX_new ();
-  EVP_EncryptInit_ex (ctx, tr_encr->cipher, NULL, key, dst /* dst */ );
-  EVP_EncryptUpdate (ctx, dst + bs, &out_len, src, vec_len (src));
-  EVP_CIPHER_CTX_free (ctx);
-#else
-  EVP_CIPHER_CTX_init (&ctx);
-  EVP_EncryptInit_ex (&ctx, tr_encr->cipher, NULL, key, dst /* dst */ );
-  EVP_EncryptUpdate (&ctx, dst + bs, &out_len, src, vec_len (src));
-  EVP_CIPHER_CTX_cleanup (&ctx);
-#endif
+  EVP_EncryptInit_ex (ctx, tr_encr->cipher, NULL, key, iv);
+  /* disable padding as pad data were added before */
+  EVP_CIPHER_CTX_set_padding (ctx, 0);
+  EVP_EncryptUpdate (ctx, dst, &out_len, src, vec_len (src));
+  EVP_EncryptFinal_ex (ctx, dst + out_len, &len);
 
+  out_len += len;
   ASSERT (vec_len (src) == out_len);
 
   return out_len + bs;

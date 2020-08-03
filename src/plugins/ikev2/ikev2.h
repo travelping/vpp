@@ -25,6 +25,11 @@
 #define IKEV2_PORT_NATT   4500
 #define IKEV2_KEY_PAD "Key Pad for IKEv2"
 
+#define IKEV2_GCM_ICV_SIZE 16
+#define IKEV2_GCM_NONCE_SIZE 12
+#define IKEV2_GCM_SALT_SIZE 4
+#define IKEV2_GCM_IV_SIZE (IKEV2_GCM_NONCE_SIZE - IKEV2_GCM_SALT_SIZE)
+
 typedef u8 v8;
 
 /* *INDENT-OFF* */
@@ -390,8 +395,7 @@ clib_error_t *ikev2_set_profile_esp_transforms (vlib_main_t * vm, u8 * name,
 						crypto_alg,
 						ikev2_transform_integ_type_t
 						integ_alg,
-						ikev2_transform_dh_type_t
-						dh_type, u32 crypto_key_size);
+						u32 crypto_key_size);
 clib_error_t *ikev2_set_profile_sa_lifetime (vlib_main_t * vm, u8 * name,
 					     u64 lifetime, u32 jitter,
 					     u32 handover, u64 maxdata);

@@ -108,7 +108,9 @@ do_one_file (vat_main_t * vam)
 
       this_cmd =
 	(u8 *) clib_macro_eval (&vam->macro_main, (i8 *) vam->inbuf,
-				1 /* complain */ );
+				1 /* complain */ ,
+				0 /* level */ ,
+				8 /* max_level */ );
 
       if (vam->exec_mode == 0)
 	{
@@ -208,14 +210,14 @@ init_error_string_table (vat_main_t * vam)
 }
 
 static i8 *
-eval_current_file (macro_main_t * mm, i32 complain)
+eval_current_file (clib_macro_main_t * mm, i32 complain)
 {
   vat_main_t *vam = &vat_main;
   return ((i8 *) format (0, "%s%c", vam->current_file, 0));
 }
 
 static i8 *
-eval_current_line (macro_main_t * mm, i32 complain)
+eval_current_line (clib_macro_main_t * mm, i32 complain)
 {
   vat_main_t *vam = &vat_main;
   return ((i8 *) format (0, "%d%c", vam->input_line_number, 0));

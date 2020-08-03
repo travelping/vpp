@@ -581,6 +581,7 @@ vlib_worker_thread_bootstrap_fn (void *arg)
 
   __os_thread_index = w - vlib_worker_threads;
 
+  vlib_process_start_switch_stack (vlib_mains[__os_thread_index], 0);
   rv = (void *) clib_calljmp
     ((uword (*)(uword)) w->thread_function,
      (uword) arg, w->thread_stack + VLIB_THREAD_STACK_SIZE);
@@ -699,6 +700,9 @@ start_workers (vlib_main_t * vm)
     clib_mem_alloc_aligned (CLIB_CACHE_LINE_BYTES, CLIB_CACHE_LINE_BYTES);
   vm->elog_main.lock[0] = 0;
 
+  clib_callback_data_init (&vm->vlib_node_runtime_perf_callbacks,
+			   &vm->worker_thread_main_loop_callback_lock);
+
   if (n_vlib_mains > 1)
     {
       /* Replace hand-crafted length-1 vector with a real vector */
@@ -733,6 +737,7 @@ start_workers (vlib_main_t * vm)
       vm->barrier_no_close_before = 0;
 
       worker_thread_index = 1;
+      clib_spinlock_init (&vm->worker_thread_main_loop_callback_lock);
 
       for (i = 0; i < vec_len (tm->registrations); i++)
 	{
@@ -789,6 +794,11 @@ start_workers (vlib_main_t * vm)
 	      _vec_len (vm_clone->pending_rpc_requests) = 0;
 	      clib_memset (&vm_clone->random_buffer, 0,
 			   sizeof (vm_clone->random_buffer));
+	      clib_spinlock_init
+		(&vm_clone->worker_thread_main_loop_callback_lock);
+	      clib_callback_data_init
+		(&vm_clone->vlib_node_runtime_perf_callbacks,
+		 &vm_clone->worker_thread_main_loop_callback_lock);
 
 	      nm = &vlib_mains[0]->node_main;
 	      nm_clone = &vm_clone->node_main;
@@ -1465,6 +1475,10 @@ vlib_worker_thread_barrier_sync_int (vlib_main_t * vm, const char *func_name)
       return;
     }
 
+  if (PREDICT_FALSE (vec_len (vm->barrier_perf_callbacks) != 0))
+    clib_call_callbacks (vm->barrier_perf_callbacks, vm,
+			 vm->clib_time.last_cpu_time, 0 /* enter */ );
+
   /*
    * Need data to decide if we're working hard enough to honor
    * the barrier hold-down timer.
@@ -1628,6 +1642,9 @@ vlib_worker_thread_barrier_release (vlib_main_t * vm)
 
   barrier_trace_release (t_entry, t_closed_total, t_update_main);
 
+  if (PREDICT_FALSE (vec_len (vm->barrier_perf_callbacks) != 0))
+    clib_call_callbacks (vm->barrier_perf_callbacks, vm,
+			 vm->clib_time.last_cpu_time, 1 /* leave */ );
 }
 
 /*
@@ -1776,6 +1793,8 @@ vlib_worker_thread_fn (void *arg)
   vlib_thread_main_t *tm = vlib_get_thread_main ();
   vlib_main_t *vm = vlib_get_main ();
   clib_error_t *e;
+
+  vlib_process_finish_switch_stack (vm);
 
   ASSERT (vm->thread_index == vlib_get_thread_index ());
 

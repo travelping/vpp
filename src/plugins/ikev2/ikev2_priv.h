@@ -344,7 +344,6 @@ typedef struct
 typedef struct
 {
   u8 *name;
-  u8 is_enabled;
 
   ikev2_auth_t auth;
   ikev2_id_t loc_id;
@@ -420,7 +419,6 @@ typedef struct
 
   u8 is_initiator;
   u32 last_init_msg_id;
-  u8 is_profile_index_set;
   u32 profile_index;
   u8 is_tun_itf_set;
   u32 tun_itf;
@@ -443,6 +441,7 @@ typedef struct
 
   /* is NAT traversal mode */
   u8 natt;
+  u8 keys_generated;
 } ikev2_sa_t;
 
 
@@ -455,6 +454,13 @@ typedef struct
 
   /* hash */
   uword *sa_by_rspi;
+
+  EVP_CIPHER_CTX *evp_ctx;
+  HMAC_CTX *hmac_ctx;
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  HMAC_CTX _hmac_ctx;
+  EVP_CIPHER_CTX _evp_ctx;
+#endif
 } ikev2_main_per_thread_data_t;
 
 typedef struct
@@ -516,8 +522,18 @@ u8 *ikev2_calc_prfplus (ikev2_sa_transform_t * tr, u8 * key, u8 * seed,
 			int len);
 v8 *ikev2_calc_integr (ikev2_sa_transform_t * tr, v8 * key, u8 * data,
 		       int len);
-v8 *ikev2_decrypt_data (ikev2_sa_t * sa, u8 * data, int len);
-int ikev2_encrypt_data (ikev2_sa_t * sa, v8 * src, u8 * dst);
+v8 *ikev2_decrypt_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+			ikev2_sa_transform_t * tr_encr, u8 * data, int len);
+int ikev2_encrypt_data (ikev2_main_per_thread_data_t * ptd, ikev2_sa_t * sa,
+			ikev2_sa_transform_t * tr_encr, v8 * src, u8 * dst);
+int ikev2_encrypt_aead_data (ikev2_main_per_thread_data_t * ptd,
+			     ikev2_sa_t * sa, ikev2_sa_transform_t * tr_encr,
+			     v8 * src, u8 * dst, u8 * aad,
+			     u32 aad_len, u8 * tag);
+u8 *ikev2_decrypt_aead_data (ikev2_main_per_thread_data_t * ptd,
+			     ikev2_sa_t * sa, ikev2_sa_transform_t * tr_encr,
+			     u8 * data, int data_len, u8 * aad, u32 aad_len,
+			     u8 * tag);
 void ikev2_generate_dh (ikev2_sa_t * sa, ikev2_sa_transform_t * t);
 void ikev2_complete_dh (ikev2_sa_t * sa, ikev2_sa_transform_t * t);
 int ikev2_verify_sign (EVP_PKEY * pkey, u8 * sigbuf, u8 * data);
@@ -562,6 +578,13 @@ ikev2_ts_t *ikev2_parse_ts_payload (ike_payload_header_t * ikep);
 ikev2_delete_t *ikev2_parse_delete_payload (ike_payload_header_t * ikep);
 ikev2_notify_t *ikev2_parse_notify_payload (ike_payload_header_t * ikep);
 int ikev2_set_log_level (ikev2_log_level_t log_level);
+
+static_always_inline ikev2_main_per_thread_data_t *
+ikev2_get_per_thread_data ()
+{
+  u32 thread_index = vlib_get_thread_index ();
+  return vec_elt_at_index (ikev2_main.per_thread_data, thread_index);
+}
 #endif /* __included_ikev2_priv_h__ */
 
 

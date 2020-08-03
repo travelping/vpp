@@ -120,11 +120,6 @@ tcp_update_rcv_wnd (tcp_connection_t * tc)
    * Figure out how much space we have available
    */
   available_space = transport_max_rx_enqueue (&tc->connection);
-  if (PREDICT_FALSE (available_space < tc->rcv_opts.mss))
-    {
-      tc->rcv_wnd = 0;
-      return;
-    }
 
   /*
    * Use the above and what we know about what we've previously advertised
@@ -132,22 +127,22 @@ tcp_update_rcv_wnd (tcp_connection_t * tc)
    */
   observed_wnd = (i32) tc->rcv_wnd - (tc->rcv_nxt - tc->rcv_las);
 
-  /* Bad. Thou shalt not shrink */
+  /* Check if we are about to retract the window. Do the comparison before
+   * rounding to avoid errors. Per RFC7323 sec. 2.4 we could remove this */
   if (PREDICT_FALSE ((i32) available_space < observed_wnd))
     {
-      wnd = clib_max (observed_wnd, 0);
+      wnd = round_down_pow2 (clib_max (observed_wnd, 0), 1 << tc->rcv_wscale);
       TCP_EVT (TCP_EVT_RCV_WND_SHRUNK, tc, observed_wnd, available_space);
     }
   else
     {
-      wnd = available_space;
+      /* Make sure we have a multiple of 1 << rcv_wscale. We round down to
+       * avoid advertising a window larger than what can be buffered */
+      wnd = round_down_pow2 (available_space, 1 << tc->rcv_wscale);
     }
 
-  /* Make sure we have a multiple of 1 << rcv_wscale. We round up to
-   * avoid advertising a window less than mss which could happen if
-   * 1 << rcv_wscale < mss */
-  if (wnd && tc->rcv_wscale)
-    wnd = round_pow2 (wnd, 1 << tc->rcv_wscale);
+  if (PREDICT_FALSE (wnd < tc->rcv_opts.mss))
+    wnd = 0;
 
   tc->rcv_wnd = clib_min (wnd, TCP_WND_MAX << tc->rcv_wscale);
 }
@@ -1066,17 +1061,6 @@ tcp_program_retransmit (tcp_connection_t * tc)
       session_add_self_custom_tx_evt (&tc->connection, 0);
       tc->flags |= TCP_CONN_RXT_PENDING;
     }
-}
-
-/**
- * Delayed ack timer handler
- *
- * Sends delayed ACK when timer expires
- */
-void
-tcp_timer_delack_handler (tcp_connection_t * tc)
-{
-  tcp_send_ack (tc);
 }
 
 /**

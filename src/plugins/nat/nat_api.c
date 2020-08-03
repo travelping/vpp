@@ -21,7 +21,6 @@
 #include <nat/nat.h>
 #include <nat/nat_det.h>
 #include <nat/nat64.h>
-#include <nat/nat66.h>
 #include <nat/nat_inlines.h>
 #include <nat/nat44/inlines.h>
 #include <nat/nat_ha.h>
@@ -495,10 +494,7 @@ vl_api_nat_set_mss_clamping_t_handler (vl_api_nat_set_mss_clamping_t * mp)
   int rv = 0;
 
   if (mp->enable)
-    {
-      sm->mss_clamping = ntohs (mp->mss_value);
-      sm->mss_value_net = mp->mss_value;
-    }
+    sm->mss_clamping = ntohs (mp->mss_value);
   else
     sm->mss_clamping = 0;
 
@@ -1113,8 +1109,8 @@ static void
 
   if (!(mp->flags & NAT_API_IS_ADDR_ONLY))
     {
-      local_port = clib_net_to_host_u16 (mp->local_port);
-      external_port = clib_net_to_host_u16 (mp->external_port);
+      local_port = mp->local_port;
+      external_port = mp->external_port;
     }
 
   vrf_id = clib_net_to_host_u32 (mp->vrf_id);
@@ -1204,8 +1200,8 @@ send_nat44_static_mapping_details (snat_static_mapping_t * m,
   else
     {
       rmp->protocol = nat_proto_to_ip_proto (m->proto);
-      rmp->external_port = htons (m->external_port);
-      rmp->local_port = htons (m->local_port);
+      rmp->external_port = m->external_port;
+      rmp->local_port = m->local_port;
     }
 
   if (m->tag)
@@ -1241,8 +1237,8 @@ send_nat44_static_map_resolve_details (snat_static_map_resolve_t * m,
   else
     {
       rmp->protocol = nat_proto_to_ip_proto (m->proto);
-      rmp->external_port = htons (m->e_port);
-      rmp->local_port = htons (m->l_port);
+      rmp->external_port = m->e_port;
+      rmp->local_port = m->l_port;
     }
   if (m->tag)
     strncpy ((char *) rmp->tag, (char *) m->tag, vec_len (m->tag));
@@ -1315,7 +1311,7 @@ static void
 
   if (!(mp->flags & NAT_API_IS_ADDR_ONLY))
     {
-      port = clib_net_to_host_u16 (mp->port);
+      port = mp->port;
       proto = ip_proto_to_nat_proto (mp->protocol);
     }
   vrf_id = clib_net_to_host_u32 (mp->vrf_id);
@@ -1377,7 +1373,7 @@ send_nat44_identity_mapping_details (snat_static_mapping_t * m, int index,
     rmp->flags |= NAT_API_IS_ADDR_ONLY;
 
   clib_memcpy (rmp->ip_address, &(m->local_addr), 4);
-  rmp->port = htons (m->local_port);
+  rmp->port = m->local_port;
   rmp->sw_if_index = ~0;
   rmp->vrf_id = htonl (local->vrf_id);
   rmp->protocol = nat_proto_to_ip_proto (m->proto);
@@ -1404,7 +1400,7 @@ send_nat44_identity_map_resolve_details (snat_static_map_resolve_t * m,
   if (m->addr_only)
     rmp->flags = (vl_api_nat_config_flags_t) NAT_API_IS_ADDR_ONLY;
 
-  rmp->port = htons (m->l_port);
+  rmp->port = m->l_port;
   rmp->sw_if_index = htonl (m->sw_if_index);
   rmp->vrf_id = htonl (m->vrf_id);
   rmp->protocol = nat_proto_to_ip_proto (m->proto);
@@ -1722,7 +1718,7 @@ send_nat44_user_session_details (snat_session_t * s,
     {
       rmp->outside_port = s->out2in.port;
       rmp->inside_port = s->in2out.port;
-      rmp->protocol = ntohs (nat_proto_to_ip_proto (s->in2out.protocol));
+      rmp->protocol = ntohs (nat_proto_to_ip_proto (s->nat_proto));
     }
   if (is_ed_session (s) || is_fwd_bypass_session (s))
     {
@@ -1834,7 +1830,7 @@ unformat_nat44_lb_addr_port (vl_api_nat44_lb_addr_port_t * addr_port_pairs,
       ap = &addr_port_pairs[i];
       clib_memset (&lb_addr_port, 0, sizeof (lb_addr_port));
       clib_memcpy (&lb_addr_port.addr, ap->addr, 4);
-      lb_addr_port.port = clib_net_to_host_u16 (ap->port);
+      lb_addr_port.port = ap->port;
       lb_addr_port.probability = ap->probability;
       lb_addr_port.vrf_id = clib_net_to_host_u32 (ap->vrf_id);
       vec_add1 (lb_addr_port_pairs, lb_addr_port);
@@ -1878,7 +1874,7 @@ static void
 
   rv =
     nat44_add_del_lb_static_mapping (e_addr,
-				     clib_net_to_host_u16 (mp->external_port),
+				     mp->external_port,
 				     proto, locals, mp->is_add,
 				     twice_nat,
 				     mp->flags & NAT_API_IS_OUT2IN_ONLY, tag,
@@ -1971,7 +1967,7 @@ send_nat44_lb_static_mapping_details (snat_static_mapping_t * m,
     ntohs (VL_API_NAT44_LB_STATIC_MAPPING_DETAILS + sm->msg_id_base);
 
   clib_memcpy (rmp->external_addr, &(m->external_addr), 4);
-  rmp->external_port = ntohs (m->external_port);
+  rmp->external_port = m->external_port;
   rmp->protocol = nat_proto_to_ip_proto (m->proto);
   rmp->context = context;
 
@@ -1989,7 +1985,7 @@ send_nat44_lb_static_mapping_details (snat_static_mapping_t * m,
   pool_foreach (ap, m->locals,
   ({
     clib_memcpy (locals->addr, &(ap->addr), 4);
-    locals->port = htons (ap->port);
+    locals->port = ap->port;
     locals->probability = ap->probability;
     locals->vrf_id = ntohl (ap->vrf_id);
     locals++;
@@ -2054,11 +2050,11 @@ vl_api_nat44_del_session_t_handler (vl_api_nat44_del_session_t * mp)
     }
 
   memcpy (&addr.as_u8, mp->address, 4);
-  port = clib_net_to_host_u16 (mp->port);
+  port = mp->port;
   vrf_id = clib_net_to_host_u32 (mp->vrf_id);
   proto = ip_proto_to_nat_proto (mp->protocol);
   memcpy (&eh_addr.as_u8, mp->ext_host_address, 4);
-  eh_port = clib_net_to_host_u16 (mp->ext_host_port);
+  eh_port = mp->ext_host_port;
 
   is_in = mp->flags & NAT_API_IS_INSIDE;
 
@@ -3038,194 +3034,6 @@ static void *vl_api_nat64_add_del_interface_addr_t_print
   FINISH;
 }
 
-/*************/
-/*** NAT66 ***/
-/*************/
-
-static void
-vl_api_nat66_add_del_interface_t_handler (vl_api_nat66_add_del_interface_t *
-					  mp)
-{
-  snat_main_t *sm = &snat_main;
-  vl_api_nat66_add_del_interface_reply_t *rmp;
-  int rv = 0;
-
-  VALIDATE_SW_IF_INDEX (mp);
-
-  rv =
-    nat66_interface_add_del (ntohl (mp->sw_if_index),
-			     mp->flags & NAT_API_IS_INSIDE, mp->is_add);
-
-  BAD_SW_IF_INDEX_LABEL;
-
-  REPLY_MACRO (VL_API_NAT66_ADD_DEL_INTERFACE_REPLY);
-}
-
-static void *
-vl_api_nat66_add_del_interface_t_print (vl_api_nat66_add_del_interface_t * mp,
-					void *handle)
-{
-  u8 *s;
-
-  s = format (0, "SCRIPT: nat66_add_del_interface ");
-  s = format (s, "sw_if_index %d %s %s",
-	      clib_host_to_net_u32 (mp->sw_if_index),
-	      mp->flags & NAT_API_IS_INSIDE ? "in" : "out",
-	      mp->is_add ? "" : "del");
-
-  FINISH;
-}
-
-static void
-  vl_api_nat66_add_del_static_mapping_t_handler
-  (vl_api_nat66_add_del_static_mapping_t * mp)
-{
-  snat_main_t *sm = &snat_main;
-  vl_api_nat66_add_del_static_mapping_reply_t *rmp;
-  ip6_address_t l_addr, e_addr;
-  int rv = 0;
-
-  memcpy (&l_addr.as_u8, mp->local_ip_address, 16);
-  memcpy (&e_addr.as_u8, mp->external_ip_address, 16);
-
-  rv =
-    nat66_static_mapping_add_del (&l_addr, &e_addr,
-				  clib_net_to_host_u32 (mp->vrf_id),
-				  mp->is_add);
-
-  REPLY_MACRO (VL_API_NAT66_ADD_DEL_STATIC_MAPPING_REPLY);
-}
-
-static void *vl_api_nat66_add_del_static_mapping_t_print
-  (vl_api_nat66_add_del_static_mapping_t * mp, void *handle)
-{
-  u8 *s;
-
-  s = format (0, "SCRIPT: nat66_add_del_static_mapping ");
-  s = format (s, "local_ip_address %U external_ip_address %U vrf_id %d %s",
-	      format_ip6_address, mp->local_ip_address,
-	      format_ip6_address, mp->external_ip_address,
-	      clib_net_to_host_u32 (mp->vrf_id), mp->is_add ? "" : "del");
-
-  FINISH;
-}
-
-typedef struct nat66_api_walk_ctx_t_
-{
-  vl_api_registration_t *rp;
-  u32 context;
-} nat66_api_walk_ctx_t;
-
-static int
-nat66_api_interface_walk (snat_interface_t * i, void *arg)
-{
-  vl_api_nat66_interface_details_t *rmp;
-  snat_main_t *sm = &snat_main;
-  nat66_api_walk_ctx_t *ctx = arg;
-
-  rmp = vl_msg_api_alloc (sizeof (*rmp));
-  clib_memset (rmp, 0, sizeof (*rmp));
-  rmp->_vl_msg_id = ntohs (VL_API_NAT66_INTERFACE_DETAILS + sm->msg_id_base);
-  rmp->sw_if_index = ntohl (i->sw_if_index);
-  if (nat_interface_is_inside (i))
-    rmp->flags |= NAT_API_IS_INSIDE;
-  rmp->context = ctx->context;
-
-  vl_api_send_msg (ctx->rp, (u8 *) rmp);
-
-  return 0;
-}
-
-static void
-vl_api_nat66_interface_dump_t_handler (vl_api_nat66_interface_dump_t * mp)
-{
-  vl_api_registration_t *rp;
-
-  rp = vl_api_client_index_to_registration (mp->client_index);
-  if (rp == 0)
-    return;
-
-  nat66_api_walk_ctx_t ctx = {
-    .rp = rp,
-    .context = mp->context,
-  };
-
-  nat66_interfaces_walk (nat66_api_interface_walk, &ctx);
-}
-
-static void *
-vl_api_nat66_interface_dump_t_print (vl_api_nat66_interface_dump_t * mp,
-				     void *handle)
-{
-  u8 *s;
-
-  s = format (0, "SCRIPT: nat66_interface_dump ");
-
-  FINISH;
-}
-
-static int
-nat66_api_static_mapping_walk (nat66_static_mapping_t * m, void *arg)
-{
-  vl_api_nat66_static_mapping_details_t *rmp;
-  nat66_main_t *nm = &nat66_main;
-  snat_main_t *sm = &snat_main;
-  nat66_api_walk_ctx_t *ctx = arg;
-  fib_table_t *fib;
-  vlib_counter_t vc;
-
-  fib = fib_table_get (m->fib_index, FIB_PROTOCOL_IP6);
-  if (!fib)
-    return -1;
-
-  vlib_get_combined_counter (&nm->session_counters, m - nm->sm, &vc);
-
-  rmp = vl_msg_api_alloc (sizeof (*rmp));
-  clib_memset (rmp, 0, sizeof (*rmp));
-  rmp->_vl_msg_id =
-    ntohs (VL_API_NAT66_STATIC_MAPPING_DETAILS + sm->msg_id_base);
-  clib_memcpy (rmp->local_ip_address, &m->l_addr, 16);
-  clib_memcpy (rmp->external_ip_address, &m->e_addr, 16);
-  rmp->vrf_id = ntohl (fib->ft_table_id);
-  rmp->total_bytes = clib_host_to_net_u64 (vc.bytes);
-  rmp->total_pkts = clib_host_to_net_u64 (vc.packets);
-  rmp->context = ctx->context;
-
-  vl_api_send_msg (ctx->rp, (u8 *) rmp);
-
-  return 0;
-}
-
-static void
-vl_api_nat66_static_mapping_dump_t_handler (vl_api_nat66_static_mapping_dump_t
-					    * mp)
-{
-  vl_api_registration_t *rp;
-
-  rp = vl_api_client_index_to_registration (mp->client_index);
-  if (rp == 0)
-    return;
-
-  nat66_api_walk_ctx_t ctx = {
-    .rp = rp,
-    .context = mp->context,
-  };
-
-  nat66_static_mappings_walk (nat66_api_static_mapping_walk, &ctx);
-}
-
-static void *
-vl_api_nat66_static_mapping_dump_t_print (vl_api_nat66_static_mapping_dump_t *
-					  mp, void *handle)
-{
-  u8 *s;
-
-  s = format (0, "SCRIPT: nat66_static_mapping_dump ");
-
-  FINISH;
-}
-
-
 /* List of message types that this plugin understands */
 #define foreach_snat_plugin_api_msg                                     \
 _(NAT_CONTROL_PING, nat_control_ping)                                   \
@@ -3287,11 +3095,7 @@ _(NAT64_BIB_DUMP, nat64_bib_dump)                                       \
 _(NAT64_ST_DUMP, nat64_st_dump)                                         \
 _(NAT64_ADD_DEL_PREFIX, nat64_add_del_prefix)                           \
 _(NAT64_PREFIX_DUMP, nat64_prefix_dump)                                 \
-_(NAT64_ADD_DEL_INTERFACE_ADDR, nat64_add_del_interface_addr)           \
-_(NAT66_ADD_DEL_INTERFACE, nat66_add_del_interface)                     \
-_(NAT66_INTERFACE_DUMP, nat66_interface_dump)                           \
-_(NAT66_ADD_DEL_STATIC_MAPPING, nat66_add_del_static_mapping)           \
-_(NAT66_STATIC_MAPPING_DUMP, nat66_static_mapping_dump)
+_(NAT64_ADD_DEL_INTERFACE_ADDR, nat64_add_del_interface_addr)
 
 /* Set up the API message handling tables */
 static clib_error_t *

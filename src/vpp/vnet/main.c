@@ -24,6 +24,7 @@
 #include <vnet/plugin/plugin.h>
 #include <vnet/ethernet/ethernet.h>
 #include <vpp/app/version.h>
+#include <vpp/vnet/config.h>
 #include <vpp/api/vpe_msg_enum.h>
 #include <limits.h>
 
@@ -73,7 +74,9 @@ vpp_find_plugin_path ()
 static void
 vpe_main_init (vlib_main_t * vm)
 {
+#if VPP_API_TEST_BUILTIN > 0
   void vat_plugin_hash_create (void);
+#endif
 
   if (CLIB_DEBUG > 0)
     vlib_unix_cli_set_prompt ("DBGvpp# ");
@@ -86,7 +89,9 @@ vpe_main_init (vlib_main_t * vm)
   /*
    * Create the binary api plugin hashes before loading plugins
    */
+#if VPP_API_TEST_BUILTIN > 0
   vat_plugin_hash_create ();
+#endif
 
   if (!vlib_plugin_path)
     vpp_find_plugin_path ();
@@ -512,8 +517,7 @@ VLIB_CLI_COMMAND (show_bihash_command, static) =
 const char *
 __asan_default_options (void)
 {
-  return
-    "unmap_shadow_on_exit=1:disable_coredump=0:abort_on_error=1:detect_leaks=0";
+  return VPP_SANITIZE_ADDR_OPTIONS;
 }
 #endif /* CLIB_SANITIZE_ADDR */
 

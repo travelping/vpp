@@ -239,6 +239,8 @@ void
 ip6_sw_interface_enable_disable (u32 sw_if_index, u32 is_enable)
 {
   ip6_main_t *im = &ip6_main;
+  vnet_main_t *vnm = vnet_get_main ();
+  vnet_hw_interface_t *hi = vnet_get_sup_hw_interface (vnm, sw_if_index);
 
   vec_validate_init_empty (im->ip_enabled_by_sw_if_index, sw_if_index, 0);
 
@@ -264,6 +266,11 @@ ip6_sw_interface_enable_disable (u32 sw_if_index, u32 is_enable)
 
   vnet_feature_enable_disable ("ip6-multicast", "ip6-not-enabled",
 			       sw_if_index, !is_enable, 0, 0);
+
+  if (is_enable)
+    hi->l3_if_count++;
+  else if (hi->l3_if_count)
+    hi->l3_if_count--;
 }
 
 /* get first interface address */
@@ -1929,11 +1936,9 @@ ip6_rewrite_inline_with_gso (vlib_main_t * vm,
 	      /* before we paint on the next header, update the L4
 	       * checksums if required, since there's no offload on a tunnel */
 	      vnet_calc_checksums_inline (vm, p0, 0 /* is_ip4 */ ,
-					  1 /* is_ip6 */ ,
-					  0 /* with gso */ );
+					  1 /* is_ip6 */ );
 	      vnet_calc_checksums_inline (vm, p1, 0 /* is_ip4 */ ,
-					  1 /* is_ip6 */ ,
-					  0 /* with gso */ );
+					  1 /* is_ip6 */ );
 
 	      /* Guess we are only writing on ipv6 header. */
 	      vnet_rewrite_two_headers (adj0[0], adj1[0],
@@ -2029,8 +2034,7 @@ ip6_rewrite_inline_with_gso (vlib_main_t * vm,
 	  if (is_midchain)
 	    {
 	      vnet_calc_checksums_inline (vm, p0, 0 /* is_ip4 */ ,
-					  1 /* is_ip6 */ ,
-					  0 /* with gso */ );
+					  1 /* is_ip6 */ );
 
 	      /* Guess we are only writing on ip6 header. */
 	      vnet_rewrite_one_header (adj0[0], ip0, sizeof (ip6_header_t));

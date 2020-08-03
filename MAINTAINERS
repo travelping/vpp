@@ -60,12 +60,22 @@ M:	Dave Barach <dave@barachs.net>
 M:	Damjan Marion <damarion@cisco.com>
 F:	src/vlib/
 E:	src/vlib/buffer*.[ch]
+E:	src/vlib/pci/
+E:	src/vlib/linux/pci.[ch]
+E:	src/vlib/linux/vfio.[ch]
 
 Vector Library - Buffer Management
 I:	buffers
 M:	Damjan Marion <damarion@cisco.com>
 M:	Dave Barach <dave@barachs.net>
 F:	src/vlib/buffer*.[ch]
+
+Vector Library - PCI
+I:	pci
+M:	Damjan Marion <damarion@cisco.com>
+F:	src/vlib/pci/
+F:	src/vlib/linux/pci.[ch]
+F:	src/vlib/linux/vfio.[ch]
 
 Binary API Libraries
 I:	api
@@ -179,11 +189,6 @@ I:	crypto
 M:	Damjan Marion <damarion@cisco.com>
 M:	Neale Ranns <nranns@cisco.com>
 F:	src/vnet/crypto/
-
-VNET COP
-I:	cop
-M:	Dave Barach <dave@barachs.net>
-F:	src/vnet/cop/
 
 VNET TEIB
 I:	teib
@@ -353,6 +358,11 @@ I:	abf
 M:	Neale Ranns <nranns@cisco.com>
 F:	src/plugins/abf/
 
+Plugin - Allow / Deny List
+I:	adl
+M:	Dave Barach <dave@barachs.net>
+F:	src/plugins/adl/
+
 Plugin - Simple DNS name resolver
 I:	dns
 M:	Dave Barach <dave@barachs.net>
@@ -424,6 +434,8 @@ Plugin - Internet Key Exchange (IKEv2) Protocol
 I:	ikev2
 M:	Damjan Marion <damarion@cisco.com>
 M:	Neale Ranns <nranns@cisco.com>
+M:	Filip Tehlar <ftehlar@cisco.com>
+M:	Benoît Ganne <bganne@cisco.com>
 F:	src/plugins/ikev2/
 
 Plugin - Internet Group Management Protocol (IGMP)

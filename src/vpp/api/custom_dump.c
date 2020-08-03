@@ -695,12 +695,12 @@ static void *vl_api_bond_delete_t_print
   FINISH;
 }
 
-static void *vl_api_bond_enslave_t_print
-  (vl_api_bond_enslave_t * mp, void *handle)
+static void *vl_api_bond_add_member_t_print
+  (vl_api_bond_add_member_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: bond_enslave ");
+  s = format (0, "SCRIPT: bond_add_member ");
   s = format (s, "bond_sw_if_index %u ", (mp->bond_sw_if_index));
   s = format (s, "sw_if_index %u ", (mp->sw_if_index));
   if (mp->is_passive)
@@ -723,33 +723,35 @@ static void *vl_api_sw_interface_set_bond_weight_t_print
   FINISH;
 }
 
-static void *vl_api_bond_detach_slave_t_print
-  (vl_api_bond_detach_slave_t * mp, void *handle)
+static void *vl_api_bond_detach_member_t_print
+  (vl_api_bond_detach_member_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: bond_detach_slave ");
+  s = format (0, "SCRIPT: bond_detach_member ");
   s = format (s, "sw_if_index %d ", (mp->sw_if_index));
 
   FINISH;
 }
 
-static void *vl_api_sw_interface_bond_dump_t_print
-  (vl_api_sw_interface_bond_dump_t * mp, void *handle)
+static void *vl_api_sw_bond_interface_dump_t_print
+  (vl_api_sw_bond_interface_dump_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: sw_interface_bond_dump ");
+  s = format (0, "SCRIPT: sw_bond_interface_dump ");
+  if (mp->sw_if_index != ~0)
+    s = format (s, "sw_if_index %d ", (mp->sw_if_index));
 
   FINISH;
 }
 
-static void *vl_api_sw_interface_slave_dump_t_print
-  (vl_api_sw_interface_slave_dump_t * mp, void *handle)
+static void *vl_api_sw_member_interface_dump_t_print
+  (vl_api_sw_member_interface_dump_t * mp, void *handle)
 {
   u8 *s;
 
-  s = format (0, "SCRIPT: sw_interface_slave_dump ");
+  s = format (0, "SCRIPT: sw_member_interface_dump ");
   s = format (s, "sw_if_index %d ", (mp->sw_if_index));
 
   FINISH;
@@ -1385,7 +1387,7 @@ static void *vl_api_add_node_next_t_print
 
   s = format (0, "SCRIPT: add_node_next ");
 
-  s = format (0, "node %s next %s ", mp->node_name, mp->next_name);
+  s = format (s, "node %s next %s ", mp->node_name, mp->next_name);
 
   FINISH;
 }
@@ -1785,7 +1787,8 @@ static void *vl_api_sw_interface_vhost_user_dump_t_print
   u8 *s;
 
   s = format (0, "SCRIPT: sw_interface_vhost_user_dump ");
-  s = format (s, "sw_if_index %d ", (mp->sw_if_index));
+  if (mp->sw_if_index != ~0)
+    s = format (s, "sw_if_index %d ", (mp->sw_if_index));
 
   FINISH;
 }
@@ -2520,9 +2523,9 @@ static void *vl_api_pg_create_interface_t_print
   u8 *s;
 
   s = format (0, "SCRIPT: pg_create_interface ");
-  s = format (0, "if_id %d", (mp->interface_id));
-  s = format (0, "gso-enabled %u", mp->gso_enabled);
-  s = format (0, "gso-size %u", (mp->gso_size));
+  s = format (s, "if_id %d ", (mp->interface_id));
+  s = format (s, "gso-enabled %u ", mp->gso_enabled);
+  s = format (s, "gso-size %u", (mp->gso_size));
 
   FINISH;
 }
@@ -2533,8 +2536,8 @@ static void *vl_api_pg_capture_t_print
   u8 *s;
 
   s = format (0, "SCRIPT: pg_capture ");
-  s = format (0, "if_id %d ", (mp->interface_id));
-  s = format (0, "pcap %s", mp->pcap_file_name);
+  s = format (s, "if_id %d ", (mp->interface_id));
+  s = format (s, "pcap %s", mp->pcap_file_name);
   if (mp->count != ~0)
     s = format (s, "count %d ", (mp->count));
   if (!mp->is_enabled)
@@ -2650,20 +2653,31 @@ static void *vl_api_lisp_pitr_set_locator_set_t_print
 }
 
 static u8 *
+format_nsh_address_vat (u8 * s, va_list * args)
+{
+  nsh_t *a = va_arg (*args, nsh_t *);
+  return format (s, "SPI:%d SI:%d", clib_net_to_host_u32 (a->spi), a->si);
+}
+
+static u8 *
 format_lisp_flat_eid (u8 * s, va_list * args)
 {
-  u32 type = va_arg (*args, u32);
-  u8 *eid = va_arg (*args, u8 *);
-  u32 eid_len = va_arg (*args, u32);
+  vl_api_eid_t *eid = va_arg (*args, vl_api_eid_t *);
 
-  switch (type)
+  switch (eid->type)
     {
-    case 0:
-      return format (s, "%U/%d", format_ip4_address, eid, eid_len);
-    case 1:
-      return format (s, "%U/%d", format_ip6_address, eid, eid_len);
-    case 3:
-      return format (s, "%U", format_ethernet_address, eid);
+    case EID_TYPE_API_PREFIX:
+      if (eid->address.prefix.address.af)
+	return format (s, "%U/%d", format_ip6_address,
+		       eid->address.prefix.address.un.ip6,
+		       eid->address.prefix.len);
+      return format (s, "%U/%d", format_ip4_address,
+		     eid->address.prefix.address.un.ip4,
+		     eid->address.prefix.len);
+    case EID_TYPE_API_MAC:
+      return format (s, "%U", format_ethernet_address, eid->address.mac);
+    case EID_TYPE_API_NSH:
+      return format (s, "%U", format_nsh_address_vat, eid->address.nsh);
     }
   return 0;
 }
@@ -2682,11 +2696,11 @@ static void *vl_api_lisp_add_del_remote_mapping_t_print
   s = format (s, "%s ", mp->is_add ? "add" : "del");
   s = format (s, "vni %d ", (mp->vni));
 
-  s = format (s, "eid %U ", format_lisp_flat_eid, mp->deid);
+  s = format (s, "eid %U ", format_lisp_flat_eid, &mp->deid);
 
   if (mp->is_src_dst)
     {
-      s = format (s, "seid %U ", format_lisp_flat_eid, mp->seid);
+      s = format (s, "seid %U ", format_lisp_flat_eid, &mp->seid);
     }
   rloc_num = (mp->rloc_num);
 
@@ -2706,7 +2720,8 @@ static void *vl_api_lisp_add_del_adjacency_t_print
   s = format (s, "%s ", mp->is_add ? "add" : "del");
   s = format (s, "vni %d ", (mp->vni));
   s = format (s, "reid %U leid %U ",
-	      format_lisp_flat_eid, mp->reid, format_lisp_flat_eid, mp->leid);
+	      format_lisp_flat_eid, &mp->reid, format_lisp_flat_eid,
+	      &mp->leid);
 
   FINISH;
 }
@@ -2752,7 +2767,7 @@ static void *vl_api_lisp_add_del_local_eid_t_print
     s = format (s, "del ");
 
   s = format (s, "vni %d ", (mp->vni));
-  s = format (s, "eid %U ", format_lisp_flat_eid, mp->eid);
+  s = format (s, "eid %U ", format_lisp_flat_eid, &mp->eid);
   s = format (s, "locator-set %s ", mp->locator_set_name);
   if (mp->key.id)
     {
@@ -2885,7 +2900,7 @@ static void *vl_api_lisp_eid_table_dump_t_print
   if (mp->eid_set)
     {
       s = format (s, "vni %d ", (mp->vni));
-      s = format (s, "eid %U ", format_lisp_flat_eid, mp->eid);
+      s = format (s, "eid %U ", format_lisp_flat_eid, &mp->eid);
       switch (mp->filter)
 	{
 	case 1:
@@ -3530,11 +3545,11 @@ _(SW_INTERFACE_SET_VXLAN_BYPASS, sw_interface_set_vxlan_bypass)         \
 _(SW_INTERFACE_SET_GENEVE_BYPASS, sw_interface_set_geneve_bypass)       \
 _(BOND_CREATE, bond_create)                                             \
 _(BOND_DELETE, bond_delete)                                             \
-_(BOND_ENSLAVE, bond_enslave)                                           \
-_(BOND_DETACH_SLAVE, bond_detach_slave)                                 \
+_(BOND_ADD_MEMBER, bond_add_member)                                     \
+_(BOND_DETACH_MEMBER, bond_detach_member)                               \
 _(SW_INTERFACE_SET_BOND_WEIGHT, sw_interface_set_bond_weight)           \
-_(SW_INTERFACE_SLAVE_DUMP, sw_interface_slave_dump)                     \
-_(SW_INTERFACE_BOND_DUMP, sw_interface_bond_dump)                       \
+_(SW_MEMBER_INTERFACE_DUMP, sw_member_interface_dump)                   \
+_(SW_BOND_INTERFACE_DUMP, sw_bond_interface_dump)                       \
 _(SW_INTERFACE_RX_PLACEMENT_DUMP, sw_interface_rx_placement_dump)       \
 _(TAP_CREATE_V2, tap_create_v2)                                         \
 _(TAP_DELETE_V2, tap_delete_v2)                                         \

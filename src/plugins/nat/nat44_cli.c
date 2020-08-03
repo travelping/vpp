@@ -209,7 +209,7 @@ done:
 }
 
 static clib_error_t *
-nat44_show_hash_commnad_fn (vlib_main_t * vm, unformat_input_t * input,
+nat44_show_hash_command_fn (vlib_main_t * vm, unformat_input_t * input,
 			    vlib_cli_command_t * cmd)
 {
   snat_main_t *sm = &snat_main;
@@ -251,6 +251,17 @@ nat44_show_hash_commnad_fn (vlib_main_t * vm, unformat_input_t * input,
     {
       vlib_cli_output (vm, "%U", format_bihash_16_8, &nam->affinity_hash,
 		       verbose);
+    }
+
+  vlib_cli_output (vm, "-------- hash table parameters --------\n");
+  vlib_cli_output (vm, "translation buckets: %u", sm->translation_buckets);
+  vlib_cli_output (vm, "translation memory size: %U",
+		   format_memory_size, sm->translation_memory_size);
+  if (!sm->endpoint_dependent)
+    {
+      vlib_cli_output (vm, "user buckets: %u", sm->user_buckets);
+      vlib_cli_output (vm, "user memory size: %U",
+		       format_memory_size, sm->user_memory_size);
     }
   return 0;
 }
@@ -358,10 +369,7 @@ nat_set_mss_clamping_command_fn (vlib_main_t * vm, unformat_input_t * input,
       if (unformat (line_input, "disable"))
 	sm->mss_clamping = 0;
       else if (unformat (line_input, "%d", &mss))
-	{
-	  sm->mss_clamping = (u16) mss;
-	  sm->mss_value_net = clib_host_to_net_u16 (sm->mss_clamping);
-	}
+	sm->mss_clamping = (u16) mss;
       else
 	{
 	  error = clib_error_return (0, "unknown input '%U'",
@@ -646,8 +654,8 @@ nat44_show_summary_command_fn (vlib_main_t * vm, unformat_input_t * input,
   if (sm->deterministic || !sm->endpoint_dependent)
     return clib_error_return (0, UNSUPPORTED_IN_DET_OR_NON_ED_MODE_STR);
 
-  // print session configuration values
-  vlib_cli_output (vm, "max translations: %u", sm->max_translations);
+  vlib_cli_output (vm, "max translations per thread: %u",
+		   sm->max_translations_per_thread);
   vlib_cli_output (vm, "max translations per user: %u",
 		   sm->max_translations_per_user);
 
@@ -678,7 +686,7 @@ nat44_show_summary_command_fn (vlib_main_t * vm, unformat_input_t * input,
             if (now >= sess_timeout_time)
               timed_out++;
 
-            switch (s->in2out.protocol)
+            switch (s->nat_proto)
               {
               case NAT_PROTOCOL_ICMP:
                 icmp_sessions++;
@@ -724,7 +732,7 @@ nat44_show_summary_command_fn (vlib_main_t * vm, unformat_input_t * input,
         if (now >= sess_timeout_time)
           timed_out++;
 
-        switch (s->in2out.protocol)
+        switch (s->nat_proto)
           {
           case NAT_PROTOCOL_ICMP:
             icmp_sessions++;
@@ -1059,13 +1067,24 @@ add_static_mapping_command_fn (vlib_main_t * vm,
       goto done;
     }
 
-  if (!addr_only && !proto_set)
+  if (addr_only)
     {
-      error = clib_error_return (0, "missing protocol");
+      if (proto_set)
+	{
+	  error =
+	    clib_error_return (0,
+			       "address only mapping doesn't support protocol");
+	  goto done;
+	}
+    }
+  else if (!proto_set)
+    {
+      error = clib_error_return (0, "protocol is required");
       goto done;
     }
 
-  rv = snat_add_static_mapping (l_addr, e_addr, (u16) l_port, (u16) e_port,
+  rv = snat_add_static_mapping (l_addr, e_addr, clib_host_to_net_u16 (l_port),
+				clib_host_to_net_u16 (e_port),
 				vrf_id, addr_only, sw_if_index, proto, is_add,
 				twice_nat, out2in_only, 0, 0);
 
@@ -1149,9 +1168,10 @@ add_identity_mapping_command_fn (vlib_main_t * vm,
 	}
     }
 
-  rv = snat_add_static_mapping (addr, addr, (u16) port, (u16) port,
-				vrf_id, addr_only, sw_if_index, proto, is_add,
-				0, 0, 0, 1);
+  rv =
+    snat_add_static_mapping (addr, addr, clib_host_to_net_u16 (port),
+			     clib_host_to_net_u16 (port), vrf_id, addr_only,
+			     sw_if_index, proto, is_add, 0, 0, 0, 1);
 
   switch (rv)
     {
@@ -1724,10 +1744,13 @@ nat44_del_session_command_fn (vlib_main_t * vm,
 
   if (is_ed)
     rv =
-      nat44_del_ed_session (sm, &addr, port, &eh_addr, eh_port,
+      nat44_del_ed_session (sm, &addr, clib_host_to_net_u16 (port), &eh_addr,
+			    clib_host_to_net_u16 (eh_port),
 			    nat_proto_to_ip_proto (proto), vrf_id, is_in);
   else
-    rv = nat44_del_session (sm, &addr, port, proto, vrf_id, is_in);
+    rv =
+      nat44_del_session (sm, &addr, clib_host_to_net_u16 (port), proto,
+			 vrf_id, is_in);
 
   switch (rv)
     {
@@ -1835,8 +1858,13 @@ snat_det_map_command_fn (vlib_main_t * vm,
 	}
     }
 
-  rv = snat_det_add_map (sm, &in_addr, (u8) in_plen, &out_addr, (u8) out_plen,
-			 is_add);
+  if (in_plen > 32 || out_plen > 32)
+    {
+      error = clib_error_return (0, "network prefix length must be <= 32");
+      goto done;
+    }
+
+  rv = snat_det_add_map (sm, &in_addr, in_plen, &out_addr, out_plen, is_add);
 
   if (rv)
     {
@@ -2436,7 +2464,7 @@ VLIB_CLI_COMMAND (nat_ha_resync_command, static) = {
 VLIB_CLI_COMMAND (nat44_show_hash, static) = {
   .path = "show nat44 hash tables",
   .short_help = "show nat44 hash tables [detail|verbose]",
-  .function = nat44_show_hash_commnad_fn,
+  .function = nat44_show_hash_command_fn,
 };
 
 /*?
@@ -2543,16 +2571,19 @@ VLIB_CLI_COMMAND (nat44_show_interfaces_command, static) = {
  *  vpp# nat44 add static mapping tcp local 10.0.0.3 6303 external 4.4.4.4 3606
  * If not runnig "static mapping only" NAT plugin mode use before:
  *  vpp# nat44 add address 4.4.4.4
- * To create static mapping between local and external address use:
+ * To create address only static mapping between local and external address use:
  *  vpp# nat44 add static mapping local 10.0.0.3 external 4.4.4.4
+ * To create ICMP static mapping between local and external with ICMP echo
+ * identifier 10 use:
+ *  vpp# nat44 add static mapping icmp local 10.0.0.3 10 external 4.4.4.4 10
  * @cliexend
 ?*/
 VLIB_CLI_COMMAND (add_static_mapping_command, static) = {
   .path = "nat44 add static mapping",
   .function = add_static_mapping_command_fn,
   .short_help =
-    "nat44 add static mapping tcp|udp|icmp local <addr> [<port>] "
-    "external <addr> [<port>] [vrf <table-id>] [twice-nat|self-twice-nat] "
+    "nat44 add static mapping tcp|udp|icmp local <addr> [<port|icmp-echo-id>] "
+    "external <addr> [<port|icmp-echo-id>] [vrf <table-id>] [twice-nat|self-twice-nat] "
     "[out2in-only] [del]",
 };
 
