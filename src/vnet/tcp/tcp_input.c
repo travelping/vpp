@@ -2576,6 +2576,12 @@ tcp46_listen_inline (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  tcp_connection_t *tc;
 	  tc = tcp_connection_get (vnet_buffer (b)->tcp.connection_index,
 				   thread_index);
+          /* FIXME: this should not happen. It's a bug if it does */
+	  if (PREDICT_FALSE (tc == 0))
+	    {
+	      error = TCP_ERROR_INVALID_CONNECTION;
+	      goto done;
+	    }
 	  if (tc->state != TCP_STATE_TIME_WAIT)
 	    {
 	      error = TCP_ERROR_CREATE_EXISTS;
@@ -3270,7 +3276,8 @@ do {                                                       	\
     TCP_ERROR_NONE);
   _(LAST_ACK, TCP_FLAG_SYN | TCP_FLAG_RST | TCP_FLAG_ACK,
     TCP_INPUT_NEXT_RCV_PROCESS, TCP_ERROR_NONE);
-  _(TIME_WAIT, TCP_FLAG_SYN, TCP_INPUT_NEXT_LISTEN, TCP_ERROR_NONE);
+  // FIXME!!!! disable this transition in UPF instead !!!!
+  /* _(TIME_WAIT, TCP_FLAG_SYN, TCP_INPUT_NEXT_LISTEN, TCP_ERROR_NONE); */
   _(TIME_WAIT, TCP_FLAG_FIN, TCP_INPUT_NEXT_RCV_PROCESS, TCP_ERROR_NONE);
   _(TIME_WAIT, TCP_FLAG_FIN | TCP_FLAG_ACK, TCP_INPUT_NEXT_RCV_PROCESS,
     TCP_ERROR_NONE);
