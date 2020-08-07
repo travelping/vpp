@@ -42,7 +42,7 @@
 #include "pfcp.h"
 #include "flowtable.h"
 
-#define UPF_TRAFFIC_LOG 1
+/* #define UPF_TRAFFIC_LOG 1 */
 
 #define ip4_address_initializer { 0 }
 #define ip6_address_initializer {{ 0 }}
