@@ -168,6 +168,29 @@ test:external-ipv4-curl:
   variables:
     TEST_PROFILES: type-tdf dispatch-trace proxy curl gdb-batch
 
+# FIXME: traffic volume mismatch
+# test:external-ipv4-app:
+#   extends: .test-ext
+#   variables:
+#     TEST_PROFILES: type-tdf dispatch-trace proxy app-detection gdb-batch
+
+test:external-ipv4-udp-pgw:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-pgw dispatch-trace proxy udp gdb-batch
+
+test:external-ipv4-curl-pgw:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-pgw dispatch-trace proxy curl gdb-batch
+
+# FIXME: traffic volume mismatch
+# test:external-ipv4-app-pgw:
+#   extends: .test-ext
+#   variables:
+#     TEST_PROFILES: type-pgw dispatch-trace proxy app-detection gdb-batch
+
+# TODO: match app
 test:external-ipv4-curl-noproxy:
   extends: .test-ext
   variables:
@@ -182,6 +205,11 @@ test:external-proxy-crash:
   extends: .test-ext
   variables:
     TEST_PROFILES: type-tdf dispatch-trace proxy wrk gdb-batch
+
+test:external-proxy-crash-pgw:
+  extends: .test-ext
+  variables:
+    TEST_PROFILES: type-pgw dispatch-trace proxy wrk gdb-batch
 
 test:external-proxy-crash-netem:
   extends: .test-ext
