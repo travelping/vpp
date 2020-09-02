@@ -5,6 +5,7 @@ variables:
   CONTAINER_IMAGE: ergw/vpp
   CI_REGISTRY: index.docker.io  # container registry URL
   CI_REGISTRY_IMAGE: https://index.docker.io/v1/
+  DOCKER_TLS_CERTDIR: ""
 
 
 # build container image

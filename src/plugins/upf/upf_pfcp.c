@@ -2086,6 +2086,8 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 		.trigger = URR_START_OF_TRAFFIC
 	      };
 
+	    clib_warning("ZZZZZ: start of traffic event for UE IP: %U", format_ip46_address, &tt.ip, IP46_TYPE_ANY);
+
 	    /* no traffic for this UE */
 	    if (!urr->traffic_by_ue)
 	      urr->traffic_by_ue =
@@ -2099,11 +2101,13 @@ process_urrs (vlib_main_t * vm, upf_session_t * sess,
 	    vec_add1_ha(uev, ev, sizeof (upf_event_urr_hdr_t), 0);
 	    status |= URR_START_OF_TRAFFIC;
 	  }
-	else if (t && t->first_seen + 60 < now)
+	else if (t && t->first_seen + 10 < now)
 	  {
 	    upf_event_urr_data_t *ev;
 
-	    /* crude 60 second timeout */
+	    /* crude 10 second timeout */
+
+	    clib_warning("ZZZZZ: repeated start of traffic event for UE IP: %U", format_ip46_address, &tt.ip, IP46_TYPE_ANY);
 
 	    t->first_seen = now;
 	    vec_add2_ha(uev, ev, 1, sizeof (upf_event_urr_hdr_t), 0);
