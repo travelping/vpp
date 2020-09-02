@@ -589,6 +589,8 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
   upf_urr_t *urr;
   int send = 0;
 
+  clib_warning("ZZZZZ: UE %U",
+	       format_ip46_address, ue, IP46_TYPE_ANY);
   active = pfcp_get_rules (sx, PFCP_ACTIVE);
 
   upf_debug ("Active: %p (%d)\n", active, vec_len (active->urr));
@@ -620,7 +622,14 @@ upf_pfcp_session_usage_report (upf_session_t * sx, ip46_address_t * ue,
 
 	if (urr->traffic_timer.handle == ~0)
 	  {
+	    clib_warning("ZZZZZ: starting traffic timer for UE %U",
+			 format_ip46_address, ue, IP46_TYPE_ANY);
 	    upf_pfcp_session_start_stop_urr_time (si, &urr->traffic_timer, 1);
+	  }
+	else
+	  {
+	    clib_warning("ZZZZZ: NOT starting traffic timer for UE %U",
+			 format_ip46_address, ue, IP46_TYPE_ANY);
 	  }
       }
   }
@@ -712,6 +721,7 @@ upf_pfcp_session_stop_urr_time (urr_time_t * t, const f64 now)
 {
   pfcp_server_main_t *psm = &pfcp_server_main;
 
+  clib_warning("ZZZZZ: %p", t);
   if (t->handle != ~0 && t->expected > now)
     {
       /* The timer wheel stop expired timers automatically. We don't map
@@ -739,7 +749,10 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
   const f64 now = psm->timer.last_run_time;
 
   if (t->handle != ~0)
-    upf_pfcp_session_stop_urr_time (t, now);
+    {
+      clib_warning("ZZZZZ: Stopping URR timer %p on sidx %u", t, si);
+      upf_pfcp_session_stop_urr_time (t, now);
+    }
 
   if (t->period != 0 && start_it)
     {
@@ -752,13 +765,17 @@ upf_pfcp_session_start_stop_urr_time (u32 si, urr_time_t * t, u8 start_it)
       interval = clib_max (interval, 1);	/* make sure interval is at least 1 */
       t->handle = TW (tw_timer_start) (&psm->timer, si, 0, interval);
 
-      upf_debug
-	("starting URR timer on sidx %u, handle 0x%08x: "
+      clib_warning
+	("ZZZZZ: starting URR timer %p on sidx %u, handle 0x%08x: "
 	 "now is %.4f, base is %.4f, expire in %lu ticks "
 	 " @ %.4f (%U), clib_now %.4f, current tick: %u",
-	 si, t->handle, now, t->base, interval,
+	 t, si, t->handle, now, t->base, interval,
 	 t->expected, format_time_float, NULL, t->expected,
 	 unix_time_now (), psm->timer.current_tick);
+    }
+  else
+    {
+      clib_warning("ZZZZZ: Not starting URR timer %p on sidx %u", t, si);
     }
 }
 
@@ -928,13 +945,17 @@ upf_pfcp_session_urr_timer (upf_session_t * sx, f64 now)
 
 	for (int i = 0; i < vec_len (expired); i++)
 	  {
+	    clib_warning("ZZZZZ: removing traffic entry for an expired UE IP: %U", format_ip46_address, &expired[i]->ip, IP46_TYPE_ANY);
 	    hash_unset_mem_free (&urr->traffic_by_ue, &expired[i]->ip);
 	    pool_put (urr->traffic, expired[i]);
 	  }
 	vec_free (expired);
 
 	if (pool_elts (urr->traffic) != 0)
-	  upf_pfcp_session_start_stop_urr_time (si, &urr->traffic_timer, 1);
+	  {
+	    clib_warning("ZZZZZ: hash table not empty, restarting the traffic timer");
+	    upf_pfcp_session_start_stop_urr_time (si, &urr->traffic_timer, 1);
+	  }
       }
 
 #undef urr_check
