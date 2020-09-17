@@ -1,10 +1,11 @@
 # syntax = docker/dockerfile:experimental
-FROM ubuntu:bionic AS build-stage
+FROM ubuntu:20.04 AS build-stage
 
 WORKDIR /
 
 ENV BUILDKIT_VERSION "v0.7.1"
 ENV BUILDCTL_SHA256 "a39e44735e9cdcbe27ef22179ef990de1024f2dc69665fed1c2a5431ff73ed9c"
+ENV DEBIAN_FRONTEND noninteractive
 
 COPY Makefile /src/vpp/Makefile
 COPY build/external /src/vpp/build/external
@@ -14,7 +15,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
     --mount=target=/var/cache/apt,type=cache,sharing=private \
     apt-get update && \
     apt-get dist-upgrade -yy && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
 	    build-essential sudo git netbase curl ca-certificates && \
     curl -sSL "https://github.com/moby/buildkit/releases/download/${BUILDKIT_VERSION}/buildkit-${BUILDKIT_VERSION}.linux-amd64.tar.gz" | \
     tar -xvz -C /usr/local bin/buildctl && \

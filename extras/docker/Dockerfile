@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:experimental
 # the following is updated automatically by extras/docker/update-build-image-tag.sh
-FROM quay.io/travelping/upf-build:af1316e6090ebd2f47a1e66e4c7882d4 AS build-stage
+FROM quay.io/travelping/upf-build:640dd132a7aa54d5f4e4fab738ec9cbf AS build-stage
 
 ADD . /src/vpp
 
@@ -16,7 +16,7 @@ FROM scratch as artifacts
 COPY --from=build-stage /out .
 
 # --- final image --------------------------------------------
-FROM ubuntu:bionic AS final-stage
+FROM ubuntu:20.04 AS final-stage
 WORKDIR /
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
     --mount=target=/var/cache/apt,type=cache,sharing=private \
