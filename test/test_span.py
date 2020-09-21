@@ -3,9 +3,10 @@
 import unittest
 
 from scapy.packet import Raw
-from scapy.layers.l2 import Ether, Dot1Q, GRE, ERSPAN
+from scapy.layers.l2 import Ether, Dot1Q, GRE
 from scapy.layers.inet import IP, UDP
 from scapy.layers.vxlan import VXLAN
+from scapy.contrib.erspan import ERSPAN
 
 from framework import VppTestCase, VppTestRunner
 from util import Host, ppp

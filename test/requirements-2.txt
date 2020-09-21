@@ -265,8 +265,8 @@ scandir==1.10.0 \
     --hash=sha256:b24086f2375c4a094a6b51e78b4cf7ca16c721dcee2eddd7aa6494b42d6d519d \
     --hash=sha256:cb925555f43060a1745d0a321cca94bcea927c50114b623d73179189a4e100ac \
     # via pathlib2
-scapy==2.4.3 ; python_version >= "2.7" or python_version >= "3.4" \
-    --hash=sha256:e2f8d11f6a941c14a789ae8b236b27bd634681f1b29b5e893861e284d234f6b0 \
+scapy==2.4.4 ; python_version >= "2.7" or python_version >= "3.4" \
+    --hash=sha256:ecfd7a14cd9c3ef0eb08d28d5bb71d97219edff1454ccbdff229f676b27900ee \
     # via -r requirements.txt
 six==1.15.0 \
     --hash=sha256:30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259 \
