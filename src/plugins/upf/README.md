@@ -6,6 +6,14 @@ Note: Upstream VPP README can be found [here](/README-VPP.md)
 The UPF plugins implements a GTP-U user plane based on [3GPP TS 23.214][TS23214] and
 [3GPP TS 29.244][TS29244] Release 15.
 
+Repository Deprecation Notice
+=============================
+
+**This repository is now deprecated!**
+UPF has been renamed to UPF (User Plane Gateway) and is now moved to a new repository:
+
+https://github.com/travelping/upg-vpp
+
 Current State
 -------------
 
